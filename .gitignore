@@ -1,0 +1,22 @@
+node_modules/
+dist/
+.vite/
+*.log
+
+# Python
+__pycache__/
+.venv/
+*.pyc
+*.pyo
+
+# Runtime/data
+.ollama/
+.env
+backend/.env
+*.sqlite3
+screenshots/
+cache/
+
+# OS
+Thumbs.db
+.DS_Store
