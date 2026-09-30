@@ -1,5 +1,13 @@
 # Wingent Codex Handoff
 
+## October 2026 update
+- The UI is now a minimal, transparent launcher overlay that expands only for status or output.
+- The native window is borderless, always on top, hidden from the taskbar, and resident in the system tray.
+- The tray provides Open and Quit; left-click and Ctrl+Space both toggle the overlay.
+- Ollama has a native readiness indicator and constrained start action.
+- Packaged builds include and automatically manage a PyInstaller FastAPI sidecar.
+- The next milestone is explicit confirmation request/response UI, followed by optional launch-at-login.
+
 Use this document as the starting context for future work on Wingent.
 
 ## Product Brief

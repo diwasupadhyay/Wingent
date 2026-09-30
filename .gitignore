@@ -16,6 +16,8 @@ backend/.env
 *.sqlite3
 screenshots/
 cache/
+.build/
+src-tauri/binaries/*.exe
 
 # OS
 Thumbs.db

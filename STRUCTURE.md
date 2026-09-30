@@ -1,5 +1,10 @@
 # Structure
 
+## Desktop runtime additions
+- `backend/sidecar.py` is the frozen-backend entry point used by the Windows package.
+- `scripts/build-backend-sidecar.ps1` produces the target-triple-named PyInstaller binary.
+- `src-tauri/src/lib.rs` owns the overlay, tray, backend child process, shortcut, and Ollama controls.
+
 ## Root
 - `src/` — Vite React application shell and polished command bar UI.
 - `backend/` — FastAPI backend, local model provider integration, and API tests.

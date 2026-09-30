@@ -1,11 +1,22 @@
 # Memory
 
+## October 2026 desktop update
+- Wingent now uses a borderless, taskbar-free launcher overlay that expands only for progress and results.
+- A system tray icon provides Open and Quit; left-click toggles the overlay.
+- Packaged builds start and own a PyInstaller FastAPI sidecar when port 8000 is free.
+- The command bar shows native Ollama status and can run the constrained ollama serve action.
+- Optional launch-at-login, voice, vision, semantic memory, and autonomous computer use remain deferred.
+
 ## Current status
 - Repository initialized as a local-first Windows AI command bar project.
 - The workspace is intentionally minimal: a Vite + React + TypeScript frontend, a Python FastAPI backend, and an Ollama-backed local LLM provider interface.
 - M1 is complete: the command bar is live, persistent, streaming, and connected to a local backend.
 - M2 is complete for deterministic safe app and URL launches, with enforced permission-aware execution.
 - The Tauri shell is active with a native Ctrl+Space shortcut and close-to-hide behavior.
+- The desktop UI is a borderless, taskbar-free launcher overlay that expands only for progress and results.
+- A system tray icon provides Open and Quit actions; left-click toggles the overlay.
+- The packaged app starts and owns a PyInstaller FastAPI sidecar when port 8000 is not already in use.
+- Ollama status is shown in the command bar and a constrained native action can start ollama serve.
 
 ## Architectural intent
 - Keep the UI and backend loosely coupled through HTTP/streaming APIs.
@@ -18,4 +29,4 @@
 - Do not add semantic memory or voice features before the core command bar is solid.
 - Keep model/provider access local-first and explicit.
 - Cancellation is client-disconnect aware, and the UI preserves failed requests for retry.
-- Tray, startup, voice, vision, semantic memory, and autonomous computer-use remain deferred.
+- Startup launch, voice, vision, semantic memory, and autonomous computer-use remain deferred.

@@ -1,5 +1,11 @@
 # Architecture
 
+## Packaged desktop lifecycle
+- The borderless overlay stays out of the taskbar and lives in the system tray.
+- Closing hides the overlay; quitting is explicit through the tray.
+- The package starts a frozen FastAPI sidecar and terminates the child it owns.
+- Native Ollama checks use loopback port 11434; Start Ollama can only invoke ollama serve.
+
 The project separates the command UI from the local reasoning service to keep the interface fast and the model/provider logic replaceable.
 
 ## Frontend

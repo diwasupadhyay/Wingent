@@ -1,12 +1,174 @@
-use tauri::Manager;
-use tauri::WindowEvent;
+use std::io;
+use std::net::{SocketAddr, TcpStream};
+use std::path::PathBuf;
+use std::process::{Child, Command, Stdio};
+use std::sync::Mutex;
+use std::time::Duration;
+
+#[cfg(windows)]
+use std::os::windows::process::CommandExt;
+use tauri::menu::{Menu, MenuItem};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+use tauri::{AppHandle, Emitter, LogicalSize, Manager, WindowEvent};
 use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
+
+const COLLAPSED_HEIGHT: f64 = 92.0;
+const EXPANDED_HEIGHT: f64 = 300.0;
+
+struct BackendProcess(Mutex<Option<Child>>);
+
+impl Drop for BackendProcess {
+  fn drop(&mut self) {
+    if let Ok(child_slot) = self.0.get_mut() {
+      if let Some(child) = child_slot.as_mut() {
+        let _ = child.kill();
+      }
+    }
+  }
+}
+
+fn backend_is_running() -> bool {
+  let address = SocketAddr::from(([127, 0, 0, 1], 8000));
+  TcpStream::connect_timeout(&address, Duration::from_millis(300)).is_ok()
+}
+
+fn start_backend_sidecar() -> Result<Child, String> {
+  let mut candidates = Vec::new();
+  if let Ok(current_exe) = std::env::current_exe() {
+    if let Some(directory) = current_exe.parent() {
+      candidates.push(directory.join("wingent-backend.exe"));
+    }
+  }
+  candidates.push(
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+      .join("binaries")
+      .join("wingent-backend-x86_64-pc-windows-msvc.exe"),
+  );
+
+  let mut last_error: Option<io::Error> = None;
+  for executable in candidates {
+    let mut command = Command::new(executable);
+    command
+      .stdin(Stdio::null())
+      .stdout(Stdio::null())
+      .stderr(Stdio::null());
+    #[cfg(windows)]
+    command.creation_flags(0x08000000);
+    match command.spawn() {
+      Ok(child) => return Ok(child),
+      Err(error) => last_error = Some(error),
+    }
+  }
+
+  Err(format!(
+    "Packaged backend could not be started: {}",
+    last_error.map(|error| error.to_string()).unwrap_or_default()
+  ))
+}
+
+fn show_overlay(app: &AppHandle) {
+  if let Some(window) = app.get_webview_window("main") {
+    let _ = window.show();
+    let _ = window.center();
+    let _ = window.set_focus();
+    let _ = app.emit("wingent://focus", ());
+  }
+}
+
+fn toggle_overlay(app: &AppHandle) {
+  if let Some(window) = app.get_webview_window("main") {
+    if window.is_visible().unwrap_or(false) {
+      let _ = window.hide();
+    } else {
+      show_overlay(app);
+    }
+  }
+}
+
+fn ollama_is_running() -> bool {
+  let address = SocketAddr::from(([127, 0, 0, 1], 11434));
+  TcpStream::connect_timeout(&address, Duration::from_millis(300)).is_ok()
+}
+
+#[tauri::command]
+fn ollama_status() -> bool {
+  ollama_is_running()
+}
+
+#[tauri::command]
+fn start_ollama() -> Result<(), String> {
+  if ollama_is_running() {
+    return Ok(());
+  }
+
+  let mut candidates = vec![PathBuf::from("ollama")];
+  if let Some(local_app_data) = std::env::var_os("LOCALAPPDATA") {
+    candidates.push(PathBuf::from(local_app_data).join("Programs").join("Ollama").join("ollama.exe"));
+  }
+
+  let mut last_error: Option<io::Error> = None;
+  for executable in candidates {
+    let mut command = Command::new(executable);
+    command
+      .arg("serve")
+      .stdin(Stdio::null())
+      .stdout(Stdio::null())
+      .stderr(Stdio::null());
+    #[cfg(windows)]
+    command.creation_flags(0x08000000);
+
+    match command.spawn() {
+      Ok(_) => return Ok(()),
+      Err(error) => last_error = Some(error),
+    }
+  }
+
+  Err(format!(
+    "Could not start Ollama. Install it or add ollama.exe to PATH. {}",
+    last_error.map(|error| error.to_string()).unwrap_or_default()
+  ))
+}
+
+#[tauri::command]
+fn hide_overlay(app: AppHandle) {
+  if let Some(window) = app.get_webview_window("main") {
+    let _ = window.hide();
+  }
+}
+
+#[tauri::command]
+fn set_overlay_expanded(app: AppHandle, expanded: bool) {
+  if let Some(window) = app.get_webview_window("main") {
+    let height = if expanded { EXPANDED_HEIGHT } else { COLLAPSED_HEIGHT };
+    let _ = window.set_size(LogicalSize::new(760.0, height));
+    let _ = window.center();
+  }
+}
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
   tauri::Builder::default()
     .plugin(tauri_plugin_global_shortcut::Builder::new().build())
+    .invoke_handler(tauri::generate_handler![
+      ollama_status,
+      start_ollama,
+      hide_overlay,
+      set_overlay_expanded
+    ])
     .setup(|app| {
+      let backend_child = if backend_is_running() {
+        None
+      } else {
+        match start_backend_sidecar() {
+          Ok(child) => Some(child),
+          Err(error) => {
+            log::error!("{error}");
+            None
+          }
+        }
+      };
+      app.manage(BackendProcess(Mutex::new(backend_child)));
+
       if cfg!(debug_assertions) {
         app.handle().plugin(
           tauri_plugin_log::Builder::default()
@@ -15,19 +177,33 @@ pub fn run() {
         )?;
       }
 
-      app.global_shortcut().on_shortcut("Ctrl+Space", |app_handle, _, event| {
-        if event.state != ShortcutState::Pressed {
-          return;
-        }
-
-        if let Some(window) = app_handle.get_webview_window("main") {
-          let is_visible = window.is_visible().unwrap_or(false);
-          if is_visible {
-            let _ = window.hide();
-          } else {
-            let _ = window.show();
-            let _ = window.set_focus();
+      let open_item = MenuItem::with_id(app, "open", "Open Wingent", true, None::<&str>)?;
+      let quit_item = MenuItem::with_id(app, "quit", "Quit", true, None::<&str>)?;
+      let menu = Menu::with_items(app, &[&open_item, &quit_item])?;
+      TrayIconBuilder::new()
+        .icon(app.default_window_icon().expect("Wingent icon missing").clone())
+        .tooltip("Wingent · Ctrl+Space")
+        .menu(&menu)
+        .show_menu_on_left_click(false)
+        .on_menu_event(|app, event| match event.id.as_ref() {
+          "open" => show_overlay(app),
+          "quit" => app.exit(0),
+          _ => {}
+        })
+        .on_tray_icon_event(|tray, event| {
+          if let TrayIconEvent::Click {
+            button: MouseButton::Left,
+            button_state: MouseButtonState::Up,
+            ..
+          } = event {
+            toggle_overlay(tray.app_handle());
           }
+        })
+        .build(app)?;
+
+      app.global_shortcut().on_shortcut("Ctrl+Space", |app_handle, _, event| {
+        if event.state == ShortcutState::Pressed {
+          toggle_overlay(app_handle);
         }
       })?;
 
@@ -44,5 +220,5 @@ pub fn run() {
       Ok(())
     })
     .run(tauri::generate_context!())
-    .expect("error while building tauri application");
+    .expect("error while building Tauri application");
 }

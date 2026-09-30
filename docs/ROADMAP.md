@@ -1,5 +1,10 @@
 # Roadmap
 
+## October 2026 update
+- M2.5 desktop shell now includes the adaptive overlay, tray lifecycle, taskbar exclusion, and Ctrl+Space.
+- M2.6 packaged runtime is complete for a reproducible PyInstaller backend sidecar and app-owned startup.
+- Next: explicit confirmation request/response UI, then optional launch-at-login after daily-use validation.
+
 ## Status snapshot
 - M0 — foundation: complete for repository setup, config, dependency checks, and project docs.
 - M1 — local command bar: complete and validated with a local backend and streaming frontend.

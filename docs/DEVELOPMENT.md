@@ -1,5 +1,13 @@
 # Development
 
+## Packaged backend
+```powershell
+python -m pip install pyinstaller==6.16.0
+powershell -ExecutionPolicy Bypass -File scripts/build-backend-sidecar.ps1
+```
+
+The generated target-triple executable is ignored by Git. Build it before `npm run tauri:build`; Tauri registers it as an external binary. The installed app starts hidden in the tray and starts the backend automatically. Press `Ctrl+Space` or left-click the tray icon to open it.
+
 ## Prerequisites
 - Node.js 20+
 - Python 3.12+
