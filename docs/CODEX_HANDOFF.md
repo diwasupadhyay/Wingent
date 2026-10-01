@@ -68,7 +68,7 @@ Supported deterministic examples:
 - `open YouTube`
 - `open YouTube and search piano tutorials`
 
-When a website is requested, the parser removes the separate Chrome launch action. This prevents two Chrome windows. YouTube searches become a single URL such as `https://www.youtube.com/results?search_query=piano+tutorials`.
+Browser launch plus navigation becomes one URL action with an explicit browser parameter. Chrome/Edge executables are resolved from installation paths or PATH and launched directly with arguments. Search, search-for, look-up, seach, and serach are supported. GitHub and YouTube support site search after navigation.
 
 Profile selection is intentionally unsupported. A request such as `Open Chrome and select any profile and open YouTube` returns an explicit browser-automation limitation instead of partially launching Chrome and getting stuck at the profile selector.
 

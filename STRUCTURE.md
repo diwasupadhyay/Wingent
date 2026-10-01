@@ -1,6 +1,7 @@
 # Structure
 
 ## Desktop runtime additions
+- `backend/app/applications.py` resolves approved Chrome and Edge executables for direct browser launches.
 - `backend/sidecar.py` is the frozen-backend entry point used by the Windows package.
 - `scripts/build-backend-sidecar.ps1` produces the target-triple-named PyInstaller binary.
 - `src-tauri/src/lib.rs` owns the overlay, tray, backend child process, shortcut, and Ollama controls.

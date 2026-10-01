@@ -72,7 +72,12 @@ async def command(request: Request, command_request: CommandRequest) -> Streamin
             yield sse_event(
                 'error',
                 {
-                    'message': 'I cannot complete every step of that request with the available tools yet. No actions were taken.',
+                    'message': (
+                        'Please specify the action after opening the browser. For example: '
+                        '"open Chrome and search GitHub" or "open Chrome and open github.com". '
+                        'I can open apps and sites or search; reading pages and clicking controls are not available yet. '
+                        'No actions were taken.'
+                    ),
                     'code': 'unsupported_action',
                 },
             )
@@ -80,6 +85,8 @@ async def command(request: Request, command_request: CommandRequest) -> Streamin
         if deterministic_actions:
             results: list[dict[str, object]] = []
             for index, (tool_name, params) in enumerate(deterministic_actions, start=1):
+                if await request.is_disconnected():
+                    return
                 tool = registry.get_tool(tool_name)
                 if tool is None:
                     yield sse_event('error', {'message': 'No matching tool is available.'})
@@ -89,7 +96,7 @@ async def command(request: Request, command_request: CommandRequest) -> Streamin
                     'status',
                     {
                         'stage': 'tool_running',
-                        'message': f'Running {tool_name} ({index}/{len(deterministic_actions)})',
+                        'message': f'Opening {params.get("url") or params.get("application")} ({index}/{len(deterministic_actions)})',
                     },
                 )
                 try:
@@ -104,7 +111,8 @@ async def command(request: Request, command_request: CommandRequest) -> Streamin
                 results.append(result)
 
             summary = ' and '.join(
-                f"{item.get('action', 'tool')}" for item in results
+                str(item.get('url') or item.get('application') or item.get('action', 'tool'))
+                for item in results
             ) if results else 'safe actions'
             yield sse_event('final', {'text': f'Sent open request: {summary}', 'tool': results})
             return

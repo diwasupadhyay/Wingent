@@ -4,6 +4,7 @@ from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable
 from urllib.parse import urlparse
+from app.applications import resolve_browser
 
 
 class ToolPermission(str, Enum):
@@ -30,7 +31,10 @@ class ToolRegistry:
             ToolPermission.SAFE,
             {
                 'type': 'object',
-                'properties': {'url': {'type': 'string'}},
+                'properties': {
+                    'url': {'type': 'string'},
+                    'browser': {'type': 'string', 'enum': ['chrome', 'edge']},
+                },
                 'required': ['url'],
             },
             self._open_url,
@@ -95,6 +99,11 @@ class ToolRegistry:
         if parsed.scheme not in {'http', 'https'} or not parsed.netloc:
             raise ValueError('Only HTTP and HTTPS URLs are allowed.')
 
+        browser = params.get('browser')
+        if browser:
+            executable = resolve_browser(browser)
+            subprocess.Popen([executable, url], shell=False)
+            return {'ok': True, 'action': 'open_url', 'url': url, 'browser': browser}
         if not webbrowser.open(url, new=2, autoraise=True):
             raise RuntimeError('The default browser did not accept the URL.')
         return {'ok': True, 'action': 'open_url', 'url': url}
@@ -115,7 +124,9 @@ class ToolRegistry:
         elif application in {'explorer', 'file explorer'}:
             target = 'explorer'
 
-        if target in {'chrome', 'msedge', 'notepad', 'explorer'}:
+        if target in {'chrome', 'msedge'}:
+            subprocess.Popen([resolve_browser('chrome' if target == 'chrome' else 'edge')], shell=False)
+        elif target in {'notepad', 'explorer'}:
             subprocess.Popen(['cmd', '/c', 'start', '', target], shell=False)
         else:
             raise ValueError(f'Unsupported application: {application}')

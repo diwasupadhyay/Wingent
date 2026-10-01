@@ -95,7 +95,7 @@ def test_registry_requires_confirmation_for_consequential_tools():
 def test_detect_deterministic_tools_handles_multiple_safe_actions():
     actions = detect_deterministic_tools('Open Chrome and open https://example.com')
 
-    assert actions == [('open_url', {'url': 'https://example.com'})]
+    assert actions == [('open_url', {'url': 'https://example.com', 'browser': 'chrome'})]
 
 
 def test_detect_deterministic_tools_normalizes_bare_domains():
@@ -116,7 +116,7 @@ def test_detect_deterministic_tools_searches_youtube_without_duplicate_launch():
     assert actions == [
         (
             'open_url',
-            {'url': 'https://www.youtube.com/results?search_query=piano+tutorials'},
+            {'url': 'https://www.youtube.com/results?search_query=piano+tutorials', 'browser': 'chrome'},
         )
     ]
 
@@ -151,7 +151,7 @@ def test_supported_actions_run_without_model(monkeypatch):
     response = client.post('/api/command', json={'prompt': 'Open Chrome and open https://example.com'})
 
     assert 'event: final' in response.text
-    assert executed == [('open_url', {'url': 'https://example.com'})]
+    assert executed == [('open_url', {'url': 'https://example.com', 'browser': 'chrome'})]
 
 
 def test_unknown_step_cancels_entire_deterministic_plan():

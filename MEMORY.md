@@ -1,6 +1,8 @@
 # Memory
 
 ## October 2026 desktop update
+- Browser commands support generic search/search-for/look-up and common search typos. Explicit Chrome/Edge selection is retained through URL execution.
+- "Open Chrome and search GitHub" opens a web search in Chrome; "open GitHub and search tauri" searches GitHub itself.
 - Wingent now uses a borderless, taskbar-free launcher overlay that expands only for progress and results.
 - A system tray icon provides Open and Quit; left-click toggles the overlay.
 - Packaged builds start and own a PyInstaller FastAPI sidecar when port 8000 is free.

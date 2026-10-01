@@ -1,6 +1,8 @@
 # Changelog
 
 ## Unreleased
+- Fix "open Chrome and seach GitHub": generic searches and common typos now work, and the requested browser is retained.
+- Add GitHub navigation/site search, preserve conjunctions in queries, and clarify missing or unsupported actions.
 - Require all steps of a deterministic command to be supported before executing any tool.
 - Add safe web search routing and an optional local complex-model tier.
 - Show explicit errors for empty or failed model streams and keep cancelled requests isolated.
