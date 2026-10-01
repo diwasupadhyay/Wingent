@@ -16,9 +16,17 @@ The project separates the command UI from the local reasoning service to keep th
 - AbortController cancellation, Escape-to-cancel, and retry of the last failed request.
 
 ## Backend
+
+- Exact safe commands use the deterministic fast path. Natural/ambiguous requests go to a bounded structured Ollama planner (`planner.py`), which returns execute, clarify, or answer.
+- Search targets are encoded by code, not used as shell strings. The compiler removes redundant browser/home-page launches immediately before navigation/search.
+- `executor.py` preflights every action before execution, then emits plan and per-step outcomes. A runtime failure stops remaining steps and reports accepted earlier steps; there is no automatic side-effect retry.
+- Planning has a 60-second total deadline and at most one schema-repair attempt. Disconnect cancels the pending model request. Maximum plan size is eight steps.
+- Folder opening resolves Windows known folders or explicit existing local directories. No file content is read and executable files cannot be launched as folders.
+- Launch acceptance is the only observation currently available. Browser page contents, profile selection, and rendered tabs are not observed/verified.
+
 - FastAPI service runs locally and exposes a command endpoint and health endpoint.
 - The service validates prompts, checks local Ollama availability, and streams progress/status deltas back to the UI.
-- Deterministic safe tools run only when the whole command is supported. Unsupported action requests return an explicit error before any tool executes.
+- Deterministic safe tools run only when the whole command parses. The planner is instructed to clarify unsupported or ambiguous requests without actions; model intent interpretation is not a correctness guarantee.
 - The registry enforces safe, confirmation-required, and restricted permissions.
 - The optional `OLLAMA_COMPLEX_MODEL` tier handles long or analysis-style text prompts; other text prompts use `OLLAMA_MODEL`.
 - Client disconnects stop the stream so cancellation does not leave a model request running unnecessarily.
@@ -26,7 +34,7 @@ The project separates the command UI from the local reasoning service to keep th
 ## Desktop shell
 - Tauri v2 hosts the frontend as a Windows desktop app.
 - The native global Ctrl+Space shortcut shows, focuses, or hides the command bar.
-- Closing the window hides it so the background app remains available; tray and startup controls are planned follow-up work.
+- Closing hides the window. The tray provides Open/Quit; launch-at-login is deferred.
 
 ## Local LLM provider
 - `OllamaClient` implements a simple provider abstraction.

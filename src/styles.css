@@ -108,6 +108,9 @@ input::placeholder { color: rgba(235, 235, 245, 0.43); }
 .run-button:disabled { opacity: 0.22; cursor: default; }
 
 .result-panel {
+  max-height: 190px;
+  overflow-y: auto;
+  scrollbar-width: thin;
   margin: 0 14px 14px;
   border-top: 1px solid rgba(255, 255, 255, 0.09);
   padding: 13px 4px 4px;
@@ -133,6 +136,15 @@ input::placeholder { color: rgba(235, 235, 245, 0.43); }
   white-space: pre-wrap;
   scrollbar-width: thin;
 }
+
+.action-steps { list-style: none; margin: 8px 0 0; padding: 0; font-size: 12px; }
+.action-steps li { display: flex; gap: 10px; padding: 5px 2px; color: #c8c8d0; overflow-wrap: anywhere; }
+.step-state { flex: 0 0 58px; font-size: 10px; text-transform: capitalize; color: #9696a2; }
+.step-accepted .step-state { color: #62dda2; }
+.step-running .step-state { color: #b5aaff; }
+.step-failed .step-state { color: #ffaaa6; }
+.result-meta > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.result-actions { flex-shrink: 0; }
 
 .result-error { color: #ffaaa6; }
 .spinner { width: 14px; height: 14px; border: 2px solid rgba(23, 23, 27, .2); border-top-color: #17171b; border-radius: 50%; animation: spin .7s linear infinite; }

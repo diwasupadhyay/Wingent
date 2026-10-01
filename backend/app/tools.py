@@ -1,10 +1,12 @@
 import subprocess
+import os
 import webbrowser
 from dataclasses import dataclass
 from enum import Enum
 from typing import Any, Callable
 from urllib.parse import urlparse
 from app.applications import resolve_browser
+from app.folders import resolve_folder
 
 
 class ToolPermission(str, Enum):
@@ -25,6 +27,9 @@ class ToolDefinition:
 class ToolRegistry:
     def __init__(self) -> None:
         self.tools: dict[str, ToolDefinition] = {}
+        self.register('open_folder', 'Open an existing local folder in Explorer.', ToolPermission.SAFE,
+                      {'type': 'object', 'properties': {'path': {'type': 'string'}}, 'required': ['path']},
+                      self._open_folder)
         self.register(
             'open_url',
             'Open a public website in the system default browser.',
@@ -77,6 +82,11 @@ class ToolRegistry:
         *,
         confirmed: bool = False,
     ) -> dict[str, Any]:
+        payload = self.validate(name, params, confirmed=confirmed)
+        return self.tools[name].executor(payload)
+
+    def validate(self, name: str, params: dict[str, Any] | None = None, *, confirmed: bool = False) -> dict[str, Any]:
+        """Preflight without side effects, used on EVERY step before a plan starts."""
         tool = self.get_tool(name)
         if tool is None:
             raise KeyError(f'Unknown tool: {name}')
@@ -86,11 +96,43 @@ class ToolRegistry:
         if tool.permission is ToolPermission.CONFIRMATION_REQUIRED and not confirmed:
             raise PermissionError(f'Confirmation is required before running: {name}')
 
-        payload = params or {}
+        payload = {} if params is None else params.copy() if isinstance(params, dict) else params
         if not isinstance(payload, dict):
             raise TypeError('Tool arguments must be a dictionary.')
 
-        return tool.executor(payload)
+        properties = tool.input_schema.get('properties', {})
+        if any(key not in properties for key in payload):
+            raise ValueError(f'Unexpected arguments for {name}.')
+        if any(key not in payload for key in tool.input_schema.get('required', [])):
+            raise ValueError(f'Missing arguments for {name}.')
+        for key, value in payload.items():
+            schema = properties[key]
+            if schema.get('type') == 'string' and (not isinstance(value, str) or not value.strip()):
+                raise ValueError(f'{key} must be a non-empty string.')
+            if 'enum' in schema and value not in schema['enum']:
+                raise ValueError(f'Unsupported {key}: {value}')
+        if name == 'open_url':
+            parsed = urlparse(payload['url'])
+            if parsed.scheme not in {'http', 'https'} or not parsed.hostname:
+                raise ValueError('Only HTTP and HTTPS URLs are allowed.')
+            if parsed.username or parsed.password or any(ord(c) < 32 for c in payload['url']):
+                raise ValueError('URLs cannot include credentials or control characters.')
+            if payload.get('browser'):
+                resolve_browser(payload['browser'])
+        elif name == 'open_folder':
+            payload['path'] = resolve_folder(payload['path'])
+        elif name == 'open_application':
+            allowed = {'chrome', 'google chrome', 'edge', 'msedge', 'microsoft edge',
+                       'notepad', 'notepad.exe', 'explorer', 'file explorer'}
+            if payload['application'].lower() not in allowed:
+                raise ValueError(f'Unsupported application: {payload["application"]}')
+        return payload
+
+    @staticmethod
+    def _open_folder(params: dict[str, Any]) -> dict[str, Any]:
+        path = resolve_folder(params['path'])
+        os.startfile(path, 'explore')
+        return {'ok': True, 'action': 'open_folder', 'path': path}
 
     @staticmethod
     def _open_url(params: dict[str, Any]) -> dict[str, Any]:

@@ -126,6 +126,13 @@ def test_profile_selection_is_reported_as_unsupported_browser_automation():
 
 
 def test_mixed_browser_task_is_not_partially_executed(monkeypatch):
+    from app.planner import AgentPlan
+    async def clarify(*args):
+        return AgentPlan(disposition='clarify', message='Reading email is not available.', steps=[])
+    async def available(*args):
+        return True
+    monkeypatch.setattr('app.main.plan_request', clarify)
+    monkeypatch.setattr('app.main.OllamaClient.is_available', available)
     executed = []
     monkeypatch.setattr('app.main.registry.execute', lambda *args, **kwargs: executed.append((args, kwargs)))
 
@@ -135,8 +142,8 @@ def test_mixed_browser_task_is_not_partially_executed(monkeypatch):
     )
 
     assert response.status_code == 200
-    assert 'event: error' in response.text
-    assert 'unsupported_action' in response.text
+    assert 'event: clarification' in response.text
+    assert 'No actions were taken' in response.text
     assert executed == []
 
 
@@ -172,6 +179,10 @@ def test_polite_safe_command_is_supported():
 
 
 def test_empty_model_stream_is_error(monkeypatch):
+    from app.planner import AgentPlan
+    async def answer(*args):
+        return AgentPlan(disposition='answer', message='', steps=[])
+    monkeypatch.setattr('app.main.plan_request', answer)
     async def available(_self):
         return True
 

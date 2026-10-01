@@ -1,5 +1,8 @@
 # Decisions
 
+## Bounded planning before broader automation
+Use Ollama JSON-schema output to translate natural requests into at most eight typed actions, retaining a deterministic fast path. Compile semantic searches into URLs in trusted code, validate all steps before launch, and report actual tool acceptance. A malformed model plan gets one bounded format repair, never a side-effect retry. This establishes a usable planning/execution boundary without introducing arbitrary shell execution or pretending that launches verify page contents. Browser observation is a separate next milestone.
+
 ## Launcher overlay
 Wingent uses a fixed-width, borderless, always-on-top surface that stays out of the taskbar. It expands only for useful progress or output and uses explicit tray Quit semantics.
 

@@ -4,6 +4,8 @@ import { listen } from '@tauri-apps/api/event';
 
 type Stage = 'idle' | 'planning' | 'tool_running' | 'streaming' | 'done' | 'error';
 type OllamaState = 'checking' | 'running' | 'stopped' | 'starting';
+type StepState = 'pending' | 'running' | 'accepted' | 'failed' | 'not_run';
+type ActionStep = { label: string; state: StepState };
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
 const isTauri = () => '__TAURI_INTERNALS__' in window;
@@ -13,6 +15,7 @@ export default function App() {
   const [status, setStatus] = useState<Stage>('idle');
   const [progress, setProgress] = useState('Ready');
   const [content, setContent] = useState('');
+  const [steps, setSteps] = useState<ActionStep[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
@@ -73,6 +76,8 @@ export default function App() {
     setLoading(false);
     setStatus('idle');
     setProgress('Cancelled');
+    setSteps((current) => current.map((step) => step.state === 'pending' || step.state === 'running' ? { ...step, state: 'not_run' } : step));
+    setContent('Stopped. Already accepted launch requests cannot be undone; an in-flight launch may still finish.');
     setError(null);
     setErrorCode(null);
   };
@@ -110,6 +115,9 @@ export default function App() {
     setError(null);
     setErrorCode(null);
     setContent('');
+    setSteps([]);
+    let terminal = false;
+    let launchStarted = false;
 
     try {
       const response = await fetch(`${API_BASE_URL}/api/command`, {
@@ -135,31 +143,49 @@ export default function App() {
           const name = lines.find((line) => line.startsWith('event:'))?.slice(6).trim();
           const raw = lines.find((line) => line.startsWith('data:'))?.slice(5).trim();
           if (!raw) continue;
-          let data: Record<string, string>;
-          try { data = JSON.parse(raw) as Record<string, string>; } catch { continue; }
+          let data: { stage?: string; message?: string; text?: string; code?: string; steps?: string[]; index?: number; state?: StepState };
+          try { data = JSON.parse(raw); } catch { continue; }
           if (name === 'status') {
             setStatus((data.stage as Stage) ?? 'idle');
             setProgress(data.message ?? 'Working');
+          } else if (name === 'plan' && Array.isArray(data.steps)) {
+            setSteps(data.steps.map((label) => ({ label, state: 'pending' })));
+          } else if (name === 'step') {
+            launchStarted = true;
+            const index = data.index;
+            const state = data.state;
+            if (typeof index === 'number' && state) setSteps((current) => current.map((step, i) => i === index ? { ...step, state } : step));
+          } else if (name === 'clarification') {
+            terminal = true;
+            setStatus('done');
+            setProgress('Needs your input');
+            setContent(data.text ?? 'Please clarify the request.');
           } else if (name === 'delta') {
             setStatus('streaming');
             setContent((current) => current + (data.text ?? ''));
           } else if (name === 'final') {
+            terminal = true;
             setStatus('done');
             setProgress('Complete');
             setContent((current) => current || data.text || current);
           } else if (name === 'error') {
+            terminal = true;
             setStatus('error');
             setProgress('Error');
             setError(data.message ?? 'Something went wrong.');
             setErrorCode(data.code ?? null);
+            setSteps((current) => current.map((step) => step.state === 'pending' ? { ...step, state: 'not_run' } : step));
           }
         }
       }
+      if (!terminal) throw new Error('The task connection ended before a result was received. Check any opened windows before trying again.');
     } catch (cause) {
       if (abortRef.current === controller && !(cause instanceof DOMException && cause.name === 'AbortError')) {
         setStatus('error');
         setProgress('Error');
         setError(cause instanceof Error ? cause.message : 'Unknown error');
+        if (launchStarted) setErrorCode('partial_execution');
+        setSteps((current) => current.map((step) => step.state === 'pending' ? { ...step, state: 'not_run' } : step));
       }
     } finally {
       if (abortRef.current === controller) {
@@ -216,11 +242,21 @@ export default function App() {
               <span>{backendReady === false && !loading && !error ? 'Service unavailable' : progress}</span>
               <div className='result-actions'>
                 {loading && <button type='button' onClick={cancel}>Stop</button>}
-                {!loading && error && !errorCode?.startsWith('unsupported_') && lastPrompt && (
+                {!loading && error && errorCode !== 'partial_execution' && !errorCode?.startsWith('unsupported_') && lastPrompt && (
                   <button type='button' onClick={() => void submit(lastPrompt)}>Retry</button>
                 )}
               </div>
             </div>
+            {steps.length > 0 && (
+              <ol className='action-steps' aria-label='Task steps'>
+                {steps.map((step, index) => (
+                  <li key={index} className={`step-${step.state}`}>
+                    <span className='step-state'>{step.state === 'accepted' ? 'Accepted' : step.state === 'not_run' ? 'Not run' : step.state}</span>
+                    <span>{step.label}</span>
+                  </li>
+                ))}
+              </ol>
+            )}
             {(content || error || backendReady === false) && (
               <div className={`result-copy ${error || backendReady === false ? 'result-error' : ''}`}>
                 {error || content || 'Wingent service is unavailable. Restart Wingent if this persists.'}

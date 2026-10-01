@@ -1,6 +1,10 @@
 # Wingent Codex Handoff
 
 ## October 2026 update
+- Natural tasks now use structured local LLM planning with strict tool validation, full-plan preflight, cancellation, a 60-second planning deadline, and per-step SSE results.
+- Verified the user's YouTube GenAI search + GitHub tab request against local llama3.2:3b. `scripts/evaluate-planner.py` dry-runs seven language cases without launching anything.
+- Folder opening supports Windows known folders and explicit existing local paths. Unknown project folders require a full path; no file reading, modification, or executable launching.
+- The overlay shows steps and clarifications; partial execution never offers a whole-task retry. Clarifications currently require resubmitting the full request (no conversational memory).
 - The UI is now a minimal, transparent launcher overlay that expands only for status or output.
 - The native window is borderless, always on top, hidden from the taskbar, and resident in the system tray.
 - The tray provides Open and Quit; left-click and Ctrl+Space both toggle the overlay.
@@ -85,7 +89,9 @@ Optional launch-at-login remains follow-up work.
 
 ## Verification
 
-- Backend suite: 12 tests passing at the latest check.
+- Packaged release rebuilt and launched after the planner change. Its live SSE endpoint accepted the exact YouTube GenAI + GitHub Chrome plan (two steps), opened Downloads, and clarified "open chrome and something else" without executing tools. This verifies launch acceptance, not rendered browser contents.
+- Seven live llama3.2:3b planning evaluations passed via `scripts/evaluate-planner.py`.
+- Backend suite: 57 tests passing at the latest check; frontend suite: 6 tests passing.
 - Frontend suite: passing.
 - `npm run build`: passing.
 - `cargo check` in `src-tauri`: passing.
@@ -125,9 +131,9 @@ Ollama must be running separately with `llama3.2:3b` installed.
 
 ## Next Work, In Order
 
-1. Add an explicit confirmation request/response flow for future consequential tools; never silently auto-approve them.
-2. Add optional launch-at-login after validating the tray lifecycle in daily use.
-3. Add integration tests for SSE cancellation, retry, and the packaged Tauri origin.
+1. Extend the natural-language evaluation corpus and add short-lived clarification context (currently users resubmit a complete request).
+2. Add a managed browser session with observed navigation/page results before claiming page interaction or research capabilities. Decide explicitly whether to use a separate agent profile; do not take over private browser sessions implicitly.
+3. Add explicit confirmation request/response before any consequential tools, and then optional launch-at-login.
 
 Do not implement profile clicking, arbitrary browser control, DOM automation, voice, vision, semantic memory, or autonomous desktop control as an unrequested shortcut.
 

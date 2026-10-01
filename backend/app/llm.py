@@ -10,6 +10,8 @@ class LLMProvider(Protocol):
 
     def stream(self, prompt: str) -> AsyncIterator[str]: ...
 
+    async def structured(self, prompt: str, system: str, schema: dict) -> str: ...
+
 
 _SYSTEM_INSTRUCTION = (
     'You are Wingent, a local text assistant. Answer clearly and briefly. '
@@ -31,6 +33,19 @@ class OllamaClient:
                 return response.status_code == 200
         except httpx.HTTPError:
             return False
+
+    async def structured(self, prompt: str, system: str, schema: dict) -> str:
+        async with httpx.AsyncClient(timeout=60.0) as client:
+            response = await client.post(f'{self.base_url}/api/generate', json={
+                'model': self.model, 'system': system, 'prompt': prompt,
+                'stream': False, 'format': schema,
+                'options': {'temperature': 0, 'num_predict': 1200},
+            })
+            response.raise_for_status()
+            payload = response.json()
+            if payload.get('error'):
+                raise RuntimeError(f'Ollama error: {payload["error"]}')
+            return payload.get('response', '')
 
     async def stream(self, prompt: str) -> AsyncIterator[str]:
         async with httpx.AsyncClient(timeout=60.0) as client:

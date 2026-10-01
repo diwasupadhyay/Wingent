@@ -12,10 +12,12 @@ from app.model_routing import select_model
 from app.models import CommandRequest
 from app.routing import (
     detect_deterministic_tools,
-    looks_like_action_request,
     requests_unsupported_browser_automation,
 )
 from app.tools import ToolRegistry
+from app.planner import plan_request, compile_plan
+from app.executor import execute_plan, while_connected
+from app.folders import KNOWN_FOLDERS
 
 app = FastAPI(title='Wingent', version='0.1.0')
 app.add_middleware(
@@ -67,66 +69,42 @@ async def command(request: Request, command_request: CommandRequest) -> Streamin
             )
             return
 
-        deterministic_actions = detect_deterministic_tools(prompt)
-        if not deterministic_actions and looks_like_action_request(prompt):
-            yield sse_event(
-                'error',
-                {
-                    'message': (
-                        'Please specify the action after opening the browser. For example: '
-                        '"open Chrome and search GitHub" or "open Chrome and open github.com". '
-                        'I can open apps and sites or search; reading pages and clicking controls are not available yet. '
-                        'No actions were taken.'
-                    ),
-                    'code': 'unsupported_action',
-                },
-            )
-            return
-        if deterministic_actions:
-            results: list[dict[str, object]] = []
-            for index, (tool_name, params) in enumerate(deterministic_actions, start=1):
-                if await request.is_disconnected():
-                    return
-                tool = registry.get_tool(tool_name)
-                if tool is None:
-                    yield sse_event('error', {'message': 'No matching tool is available.'})
-                    return
-
-                yield sse_event(
-                    'status',
-                    {
-                        'stage': 'tool_running',
-                        'message': f'Opening {params.get("url") or params.get("application")} ({index}/{len(deterministic_actions)})',
-                    },
-                )
-                try:
-                    result = registry.execute(tool_name, params)
-                except PermissionError as exc:
-                    yield sse_event('error', {'message': str(exc), 'permission': 'confirmation_required'})
-                    return
-                except Exception as exc:  # pragma: no cover - defensive path
-                    yield sse_event('error', {'message': str(exc)})
-                    return
-
-                results.append(result)
-
-            summary = ' and '.join(
-                str(item.get('url') or item.get('application') or item.get('action', 'tool'))
-                for item in results
-            ) if results else 'safe actions'
-            yield sse_event('final', {'text': f'Sent open request: {summary}', 'tool': results})
-            return
-
         llm = OllamaClient(
             base_url=os.getenv('OLLAMA_BASE_URL', 'http://127.0.0.1:11434'),
             model=select_model(prompt),
         )
-        available = await llm.is_available()
+        actions = detect_deterministic_tools(prompt)
+        if actions:
+            async for event, payload in execute_plan(actions, registry, request.is_disconnected):
+                yield sse_event(event, payload)
+            return
+        available = await while_connected(llm.is_available(), request.is_disconnected)
         if not available:
             yield sse_event(
                 'error',
                 {'message': 'Ollama is not available. Start the local model server or install a compatible model.'},
             )
+            return
+
+        yield sse_event('status', {'stage': 'planning', 'message': 'Interpreting your request with the local model'})
+        try:
+            plan = await while_connected(plan_request(prompt, llm), request.is_disconnected)
+            if plan.disposition == 'clarify':
+                yield sse_event('clarification', {'text': plan.message + ' No actions were taken. Please submit the full request with any missing details.'})
+                return
+            if plan.disposition == 'execute':
+                # A generated path must be grounded in the user's text, never invented.
+                for step in plan.steps:
+                    if step.action == 'open_folder' and step.target.lower() not in {*KNOWN_FOLDERS, 'home'}:
+                        if step.target.casefold() not in prompt.casefold():
+                            raise ValueError('Please include the exact folder path in your request.')
+                async for event, payload in execute_plan(compile_plan(plan), registry, request.is_disconnected):
+                    yield sse_event(event, payload)
+                return
+        except asyncio.CancelledError:
+            return
+        except Exception as exc:
+            yield sse_event('error', {'message': f'Could not create a valid plan: {exc or "local model timed out"}. No actions were taken.', 'code': 'planning_failed'})
             return
 
         yield sse_event('status', {'stage': 'streaming', 'message': 'Calling local model'})

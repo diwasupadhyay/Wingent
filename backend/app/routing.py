@@ -1,6 +1,7 @@
 """Conservative routing for commands that can be completed without a model."""
 
 import re
+from pathlib import PureWindowsPath
 from urllib.parse import quote_plus
 
 ToolAction = tuple[str, dict[str, str]]
@@ -43,9 +44,15 @@ def _parse_segment(segment: str) -> ToolAction | None:
     segment = segment.strip()
     app_match = re.fullmatch(r'(?:open|launch|start)\s+(.+)', segment, re.IGNORECASE)
     if app_match:
-        application = _APP_NAMES.get(app_match.group(1).lower())
+        target = app_match.group(1).strip().strip('"')
+        application = _APP_NAMES.get(target.lower())
         if application:
             return 'open_application', {'application': application}
+        folder = re.fullmatch(r'(?:my\s+)?(downloads|desktop|documents|pictures|music|videos|home)(?:\s+folder)?', target, re.I)
+        if folder:
+            return 'open_folder', {'path': folder.group(1).lower()}
+        if PureWindowsPath(target).is_absolute() and not re.search(r'\s+(?:and|then|also)\s+', target, re.I):
+            return 'open_folder', {'path': target}
 
     site_match = re.fullmatch(
         r'(?:open|visit|go to)\s+(?:(?:the\s+)?(?:website|site)\s+)?(.+)',
@@ -79,6 +86,9 @@ def _parse_segment(segment: str) -> ToolAction | None:
 
 
 def detect_deterministic_tools(prompt: str) -> list[ToolAction]:
+    # Natural modifiers are not query text. Let the planner resolve scope/tab/site intent.
+    if re.search(r'\b(?:on|in|using)\s+(?:a\s+|the\s+)?(?:youtube|github|google|chrome|edge|new\s+tab)\b|\b(?:new|another)\s+tab\b', prompt, re.I):
+        return []
     cleaned = prompt.strip().rstrip(' .!?')
     cleaned = re.sub(
         r'^(?:please|can you|could you|would you)\s+',

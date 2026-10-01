@@ -4,7 +4,58 @@ import App from './App';
 
 afterEach(() => vi.unstubAllGlobals());
 
+function mockEvents(events: string) {
+  let readCount = 0;
+  vi.stubGlobal('fetch', vi.fn(async () => ({
+    ok: true,
+    body: { getReader: () => ({ read: async () => readCount++ === 0
+      ? { done: false, value: new TextEncoder().encode(events) }
+      : { done: true } }) },
+  })));
+}
+
+function runCommand() {
+  render(<App />);
+  fireEvent.change(screen.getByLabelText(/command input/i), { target: { value: 'my task' } });
+  fireEvent.click(screen.getByLabelText(/Run command/i));
+}
+
 describe('App', () => {
+  it('shows the plan and accepted step results', async () => {
+    mockEvents('event: plan\ndata: {"steps":["YouTube search","GitHub tab"]}\n\n' +
+      'event: step\ndata: {"index":0,"state":"accepted"}\n\n' +
+      'event: step\ndata: {"index":1,"state":"accepted"}\n\n' +
+      'event: final\ndata: {"text":"Launch requests accepted."}\n\n');
+    runCommand();
+    await waitFor(() => expect(screen.getByText('Launch requests accepted.')).toBeTruthy());
+    expect(screen.getByText('YouTube search')).toBeTruthy();
+    expect(screen.getByText('GitHub tab')).toBeTruthy();
+    expect(screen.getAllByText('Accepted')).toHaveLength(2);
+  });
+
+  it('asks for clarification instead of claiming completion', async () => {
+    mockEvents('event: clarification\ndata: {"text":"Which folder?"}\n\n');
+    runCommand();
+    await waitFor(() => expect(screen.getByText('Needs your input')).toBeTruthy());
+    expect(screen.getByText('Which folder?')).toBeTruthy();
+    expect(screen.queryByText('Complete')).toBeNull();
+  });
+
+  it('does not offer whole-task retry after partial execution', async () => {
+    mockEvents('event: plan\ndata: {"steps":["First","Second"]}\n\n' +
+      'event: step\ndata: {"index":0,"state":"accepted"}\n\n' +
+      'event: error\ndata: {"message":"Second failed","code":"partial_execution"}\n\n');
+    runCommand();
+    await waitFor(() => expect(screen.getByText('Second failed')).toBeTruthy());
+    expect(screen.queryByText('Retry')).toBeNull();
+    expect(screen.getByText('Not run')).toBeTruthy();
+  });
+
+  it('reports a truncated task stream as an error', async () => {
+    mockEvents('event: status\ndata: {"stage":"planning","message":"Planning"}\n\n');
+    runCommand();
+    await waitFor(() => expect(screen.getByText(/connection ended before a result/)).toBeTruthy());
+  });
   it('renders the minimal local agent command bar', () => {
     render(<App />);
 

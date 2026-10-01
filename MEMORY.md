@@ -1,6 +1,12 @@
 # Memory
 
 ## October 2026 desktop update
+- Natural command planning now uses Ollama structured JSON with Pydantic validation, max eight steps, one format repair, and a 60-second deadline. New modules: planner, executor, folders.
+- Complex site/tab modifiers defer to the model; exact simple actions remain model-free. Text requests outside the fast path are classified by the planner before text streaming.
+- Safe folder opening supports known folders (Windows redirected paths respected) and user-supplied absolute existing directories. Do not invent paths, execute files, or use arbitrary shell commands.
+- UI displays plan/step states and explicit clarification. Partial launches have no whole-task retry; cancellation does not undo accepted launches.
+- Launch acceptance is not verification of page/window contents. No DOM tools, email reading, file editing, persistent memory, or general computer control yet.
+- Live planner corpus: `scripts/evaluate-planner.py` (seven cases, no side effects). Unit/integration suites: 57 backend, 6 frontend at this update.
 - Browser commands support generic search/search-for/look-up and common search typos. Explicit Chrome/Edge selection is retained through URL execution.
 - "Open Chrome and search GitHub" opens a web search in Chrome; "open GitHub and search tauri" searches GitHub itself.
 - Wingent now uses a borderless, taskbar-free launcher overlay that expands only for progress and results.

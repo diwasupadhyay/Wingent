@@ -1,6 +1,9 @@
 # Roadmap
 
 ## October 2026 update
+- Bounded local planning milestone implemented: structured plan, safe tool validation, full-plan preflight, sequential results, folder launch, clarification, cancellation and finite format repair.
+- Seven live local-model language evaluations pass; this is a regression sample, not a guarantee that arbitrary natural language is understood.
+- Next agent milestone: observed browser navigation with an explicitly managed session, expanded task evaluations, and conversational clarification. Page reading/clicking/email access are NOT implemented.
 - M2.5 desktop shell now includes the adaptive overlay, tray lifecycle, taskbar exclusion, and Ctrl+Space.
 - M2.6 packaged runtime is complete for a reproducible PyInstaller backend sidecar and app-owned startup.
 - Next: explicit confirmation request/response UI, then optional launch-at-login after daily-use validation.

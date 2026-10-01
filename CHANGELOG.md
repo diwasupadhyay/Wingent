@@ -1,6 +1,11 @@
 # Changelog
 
 ## Unreleased
+- Add bounded structured local LLM planning for natural multi-step commands, including site-specific searches and separate browser tabs.
+- Add safe existing-folder opening, full-plan validation, per-step progress, explicit clarification, and partial-execution reporting.
+- Prevent complex YouTube/new-tab instructions from becoming one Google query.
+- Cancel pending planner calls on disconnect; limit format repair and planning duration; suppress dangerous whole-task retries after partial execution.
+- Add a no-side-effect live planner evaluation script and regression tests for plans, folders, cancellation, failures and UI streaming.
 - Fix "open Chrome and seach GitHub": generic searches and common typos now work, and the requested browser is retained.
 - Add GitHub navigation/site search, preserve conjunctions in queries, and clarify missing or unsupported actions.
 - Require all steps of a deterministic command to be supported before executing any tool.

@@ -1,6 +1,10 @@
 # Structure
 
 ## Desktop runtime additions
+- `backend/app/planner.py`: strict bounded plans and semantic action compilation.
+- `backend/app/executor.py`: preflight, disconnect-aware planning wait, sequential step events and failure handling.
+- `backend/app/folders.py`: known-folder and explicit local directory resolution.
+- `scripts/evaluate-planner.py`: opt-in live Ollama regression corpus; no tool execution.
 - `backend/app/applications.py` resolves approved Chrome and Edge executables for direct browser launches.
 - `backend/sidecar.py` is the frozen-backend entry point used by the Windows package.
 - `scripts/build-backend-sidecar.ps1` produces the target-triple-named PyInstaller binary.

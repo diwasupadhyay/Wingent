@@ -13,5 +13,9 @@
 - Treat screenshots, browser state, and file contents as sensitive data.
 
 ## Current scope
-- The current build is intentionally limited to safe local prompt handling and streaming responses.
+- Model output is untrusted. Strict Pydantic schemas prohibit unknown actions/extra fields and enforce eight steps maximum; the registry rechecks parameters and permissions. A model cannot set confirmation flags.
+- Every plan is preflighted before side effects. Runtime failures can still leave earlier launches accepted; they are reported, not rolled back or automatically repeated.
+- Folder launching is limited to existing local directories, with explicit paths grounded in the request; network paths and files are rejected. Known folder resolution uses Windows user-shell-folder settings.
+- The model can misunderstand intent despite schema validation. The live evaluation corpus is a regression check, not a proof of semantic accuracy.
+- Current tools launch approved applications, HTTP(S) URLs, and folders. They do not read page contents, email, or local files.
 - Tooling for destructive file operations and browser automation remains deliberately deferred.
