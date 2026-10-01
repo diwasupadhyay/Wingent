@@ -35,4 +35,5 @@ npm run build
 
 ## Notes
 - Use the local Ollama model from `.env.example` or set the environment before starting the backend.
+- Set `OLLAMA_COMPLEX_MODEL` only to a model already installed in Ollama; otherwise Wingent keeps using `OLLAMA_MODEL`.
 - If Ollama is not running, the app will surface a clear error rather than silently failing.

@@ -4,6 +4,7 @@
 - M2.5 desktop shell now includes the adaptive overlay, tray lifecycle, taskbar exclusion, and Ctrl+Space.
 - M2.6 packaged runtime is complete for a reproducible PyInstaller backend sidecar and app-owned startup.
 - Next: explicit confirmation request/response UI, then optional launch-at-login after daily-use validation.
+- Deterministic routing now rejects incomplete action plans without performing a partial launch. Optional two-tier local model routing is in place.
 
 ## Status snapshot
 - M0 — foundation: complete for repository setup, config, dependency checks, and project docs.

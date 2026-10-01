@@ -95,7 +95,8 @@ class ToolRegistry:
         if parsed.scheme not in {'http', 'https'} or not parsed.netloc:
             raise ValueError('Only HTTP and HTTPS URLs are allowed.')
 
-        webbrowser.open(url, new=2, autoraise=True)
+        if not webbrowser.open(url, new=2, autoraise=True):
+            raise RuntimeError('The default browser did not accept the URL.')
         return {'ok': True, 'action': 'open_url', 'url': url}
 
     @staticmethod

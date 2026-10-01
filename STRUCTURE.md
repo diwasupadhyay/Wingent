@@ -4,6 +4,8 @@
 - `backend/sidecar.py` is the frozen-backend entry point used by the Windows package.
 - `scripts/build-backend-sidecar.ps1` produces the target-triple-named PyInstaller binary.
 - `src-tauri/src/lib.rs` owns the overlay, tray, backend child process, shortcut, and Ollama controls.
+- `backend/app/routing.py` contains conservative deterministic command parsing and action classification.
+- `backend/app/model_routing.py` selects the configured local model tier for text-only requests.
 
 ## Root
 - `src/` — Vite React application shell and polished command bar UI.

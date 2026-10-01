@@ -5,6 +5,10 @@
 - A system tray icon provides Open and Quit; left-click toggles the overlay.
 - Packaged builds start and own a PyInstaller FastAPI sidecar when port 8000 is free.
 - The command bar shows native Ollama status and can run the constrained ollama serve action.
+- Deterministic routing now executes only when every requested step is supported; mixed tasks fail without side effects.
+- Text-only requests route to the configured local model, with an optional complex model tier.
+- Tray Quit now stops the owned PyInstaller process tree so the backend does not remain running after normal exit.
+- Native backend readiness verifies Wingent's health response, and the overlay shows a compact service error when it is unavailable.
 - Optional launch-at-login, voice, vision, semantic memory, and autonomous computer use remain deferred.
 
 ## Current status

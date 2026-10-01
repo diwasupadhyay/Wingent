@@ -4,6 +4,8 @@
 - The app never executes arbitrary shell commands by default.
 - Model access remains local-first and does not silently upload private data.
 - Sensitive actions are deferred until explicit permission flows are added.
+- The deterministic parser never partially executes a multi-step request when any step is unsupported.
+- Text model responses are instructed not to claim access to applications, email, files, or screen state.
 
 ## Data handling
 - Keep environment secrets in `.env` only locally and never commit them.

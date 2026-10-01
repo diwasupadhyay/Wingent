@@ -7,6 +7,8 @@
 - Ollama has a native readiness indicator and constrained start action.
 - Packaged builds include and automatically manage a PyInstaller FastAPI sidecar.
 - The next milestone is explicit confirmation request/response UI, followed by optional launch-at-login.
+- Deterministic actions execute only when every command step is supported; unsupported requests do not partly launch apps or sites.
+- `OLLAMA_COMPLEX_MODEL` optionally routes longer and analysis-style text requests to another installed local model.
 
 Use this document as the starting context for future work on Wingent.
 
@@ -33,7 +35,7 @@ The first stable scope is M0/M1 plus the initial safe tool layer. Do not add adv
 - `src/App.tsx` contains the command bar, streaming parser, progress states, cancellation, retry, Escape handling, and web fallback shortcut.
 - The frontend calls `http://127.0.0.1:8000/api/command` unless `VITE_API_BASE_URL` is set.
 - UI states include `planning`, `tool_running`, `streaming`, `done`, and `error`.
-- The native Tauri shortcut is supplemented by the browser shortcut fallback.
+- The native Tauri shortcut controls the desktop overlay.
 
 ### Backend
 
@@ -79,7 +81,7 @@ Profile selection is intentionally unsupported. A request such as `Open Chrome a
 - Close-to-hide behavior so closing the window does not exit the background app
 - Tauri logging in debug builds
 
-Tray menu, startup launch, and persistent background-service management are planned follow-up work.
+Optional launch-at-login remains follow-up work.
 
 ## Verification
 
@@ -123,11 +125,9 @@ Ollama must be running separately with `llama3.2:3b` installed.
 
 ## Next Work, In Order
 
-1. Make backend startup reliable for the packaged Windows app, preferably through a controlled sidecar or a clearly documented launcher without hiding errors.
-2. Add an explicit confirmation request/response flow for future consequential tools; never silently auto-approve them.
-3. Add a tray menu and optional startup behavior after validating the background-app lifecycle.
-4. Improve command parsing only for safe, deterministic workflows that have tests.
-5. Add integration tests for SSE cancellation, retry, and the packaged Tauri origin.
+1. Add an explicit confirmation request/response flow for future consequential tools; never silently auto-approve them.
+2. Add optional launch-at-login after validating the tray lifecycle in daily use.
+3. Add integration tests for SSE cancellation, retry, and the packaged Tauri origin.
 
 Do not implement profile clicking, arbitrary browser control, DOM automation, voice, vision, semantic memory, or autonomous desktop control as an unrequested shortcut.
 

@@ -1,6 +1,12 @@
 # Changelog
 
 ## Unreleased
+- Require all steps of a deterministic command to be supported before executing any tool.
+- Add safe web search routing and an optional local complex-model tier.
+- Show explicit errors for empty or failed model streams and keep cancelled requests isolated.
+- Limit frontend test discovery to `src/` so inaccessible backend caches do not break Vitest.
+- Stop the owned PyInstaller process tree on normal app exit, and report rejected browser launches.
+- Verify the backend health response and show its unavailable state in the overlay.
 - Replaced the full application window with a minimal adaptive command overlay.
 - Added taskbar-free tray operation with Open, toggle, and explicit Quit behavior.
 - Added native Ollama health indication and a constrained Start Ollama action.

@@ -1,4 +1,4 @@
-use std::io;
+use std::io::{self, Read, Write};
 use std::net::{SocketAddr, TcpStream};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
@@ -17,19 +17,65 @@ const EXPANDED_HEIGHT: f64 = 300.0;
 
 struct BackendProcess(Mutex<Option<Child>>);
 
-impl Drop for BackendProcess {
-  fn drop(&mut self) {
-    if let Ok(child_slot) = self.0.get_mut() {
-      if let Some(child) = child_slot.as_mut() {
-        let _ = child.kill();
+impl BackendProcess {
+  fn stop(&self) {
+    if let Ok(mut child_slot) = self.0.lock() {
+      if let Some(mut child) = child_slot.take() {
+        if child.try_wait().ok().flatten().is_none() {
+          #[cfg(windows)]
+          {
+            let _ = Command::new("taskkill")
+              .args(["/PID", &child.id().to_string(), "/T", "/F"])
+              .stdin(Stdio::null())
+              .stdout(Stdio::null())
+              .stderr(Stdio::null())
+              .creation_flags(0x08000000)
+              .status();
+          }
+          #[cfg(not(windows))]
+          let _ = child.kill();
+        }
+        let _ = child.wait();
       }
     }
   }
 }
 
+impl Drop for BackendProcess {
+  fn drop(&mut self) {
+    self.stop();
+  }
+}
+
 fn backend_is_running() -> bool {
   let address = SocketAddr::from(([127, 0, 0, 1], 8000));
-  TcpStream::connect_timeout(&address, Duration::from_millis(300)).is_ok()
+  let Ok(mut stream) = TcpStream::connect_timeout(&address, Duration::from_millis(300)) else {
+    return false;
+  };
+  let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
+  let _ = stream.set_write_timeout(Some(Duration::from_millis(500)));
+  if stream
+    .write_all(b"GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
+    .is_err()
+  {
+    return false;
+  }
+  let mut response = Vec::with_capacity(512);
+  let mut buffer = [0u8; 512];
+  while response.len() < 2048 {
+    match stream.read(&mut buffer) {
+      Ok(0) => break,
+      Ok(count) => response.extend_from_slice(&buffer[..count]),
+      Err(_) => break,
+    }
+  }
+  let response = String::from_utf8_lossy(&response);
+  response.starts_with("HTTP/1.1 200") && response.contains("\"service\":\"wingent\"")
+}
+
+#[tauri::command]
+fn backend_status() -> bool {
+  backend_is_running()
 }
 
 fn start_backend_sidecar() -> Result<Child, String> {
@@ -150,6 +196,7 @@ pub fn run() {
   tauri::Builder::default()
     .plugin(tauri_plugin_global_shortcut::Builder::new().build())
     .invoke_handler(tauri::generate_handler![
+      backend_status,
       ollama_status,
       start_ollama,
       hide_overlay,
@@ -187,7 +234,10 @@ pub fn run() {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id.as_ref() {
           "open" => show_overlay(app),
-          "quit" => app.exit(0),
+          "quit" => {
+            app.state::<BackendProcess>().stop();
+            app.exit(0);
+          }
           _ => {}
         })
         .on_tray_icon_event(|tray, event| {
@@ -219,6 +269,11 @@ pub fn run() {
 
       Ok(())
     })
-    .run(tauri::generate_context!())
-    .expect("error while building Tauri application");
+    .build(tauri::generate_context!())
+    .expect("error while building Tauri application")
+    .run(|app, event| {
+      if matches!(event, tauri::RunEvent::Exit) {
+        app.state::<BackendProcess>().stop();
+      }
+    });
 }

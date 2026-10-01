@@ -15,11 +15,13 @@ export default function App() {
   const [content, setContent] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [errorCode, setErrorCode] = useState<string | null>(null);
   const [lastPrompt, setLastPrompt] = useState('');
   const [ollama, setOllama] = useState<OllamaState>('checking');
+  const [backendReady, setBackendReady] = useState<boolean | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const expanded = loading || Boolean(content) || Boolean(error);
+  const expanded = loading || Boolean(content) || Boolean(error) || backendReady === false;
 
   const checkOllama = useCallback(async () => {
     if (!isTauri()) return setOllama('stopped');
@@ -38,6 +40,20 @@ export default function App() {
 
   useEffect(() => {
     if (!isTauri()) return;
+    const checkBackend = async () => {
+      try {
+        setBackendReady(await invoke<boolean>('backend_status'));
+      } catch {
+        setBackendReady(false);
+      }
+    };
+    void checkBackend();
+    const timer = window.setInterval(() => void checkBackend(), 3000);
+    return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    if (!isTauri()) return;
     let dispose: (() => void) | undefined;
     void listen('wingent://focus', () => requestAnimationFrame(() => inputRef.current?.focus()))
       .then((unlisten) => { dispose = unlisten; });
@@ -51,11 +67,14 @@ export default function App() {
   useEffect(() => { inputRef.current?.focus(); }, []);
 
   const cancel = () => {
-    abortRef.current?.abort();
+    const controller = abortRef.current;
+    abortRef.current = null;
+    controller?.abort();
     setLoading(false);
     setStatus('idle');
     setProgress('Cancelled');
     setError(null);
+    setErrorCode(null);
   };
 
   const startOllama = async () => {
@@ -69,21 +88,27 @@ export default function App() {
       }
       setOllama('stopped');
       setError('Ollama started but did not become ready. Open Ollama to inspect the error.');
+      setStatus('error');
+      setProgress('Ollama unavailable');
     } catch (cause) {
       setOllama('stopped');
       setError(cause instanceof Error ? cause.message : String(cause));
+      setStatus('error');
+      setProgress('Ollama unavailable');
     }
   };
 
   const submit = async (value = prompt) => {
     const trimmed = value.trim();
     if (!trimmed || loading) return;
-    abortRef.current = new AbortController();
+    const controller = new AbortController();
+    abortRef.current = controller;
     setLastPrompt(trimmed);
     setLoading(true);
     setStatus('planning');
     setProgress('Planning');
     setError(null);
+    setErrorCode(null);
     setContent('');
 
     try {
@@ -91,7 +116,7 @@ export default function App() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: trimmed }),
-        signal: abortRef.current.signal,
+        signal: controller.signal,
       });
       if (!response.ok || !response.body) throw new Error('Wingent service is offline. Start the local backend and try again.');
 
@@ -100,6 +125,7 @@ export default function App() {
       let buffer = '';
       while (true) {
         const { done, value: chunk } = await reader.read();
+        if (abortRef.current !== controller) return;
         if (done) break;
         buffer += decoder.decode(chunk, { stream: true });
         const events = buffer.split('\n\n');
@@ -125,17 +151,21 @@ export default function App() {
             setStatus('error');
             setProgress('Error');
             setError(data.message ?? 'Something went wrong.');
+            setErrorCode(data.code ?? null);
           }
         }
       }
     } catch (cause) {
-      if (!(cause instanceof DOMException && cause.name === 'AbortError')) {
+      if (abortRef.current === controller && !(cause instanceof DOMException && cause.name === 'AbortError')) {
         setStatus('error');
         setProgress('Error');
         setError(cause instanceof Error ? cause.message : 'Unknown error');
       }
     } finally {
-      setLoading(false);
+      if (abortRef.current === controller) {
+        abortRef.current = null;
+        setLoading(false);
+      }
     }
   };
 
@@ -160,7 +190,7 @@ export default function App() {
                 loading ? cancel() : isTauri() && void invoke('hide_overlay');
               }
             }}
-            placeholder='Ask Wingent to do anything...'
+            placeholder='Ask a question or open an app or site...'
             autoComplete='off'
             spellCheck='false'
           />
@@ -168,7 +198,7 @@ export default function App() {
             type='button'
             className={`ollama-control ollama-${ollama}`}
             onClick={() => ollama !== 'running' && void startOllama()}
-            disabled={ollama === 'checking' || ollama === 'starting' || ollama === 'running'}
+            disabled={!isTauri() || ollama === 'checking' || ollama === 'starting' || ollama === 'running'}
             aria-label={ollamaLabel}
             title={ollamaLabel}
           >
@@ -182,14 +212,20 @@ export default function App() {
         {expanded && (
           <div className='result-panel' aria-live='polite' aria-busy={loading}>
             <div className='result-meta'>
-              <span className={`activity-dot activity-${status}`} />
-              <span>{progress}</span>
+              <span className={`activity-dot activity-${backendReady === false && !loading ? 'error' : status}`} />
+              <span>{backendReady === false && !loading && !error ? 'Service unavailable' : progress}</span>
               <div className='result-actions'>
                 {loading && <button type='button' onClick={cancel}>Stop</button>}
-                {!loading && error && lastPrompt && <button type='button' onClick={() => void submit(lastPrompt)}>Retry</button>}
+                {!loading && error && !errorCode?.startsWith('unsupported_') && lastPrompt && (
+                  <button type='button' onClick={() => void submit(lastPrompt)}>Retry</button>
+                )}
               </div>
             </div>
-            {(content || error) && <div className={`result-copy ${error ? 'result-error' : ''}`}>{error ?? content}</div>}
+            {(content || error || backendReady === false) && (
+              <div className={`result-copy ${error || backendReady === false ? 'result-error' : ''}`}>
+                {error || content || 'Wingent service is unavailable. Restart Wingent if this persists.'}
+              </div>
+            )}
           </div>
         )}
       </section>

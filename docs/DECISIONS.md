@@ -15,5 +15,11 @@ The first version streams partial outputs to the UI for a faster perceived respo
 ## Minimal but structured state
 The app keeps a clear status and message lifecycle instead of relying on loose chat history.
 
+## Complete deterministic commands
+Safe actions execute without a model only when every requested step matches a supported command. This prevents a partial browser launch from being reported as a completed inbox inspection. Unhandled action requests receive an explicit error.
+
+## Optional second model tier
+`OLLAMA_MODEL` remains the fast default. `OLLAMA_COMPLEX_MODEL` is opt-in for long and analysis-style text prompts. This adds useful routing without requiring a second model installation for the normal build.
+
 ## No speculative automation yet
 Browser automation, desktop control, and voice are intentionally deferred until the command bar and backend loop are proven.
