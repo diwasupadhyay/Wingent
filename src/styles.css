@@ -122,6 +122,9 @@ input::placeholder { color: rgba(235, 235, 245, 0.43); }
 .activity-planning, .activity-tool_running, .activity-streaming { background: #9e91ff; animation: pulse 1s ease-in-out infinite; }
 .activity-done { background: #39d98a; }
 .activity-error { background: #ff6961; }
+.activity-observing, .activity-verifying, .activity-recovering { background: #9e91ff; animation: pulse 1s ease-in-out infinite; }
+.activity-unverified, .activity-awaiting_input { background: #f1b84b; }
+.step-unknown .step-state { color: #f1b84b; }
 .result-actions { margin-left: auto; display: flex; gap: 5px; }
 .result-actions button { padding: 5px 9px; border-radius: 7px; color: rgba(245, 245, 247, 0.75); background: rgba(255, 255, 255, 0.07); font-size: 11px; }
 .result-actions button:hover { background: rgba(255, 255, 255, 0.12); }

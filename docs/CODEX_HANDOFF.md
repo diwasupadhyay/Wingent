@@ -2,7 +2,9 @@
 
 ## Active implementation plan
 
-The user authorized the goal-driven agent roadmap on 2026-10-01. Read [AGENT_IMPLEMENTATION_PLAN.md](AGENT_IMPLEMENTATION_PLAN.md) first for phase status, current evidence, unresolved decisions, and the next exact work slice. Phase 0 is verified complete; Phase 1 is next. Broader capabilities described there are planned, not implemented; older scope notes below describe the existing launcher baseline.
+The user authorized the goal-driven agent roadmap on 2026-10-01. Read [AGENT_IMPLEMENTATION_PLAN.md](AGENT_IMPLEMENTATION_PLAN.md) first for phase status, current evidence, unresolved decisions, and the next exact work slice. Phases 0 and 1 are verified complete; Phase 2 is next. The runtime is application-independent, but current real adapters still only launch safe targets and cannot verify page/window contents. Broader capabilities described there are planned, not implemented; older scope notes below describe the launcher baseline.
+
+Latest checks: 82 backend tests, 9 UI tests, 7 live planner evaluations, sidecar/release builds, and packaged two-tab command. Both EXE and sidecar were rebuilt; `/health` exposes `runtime: observation-loop-v1`. Rebuild both artifacts after future code phases so the user can test the actual update.
 
 ## October 2026 update
 - Natural tasks now use structured local LLM planning with strict tool validation, full-plan preflight, cancellation, a 60-second planning deadline, and per-step SSE results.

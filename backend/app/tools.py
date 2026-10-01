@@ -126,6 +126,8 @@ class ToolRegistry:
                        'notepad', 'notepad.exe', 'explorer', 'file explorer'}
             if payload['application'].lower() not in allowed:
                 raise ValueError(f'Unsupported application: {payload["application"]}')
+            if payload['application'].lower() in {'chrome', 'google chrome', 'edge', 'msedge', 'microsoft edge'}:
+                resolve_browser('chrome' if 'chrome' in payload['application'].lower() else 'edge')
         return payload
 
     @staticmethod

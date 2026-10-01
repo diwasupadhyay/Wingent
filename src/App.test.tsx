@@ -21,6 +21,28 @@ function runCommand() {
 }
 
 describe('App', () => {
+  it('distinguishes launch acceptance from verified completion', async () => {
+    mockEvents('event: final\ndata: {"outcome":"unverified","verified":false,"text":"Requests accepted, result not observed."}\n\n');
+    runCommand();
+    await waitFor(() => expect(screen.getByText('Requests sent · not verified')).toBeTruthy());
+    expect(screen.queryByText('Goal verified')).toBeNull();
+  });
+
+  it('shows verified completion only with explicit evidence status', async () => {
+    mockEvents('event: final\ndata: {"outcome":"completed","verified":true,"text":"Evidence checked."}\n\n');
+    runCommand();
+    await waitFor(() => expect(screen.getByText('Goal verified')).toBeTruthy());
+  });
+
+  it('renders changed actions from a recovery plan', async () => {
+    mockEvents('event: plan\ndata: {"steps":["Original action"]}\n\n' +
+      'event: action\ndata: {"index":0,"label":"Updated action"}\n\n' +
+      'event: step\ndata: {"index":0,"state":"accepted"}\n\n' +
+      'event: final\ndata: {"outcome":"unverified","text":"Accepted"}\n\n');
+    runCommand();
+    await waitFor(() => expect(screen.getByText('Updated action')).toBeTruthy());
+    expect(screen.queryByText('Original action')).toBeNull();
+  });
   it('shows the plan and accepted step results', async () => {
     mockEvents('event: plan\ndata: {"steps":["YouTube search","GitHub tab"]}\n\n' +
       'event: step\ndata: {"index":0,"state":"accepted"}\n\n' +

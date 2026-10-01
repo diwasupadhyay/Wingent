@@ -2,9 +2,9 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 
-type Stage = 'idle' | 'planning' | 'tool_running' | 'streaming' | 'done' | 'error';
+type Stage = 'idle' | 'planning' | 'observing' | 'verifying' | 'recovering' | 'awaiting_input' | 'unverified' | 'tool_running' | 'streaming' | 'done' | 'error';
 type OllamaState = 'checking' | 'running' | 'stopped' | 'starting';
-type StepState = 'pending' | 'running' | 'accepted' | 'failed' | 'not_run';
+type StepState = 'pending' | 'running' | 'accepted' | 'failed' | 'not_run' | 'unknown';
 type ActionStep = { label: string; state: StepState };
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
@@ -76,7 +76,7 @@ export default function App() {
     setLoading(false);
     setStatus('idle');
     setProgress('Cancelled');
-    setSteps((current) => current.map((step) => step.state === 'pending' || step.state === 'running' ? { ...step, state: 'not_run' } : step));
+    setSteps((current) => current.map((step) => step.state === 'running' ? { ...step, state: 'unknown' } : step.state === 'pending' ? { ...step, state: 'not_run' } : step));
     setContent('Stopped. Already accepted launch requests cannot be undone; an in-flight launch may still finish.');
     setError(null);
     setErrorCode(null);
@@ -143,13 +143,21 @@ export default function App() {
           const name = lines.find((line) => line.startsWith('event:'))?.slice(6).trim();
           const raw = lines.find((line) => line.startsWith('data:'))?.slice(5).trim();
           if (!raw) continue;
-          let data: { stage?: string; message?: string; text?: string; code?: string; steps?: string[]; index?: number; state?: StepState };
+          let data: { stage?: string; message?: string; text?: string; code?: string; steps?: string[]; index?: number; state?: StepState; label?: string; outcome?: string; verified?: boolean };
           try { data = JSON.parse(raw); } catch { continue; }
           if (name === 'status') {
-            setStatus((data.stage as Stage) ?? 'idle');
+            setStatus(data.stage === 'executing' ? 'tool_running' : (data.stage as Stage) ?? 'idle');
             setProgress(data.message ?? 'Working');
           } else if (name === 'plan' && Array.isArray(data.steps)) {
             setSteps(data.steps.map((label) => ({ label, state: 'pending' })));
+          } else if (name === 'action' && typeof data.index === 'number' && data.label) {
+            const index = data.index;
+            const label = data.label;
+            setSteps((current) => {
+              const next = [...current];
+              next[index] = { label, state: 'pending' };
+              return next;
+            });
           } else if (name === 'step') {
             launchStarted = true;
             const index = data.index;
@@ -157,16 +165,17 @@ export default function App() {
             if (typeof index === 'number' && state) setSteps((current) => current.map((step, i) => i === index ? { ...step, state } : step));
           } else if (name === 'clarification') {
             terminal = true;
-            setStatus('done');
+            setStatus('awaiting_input');
             setProgress('Needs your input');
             setContent(data.text ?? 'Please clarify the request.');
+            setSteps((current) => current.map((step) => step.state === 'pending' ? { ...step, state: 'not_run' } : step));
           } else if (name === 'delta') {
             setStatus('streaming');
             setContent((current) => current + (data.text ?? ''));
           } else if (name === 'final') {
             terminal = true;
-            setStatus('done');
-            setProgress('Complete');
+            setStatus(data.outcome === 'unverified' ? 'unverified' : 'done');
+            setProgress(data.outcome === 'unverified' ? 'Requests sent · not verified' : data.verified ? 'Goal verified' : 'Response ready');
             setContent((current) => current || data.text || current);
           } else if (name === 'error') {
             terminal = true;
@@ -185,7 +194,7 @@ export default function App() {
         setProgress('Error');
         setError(cause instanceof Error ? cause.message : 'Unknown error');
         if (launchStarted) setErrorCode('partial_execution');
-        setSteps((current) => current.map((step) => step.state === 'pending' ? { ...step, state: 'not_run' } : step));
+        setSteps((current) => current.map((step) => step.state === 'running' ? { ...step, state: 'unknown' } : step.state === 'pending' ? { ...step, state: 'not_run' } : step));
       }
     } finally {
       if (abortRef.current === controller) {

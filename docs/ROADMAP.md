@@ -1,5 +1,9 @@
 # Roadmap
 
+## Active phase tracker
+
+Use [AGENT_IMPLEMENTATION_PLAN.md](AGENT_IMPLEMENTATION_PLAN.md) for the current sequence. Phases 0 and 1 are verified complete. Phase 1 adds a generic bounded observation-driven runtime; actual launch adapters report unverified outcomes honestly. Next: Phase 2 registry-driven tool schemas and action-specific approvals, followed by Windows, browser, and Excel capabilities. These applications are adapters, not limits in the runtime.
+
 ## October 2026 update
 - Bounded local planning milestone implemented: structured plan, safe tool validation, full-plan preflight, sequential results, folder launch, clarification, cancellation and finite format repair.
 - Seven live local-model language evaluations pass; this is a regression sample, not a guarantee that arbitrary natural language is understood.

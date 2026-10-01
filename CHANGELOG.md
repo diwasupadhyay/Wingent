@@ -1,6 +1,10 @@
 # Changelog
 
 ## Unreleased
+- Add application-independent task state and an observe/decide/act/verify runtime with bounded recovery, compact context, task/model budgets, and fresh-evidence completion checks.
+- Run existing safe tools through the runtime; keep their launch acceptance explicitly unverified instead of displaying Complete.
+- Distinguish unknown in-flight outcomes from failures, block automatic duplicate dispatch, and retain partial effects on runtime errors.
+- Move launch calls off the async event loop and expose runtime identity in health responses for packaged-build checks.
 - Add bounded structured local LLM planning for natural multi-step commands, including site-specific searches and separate browser tabs.
 - Add safe existing-folder opening, full-plan validation, per-step progress, explicit clarification, and partial-execution reporting.
 - Prevent complex YouTube/new-tab instructions from becoming one Google query.

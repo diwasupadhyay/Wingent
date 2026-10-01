@@ -68,7 +68,7 @@ def test_failure_stops_remaining_steps_and_reports_partial_execution(monkeypatch
             raise RuntimeError('Launch rejected')
         return {'ok': True}
     monkeypatch.setattr(registry, 'execute', execute)
-    events = run([('open_url', {'url': 'https://github.com'})] * 3, registry)
+    events = run([('open_url', {'url': f'https://github.com/{index}'}) for index in range(3)], registry)
     assert len(calls) == 2
     assert events[-1][1]['code'] == 'partial_execution'
     assert len(events[-1][1]['completed']) == 1

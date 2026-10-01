@@ -17,7 +17,8 @@ from app.routing import (
 from app.tools import ToolRegistry
 from app.planner import plan_request, compile_plan
 from app.executor import execute_plan, while_connected
-from app.folders import KNOWN_FOLDERS
+from app.launch_runtime import BudgetedProvider, ground_folders
+from app.task_state import TaskState, TaskStatus
 
 app = FastAPI(title='Wingent', version='0.1.0')
 app.add_middleware(
@@ -43,7 +44,7 @@ def sse_event(event: str, payload: dict[str, object]) -> str:
 
 @app.get('/health')
 def health() -> dict[str, str]:
-    return {'status': 'ok', 'service': 'wingent'}
+    return {'status': 'ok', 'service': 'wingent', 'runtime': 'observation-loop-v1'}
 
 
 @app.post('/api/command')
@@ -51,6 +52,7 @@ async def command(request: Request, command_request: CommandRequest) -> Streamin
     prompt = command_request.prompt.strip()
 
     async def event_stream() -> AsyncGenerator[str, None]:
+        state = TaskState(goal=prompt, criteria=[prompt])
         yield sse_event('status', {'stage': 'planning', 'message': 'Planning request'})
 
         if await request.is_disconnected():
@@ -69,13 +71,13 @@ async def command(request: Request, command_request: CommandRequest) -> Streamin
             )
             return
 
-        llm = OllamaClient(
+        llm = BudgetedProvider(OllamaClient(
             base_url=os.getenv('OLLAMA_BASE_URL', 'http://127.0.0.1:11434'),
             model=select_model(prompt),
-        )
+        ), state)
         actions = detect_deterministic_tools(prompt)
         if actions:
-            async for event, payload in execute_plan(actions, registry, request.is_disconnected):
+            async for event, payload in execute_plan(actions, registry, request.is_disconnected, state=state):
                 yield sse_event(event, payload)
             return
         available = await while_connected(llm.is_available(), request.is_disconnected)
@@ -90,21 +92,23 @@ async def command(request: Request, command_request: CommandRequest) -> Streamin
         try:
             plan = await while_connected(plan_request(prompt, llm), request.is_disconnected)
             if plan.disposition == 'clarify':
+                state.status = TaskStatus.AWAITING_INPUT
+                state.pending_question = plan.message
                 yield sse_event('clarification', {'text': plan.message + ' No actions were taken. Please submit the full request with any missing details.'})
                 return
             if plan.disposition == 'execute':
-                # A generated path must be grounded in the user's text, never invented.
-                for step in plan.steps:
-                    if step.action == 'open_folder' and step.target.lower() not in {*KNOWN_FOLDERS, 'home'}:
-                        if step.target.casefold() not in prompt.casefold():
-                            raise ValueError('Please include the exact folder path in your request.')
-                async for event, payload in execute_plan(compile_plan(plan), registry, request.is_disconnected):
-                    yield sse_event(event, payload)
-                return
+                actions = compile_plan(plan)
+                ground_folders(actions, prompt)
         except asyncio.CancelledError:
             return
         except Exception as exc:
             yield sse_event('error', {'message': f'Could not create a valid plan: {exc or "local model timed out"}. No actions were taken.', 'code': 'planning_failed'})
+            return
+
+        if plan.disposition == 'execute':
+            # Keep post-dispatch failures out of the planning exception handler.
+            async for event, payload in execute_plan(actions, registry, request.is_disconnected, state=state, provider=llm):
+                yield sse_event(event, payload)
             return
 
         yield sse_event('status', {'stage': 'streaming', 'message': 'Calling local model'})

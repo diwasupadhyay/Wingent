@@ -17,9 +17,20 @@ The project separates the command UI from the local reasoning service to keep th
 
 ## Backend
 
+### Phase 1 runtime
+
+- `task_state.py` defines application-independent tasks, criteria, actions, observations, outcomes, evidence, and budgets. No Chrome/Excel names occur in the core contracts or runtime.
+- `runtime.py` runs observe/decide/validate/execute/observe/verify transitions through injected planner, observer, executor, and verifier interfaces. Only trusted verifier evidence for every criterion from the latest fresh observation can complete a task.
+- `launch_runtime.py` connects the actual existing registry to this loop. Its observations check tool prerequisites, not windows or pages. Its verifier deliberately supplies no desktop evidence: successful launches terminate as **unverified**, not completed.
+- Simple launch sequences remain deterministic between checks. A changed prerequisite can trigger bounded local-model replanning before dispatch; after dispatched/unknown effects, the adapter asks for intervention rather than substituting apps or replaying earlier actions.
+- Default task limits: 120 seconds total (including initial planning), 60 seconds per async operation, 16 action records, 24 decisions, 6 model generations (including repair), and 2 recoveries. Action target evidence expires after 5 seconds and is refreshed before dispatch.
+- Working state is request-local: four recent observations retained, two bounded observations and six bounded recent action records sent to a planner. There is no persistent personal memory or cross-request resume yet.
+- OS launch calls run off the event loop. Cancellation stops scheduling further actions but cannot forcibly terminate an already-dispatched OS call; that result is unknown and cannot be blindly retried.
+- Current seed planner still uses the bounded launch vocabulary. Registry-driven capability discovery and approval lifecycle are Phase 2; actual window/browser/Excel observation adapters are later phases. Generic recovery/verification is tested with controlled adapters, not claimed as live desktop capability.
+
 - Exact safe commands use the deterministic fast path. Natural/ambiguous requests go to a bounded structured Ollama planner (`planner.py`), which returns execute, clarify, or answer.
 - Search targets are encoded by code, not used as shell strings. The compiler removes redundant browser/home-page launches immediately before navigation/search.
-- `executor.py` preflights every action before execution, then emits plan and per-step outcomes. A runtime failure stops remaining steps and reports accepted earlier steps; there is no automatic side-effect retry.
+- `executor.py` retains the compatibility entry point and disconnect-aware planning wait; the launch adapter preflights the whole initial plan, then the runtime revalidates each action immediately before dispatch.
 - Planning has a 60-second total deadline and at most one schema-repair attempt. Disconnect cancels the pending model request. Maximum plan size is eight steps.
 - Folder opening resolves Windows known folders or explicit existing local directories. No file content is read and executable files cannot be launched as folders.
 - Launch acceptance is the only observation currently available. Browser page contents, profile selection, and rendered tabs are not observed/verified.

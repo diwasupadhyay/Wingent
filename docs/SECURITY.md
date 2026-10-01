@@ -13,6 +13,9 @@
 - Treat screenshots, browser state, and file contents as sensitive data.
 
 ## Current scope
+- Phase 1 runtime separates accepted, no-effect, and unknown action outcomes. Only trusted adapters may guarantee no effect; arbitrary exceptions after dispatch are unknown. Unknown effects stop further dispatch and suppress whole-task retry.
+- A planner's finish decision cannot claim success. Completion requires trusted verifier evidence covering all goal criteria from the latest observation and current action count, within the freshness window.
+- Existing launch adapters cannot verify window/page state and never produce completion evidence. Generic verified/recovery tests use controlled adapters only.
 - Model output is untrusted. Strict Pydantic schemas prohibit unknown actions/extra fields and enforce eight steps maximum; the registry rechecks parameters and permissions. A model cannot set confirmation flags.
 - Every plan is preflighted before side effects. Runtime failures can still leave earlier launches accepted; they are reported, not rolled back or automatically repeated.
 - Folder launching is limited to existing local directories, with explicit paths grounded in the request; network paths and files are rejected. Known folder resolution uses Windows user-shell-folder settings.

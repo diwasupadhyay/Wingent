@@ -2,7 +2,7 @@
 
 Created: 2026-10-01 (Asia/Calcutta)
 Last updated: 2026-10-01
-Status: AUTHORIZED — Phase 0 verified complete; Phase 1 next.
+Status: AUTHORIZED — Phases 0 and 1 verified complete; Phase 2 next.
 
 ## Start here
 
@@ -10,8 +10,8 @@ This is the living plan and progress tracker for evolving Wingent from a bounded
 
 The user explicitly authorized starting this plan on 2026-10-01: "okay let's start with it go ahead". Work within the phased scope and existing safety rules; this is not blanket approval for consequential actions or unresolved personal-data access decisions.
 
-- Current phase: Phase 0 verified complete; Phase 1 not started.
-- Next action: implement Phase 1 task state and the observation-driven runtime contract with regression tests.
+- Current phase: Phase 1 verified complete; Phase 2 not started.
+- Next action: Phase 2 registry-driven capability schemas, observation/retry metadata, and action-specific approval lifecycle.
 - Verified pre-runtime rollback checkpoint: `48acd055b8d6577a86972c4df0c42edcb943617d`.
 - Current blockers: none for Phase 1. Browser-profile, model-installation, and test-data choices remain deferred to the phases that need them.
 - Scope: extend the existing project; do not rebuild it from scratch.
@@ -82,7 +82,7 @@ Use: Not started / In progress / Blocked / Verified complete. A phase is complet
 | Phase | Deliverable | Status | Evidence |
 | --- | --- | --- | --- |
 | 0 | Audit and baseline | Verified complete | 2026-10-01 audit evidence below |
-| 1 | Observation-driven runtime | Not started | — |
+| 1 | Observation-driven runtime | Verified complete | 82 backend tests, 9 UI tests, 7 live planner evaluations, rebuilt EXE/sidecar smoke check |
 | 2 | Capabilities, permissions, observations | Not started | — |
 | 3 | Windows and file foundations | Not started | — |
 | 4 | Verified browser workflow | Not started | — |
@@ -103,12 +103,12 @@ Exit condition: verified baseline, evidence-backed gap list, and an actionable i
 
 ### Phase 1 — Actual agent runtime
 
-- [ ] Introduce structured task state and explicit completion criteria.
-- [ ] Add observing, planning, executing, verifying, recovering, awaiting-input, completed, failed, and cancelled states.
-- [ ] Plan the next action from fresh observations instead of blindly executing a fixed plan.
-- [ ] Keep compact working context rather than resending the full history each iteration.
-- [ ] Implement execution budgets, bounded recovery, cancellation, and user-intervention handling.
-- [ ] Test changed observations, uncertain outcomes, failed actions, and unsupported goals.
+- [x] Introduce structured task state and explicit completion criteria.
+- [x] Add observing, planning, executing, verifying, recovering, awaiting-input, completed, failed, and cancelled states (plus explicit unverified outcome).
+- [x] Plan the next action from fresh observations instead of blindly executing a fixed plan; current real launch adapter checks prerequisites, generic adaptation is verified with controlled test adapters.
+- [x] Keep compact working context rather than resending the full history each iteration.
+- [x] Implement execution budgets, bounded recovery, cancellation, and user-intervention handling.
+- [x] Test changed observations, uncertain outcomes, failed actions, and unsupported goals.
 
 Exit condition: the loop adapts to observations, stops safely, and cannot claim verified completion based only on action dispatch. Controlled tests establish the runtime contract; real application validation follows in later phases.
 
@@ -218,6 +218,41 @@ Do not treat an unanswered decision as permission. Ask when it becomes necessary
 | --- | --- | --- | --- |
 | 2026-10-01 | Created this planning and tracking document only | Reviewed the agreed plan and existing context docs; no application tests/builds run | Await explicit approval; then begin Phase 0 |
 | 2026-10-01 | User authorized work; completed Phase 0 audit and selected Phase 1 slice | 57 backend tests, 6 UI tests, frontend build, offline cargo check, 7 live planner cases; packaged startup/health/clarification verified | Phase 1: typed task state, observation/verifier interfaces, bounded loop and regression tests. No runtime code changed in Phase 0. |
+| 2026-10-01 | Completed Phase 1 generic runtime and real launch-adapter integration; rebuilt and launched EXE | 82 backend tests, 9 UI tests, 7 live local-model cases; release build; packaged health marker and original two-tab request accepted with unverified final outcome | Phase 2 capability schemas/approval lifecycle. Actual Windows, browser DOM, Excel, and vision observation remain later phases. |
+
+### Phase 1 evidence and lessons — 2026-10-01
+
+Implemented:
+
+- `task_state.py`: application-independent task identity, goal criteria, structured outcomes/evidence, compact context, and finite budgets.
+- `runtime.py`: pluggable planner/observer/executor/verifier loop; fresh evidence must support every criterion before verified completion. A model's finish message cannot supply evidence.
+- `launch_runtime.py`: actual tool-registry integration, full initial preflight, revalidation immediately before dispatch, observed prerequisite checks, bounded local replanning before any effects, and off-event-loop launch calls.
+- All current launch tools run through the new runtime. Deterministic clear tasks still avoid model calls. Launches remain explicitly unverified because no page/window observer exists yet.
+- UI renders observation/verification/recovery states, updated actions, unknown outcomes, and "Requests sent · not verified" instead of falsely reporting Complete.
+- `/health` identifies this backend as `observation-loop-v1`; use it to detect an outdated sidecar when testing.
+
+Verification:
+
+- `python -m pytest -q`: 82 passed (existing Starlette/AnyIO deprecation warning only).
+- `npm.cmd test -- --run`: 9 passed; frontend production build passed.
+- PyInstaller sidecar build and `npm.cmd run tauri:build -- --no-bundle`: passed.
+- `scripts/evaluate-planner.py`: 7/7 passed with installed llama3.2:3b; no tool side effects from this evaluation.
+- Launched `src-tauri/target/release/app.exe`; its owned backend returned `runtime: observation-loop-v1`.
+- Submitted the original Chrome + GenAI YouTube search + GitHub tab request once to the packaged API: two accepted actions with observe/verify transitions; final `outcome: unverified`, `verified: false`. This verifies launch acceptance, not rendered tabs or playback.
+- Packaged/source sidecar SHA-256 matched: `66B4045F17591C9FD3EFF016F2719694B815A695047E28E76804BD6C8CBCDA8F`.
+- Controlled adapter tests verify dynamic action choice, observed success, stale/incomplete evidence rejection, bounded recovery, cancellation during dispatch, deadline/model/action/decision budgets, duplicate prevention, malformed tool outcomes, and stream closure after completion.
+
+Lessons applied and next-phase priorities:
+
+1. Launch acceptance is not goal completion. Keep generic runtime evidence separate from tool acknowledgements; add real observers in later phases rather than fabricating results.
+2. Exceptions/timeouts after dispatch are not proof that nothing happened. Record unknown, preserve prior effects, observe, and prevent blind replay.
+3. A generic loop must not contain Chrome/Excel-specific logic. Those names live in the current launch adapter/planner; Phase 2 should derive available tool schemas from the registry, followed by general Windows capabilities in Phase 3.
+4. Refresh state after slow reasoning and revalidate before action. The first local-model evaluation took about 10 seconds cold; warmed corpus cases were about 0.9–2.5 seconds. These are sample observations, not latency guarantees.
+5. Mutable target checks must be off the async event loop; cancelling a thread await cannot undo a Windows launch already underway. Tool metadata must make this distinction explicit.
+6. Verify terminal state handling: closing a completed stream must not relabel the task cancelled. Include protocol edge cases in future capability tests.
+7. Rebuild BOTH Python sidecar and desktop EXE after code phases. A source-only change is not a testable packaged update.
+
+Remaining boundaries: no task persistence/resume, no approval response endpoint yet, no general UI Automation/DOM/Excel adapters, no page reading or video playback verification. Success criteria for launch requests currently retain the original goal text; future capabilities need typed, capability-specific verifiers. Phase 1 establishes the runtime contract, not an ability to perform every computer task.
 
 ### Phase 0 evidence — 2026-10-01
 

@@ -1,8 +1,13 @@
 # Structure
 
 ## Desktop runtime additions
+- `backend/app/task_state.py`: generic task/action/observation/evidence models, execution budgets, compact working context.
+- `backend/app/runtime.py`: application-independent observation-driven execution and verification state machine.
+- `backend/app/launch_runtime.py`: production registry adapter, initial-plan compatibility, bounded provider, launch-only observation boundary.
+- `backend/tests/test_runtime.py`: controlled-adapter tests for adaptive actions, verification, failure recovery, cancellation, and budgets.
+- `backend/tests/test_launch_runtime.py`: production-adapter and API integration regression tests.
 - `backend/app/planner.py`: strict bounded plans and semantic action compilation.
-- `backend/app/executor.py`: preflight, disconnect-aware planning wait, sequential step events and failure handling.
+- `backend/app/executor.py`: runtime compatibility entry point and disconnect-aware planning wait.
 - `backend/app/folders.py`: known-folder and explicit local directory resolution.
 - `scripts/evaluate-planner.py`: opt-in live Ollama regression corpus; no tool execution.
 - `backend/app/applications.py` resolves approved Chrome and Edge executables for direct browser launches.

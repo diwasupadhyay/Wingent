@@ -2,7 +2,7 @@ from pydantic import BaseModel, Field, field_validator
 
 
 class CommandRequest(BaseModel):
-    prompt: str = Field(..., min_length=1, description='Request prompt for the local agent.')
+    prompt: str = Field(..., min_length=1, max_length=4096, description='Request prompt for the local agent.')
 
     @field_validator('prompt')
     @classmethod

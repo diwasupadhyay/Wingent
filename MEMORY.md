@@ -2,9 +2,14 @@
 
 ## Goal-driven agent plan — 2026-10-01
 
+- Phase 1 is now verified complete: application-independent task state and observe/decide/act/verify loop, compact context, task/model/action/recovery budgets, fresh-evidence completion gate, and production launch-adapter integration.
+- Existing launches intentionally end `unverified`; the UI no longer labels launch acceptance Complete. Unknown effects prevent automatic retries. No general browser/desktop observation tools exist yet.
+- Latest verification: 82 backend tests, 9 UI tests, 7 live planner cases, rebuilt sidecar/EXE and packaged two-tab smoke test. `/health` runtime marker: `observation-loop-v1`.
+- Next is Phase 2 registry-driven capabilities and approvals, then general Windows tools; architecture is not restricted to Chrome/Excel. Rebuild both sidecar and EXE after each code phase so the user can test it.
+
 - User authorized starting `docs/AGENT_IMPLEMENTATION_PLAN.md`; use its phase tracker as the current work queue.
 - Phase 0 audit verified complete: 57 backend tests, 6 UI tests, frontend build, offline cargo check, 7 live planner evaluations, and packaged startup/health/clarification.
-- Existing code preserved at rollback checkpoint `48acd05`. Phase 1 runtime implementation is next; no new computer-control features were implemented during the audit.
+- Pre-runtime rollback checkpoints: implementation `48acd05`, Phase 0 audit `75e2109`. No new computer-control features were implemented during the audit.
 - Chrome and desktop Excel executable/COM registration confirmed. Excel automation itself is not verified. Existing local model is llama3.2:3b; browser profile and larger-model decisions remain deferred.
 - Detailed environment, evidence, architectural gaps, and Phase 1 checklist live in the implementation plan. Do not mistake accepted launches for verified goal completion.
 
