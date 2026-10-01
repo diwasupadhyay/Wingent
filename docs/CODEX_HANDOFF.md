@@ -1,5 +1,9 @@
 # Wingent Codex Handoff
 
+## Active implementation plan
+
+The user authorized the goal-driven agent roadmap on 2026-10-01. Read [AGENT_IMPLEMENTATION_PLAN.md](AGENT_IMPLEMENTATION_PLAN.md) first for phase status, current evidence, unresolved decisions, and the next exact work slice. Phase 0 is verified complete; Phase 1 is next. Broader capabilities described there are planned, not implemented; older scope notes below describe the existing launcher baseline.
+
 ## October 2026 update
 - Natural tasks now use structured local LLM planning with strict tool validation, full-plan preflight, cancellation, a 60-second planning deadline, and per-step SSE results.
 - Verified the user's YouTube GenAI search + GitHub tab request against local llama3.2:3b. `scripts/evaluate-planner.py` dry-runs seven language cases without launching anything.

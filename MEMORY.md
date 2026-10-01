@@ -1,5 +1,13 @@
 # Memory
 
+## Goal-driven agent plan — 2026-10-01
+
+- User authorized starting `docs/AGENT_IMPLEMENTATION_PLAN.md`; use its phase tracker as the current work queue.
+- Phase 0 audit verified complete: 57 backend tests, 6 UI tests, frontend build, offline cargo check, 7 live planner evaluations, and packaged startup/health/clarification.
+- Existing code preserved at rollback checkpoint `48acd05`. Phase 1 runtime implementation is next; no new computer-control features were implemented during the audit.
+- Chrome and desktop Excel executable/COM registration confirmed. Excel automation itself is not verified. Existing local model is llama3.2:3b; browser profile and larger-model decisions remain deferred.
+- Detailed environment, evidence, architectural gaps, and Phase 1 checklist live in the implementation plan. Do not mistake accepted launches for verified goal completion.
+
 ## October 2026 desktop update
 - Natural command planning now uses Ollama structured JSON with Pydantic validation, max eight steps, one format repair, and a 60-second deadline. New modules: planner, executor, folders.
 - Complex site/tab modifiers defer to the model; exact simple actions remain model-free. Text requests outside the fast path are classified by the planner before text streaming.
