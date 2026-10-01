@@ -31,6 +31,7 @@ impl BackendProcess {
               .stderr(Stdio::null())
               .creation_flags(0x08000000)
               .status();
+            let _ = child.kill();
           }
           #[cfg(not(windows))]
           let _ = child.kill();
