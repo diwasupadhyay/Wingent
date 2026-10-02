@@ -23,6 +23,6 @@ async def while_connected(operation: Awaitable, disconnected: Callable):
             await task
 
 
-async def execute_plan(actions, registry: ToolRegistry, disconnected, *, state=None, provider=None):
-    async for event in run_launches(actions, registry, disconnected, state, provider):
+async def execute_plan(actions, registry: ToolRegistry, disconnected, *, state=None, provider=None, review_actions=False):
+    async for event in run_launches(actions, registry, disconnected, state, provider, review_actions):
         yield event

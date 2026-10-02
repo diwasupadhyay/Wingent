@@ -1,5 +1,15 @@
 # Architecture
 
+## Current direction — 2026-10-02
+
+Wingent is a general computer operator, not an application-specific agent. The current production natural-task path is `main.py → operator.py → AgentRuntime → typed registry`. `operator.py` chooses a tool from the actual installed registry, generates typed arguments, and feeds actual outcomes into the next decision. The old full-plan planner is retained for compatibility/evaluations, not used for natural-task execution.
+
+General built-in file primitives live in `file_tools.py`; `plugins.py` loads explicitly enabled installed `wingent.skills` entry points. Skills are trusted native code, not model-provided executable instructions. Extensions supply schemas, permissions, prerequisites, timeouts, observation and verification hooks through the existing registry. Do not add app names or workflow branches to the runtime. Registry guidance can teach tool usage but cannot authorize actions.
+
+The current API budget is 12 model calls and 180 seconds. Selected-tool argument generation consumes the same budget. Exact simple launch requests retain the model-free path. Files require exact action approval; reads are paged, directory listing is nonrecursive, and creation is exclusive with read-back. Goal verification is intentionally separate from these artifact checks. No implicit global desktop observation exists yet.
+
+Roadmap layers are reasoning/discovery, structured computer adapters, controlled process/code execution, vision/input fallback, then task continuity/hardening. Windows APIs, browser DOM, application APIs and future computer input are interchangeable capability providers, not separate products. See the active tracker; legacy sections below describe prior implementation stages.
+
 ## Packaged desktop lifecycle
 - The borderless overlay stays out of the taskbar and lives in the system tray.
 - Closing hides the overlay; quitting is explicit through the tray.
@@ -16,6 +26,18 @@ The project separates the command UI from the local reasoning service to keep th
 - AbortController cancellation, Escape-to-cancel, and retry of the last failed request.
 
 ## Backend
+
+### Phase 2 capabilities and approvals
+
+- `capabilities.py` defines strict input/output models and trusted, permission-neutral domain guidance. Excel/research are explicitly unavailable; guidance never registers a tool or grants permission.
+- `capability_planner.py` generates a Pydantic plan union from the actual registered tools and their typed arguments. Restricted tools are excluded. New typed tools need no changes to the planner's action enum. `planner.py` remains only for legacy plan compatibility/tests.
+- Tool definitions include input/output schemas, permission, capability, timeout, cancellation semantics, retry safety, precondition normalization, optional observation and verification hooks, and a revision identity. Rich new tools must supply a Pydantic input model; the legacy schema adapter supports simple string fields only.
+- Preparation validates without granting authority. Execution revalidates canonical arguments and consumes an approval when required; the old `confirmed=True` bypass no longer exists.
+- `approvals.py` stores random, expiring, single-use requests bound to task ID, tool, tool revision, and canonical arguments. Tokens are delivered only through the task stream, never to the model. Denial, expiry, cancellation, replacement, changed arguments, and replay cannot authorize dispatch.
+- Runtime waits for the explicit response, then refreshes observations and revalidates before dispatch. Approval waits count toward task/operation deadlines. Pending approvals are revoked when the stream ends.
+- The overlay's optional Review toggle applies the same approval flow even to safe launches. No destructive/consequential OS tool was added just to demonstrate approval.
+- `/api/capabilities` exposes available typed tools/domain knowledge; `/health` marker is `capabilities-v2`.
+- Structured generation uses an 8192-token context window. Live evaluation caught schema-valid but incomplete plans; prompt/context fixes and an explicit-domain omission guard are tested. This guard is conservative and is not general proof of semantic completeness.
 
 ### Phase 1 runtime
 

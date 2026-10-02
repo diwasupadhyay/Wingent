@@ -21,10 +21,47 @@ function runCommand() {
 }
 
 describe('App', () => {
+  it('sends review mode explicitly when enabled', async () => {
+    mockEvents('event: final\ndata: {"text":"Ready"}\n\n');
+    render(<App />);
+    fireEvent.click(screen.getByLabelText('Review actions before running'));
+    fireEvent.change(screen.getByLabelText(/command input/i), { target: { value: 'open github' } });
+    fireEvent.click(screen.getByLabelText(/Run command/i));
+    await waitFor(() => expect(screen.getByText('Ready')).toBeTruthy());
+    expect(JSON.parse(vi.mocked(fetch).mock.calls[0][1]?.body as string).review_actions).toBe(true);
+  });
+
+  it.each([true, false])('requires an explicit approval response: %s', async (approve) => {
+    let readCount = 0;
+    let finish: (value: unknown) => void = () => {};
+    const waiting = new Promise((resolve) => { finish = resolve; });
+    const encode = (text: string) => ({ done: false, value: new TextEncoder().encode(text) });
+    const fetchMock = vi.fn(async (url: string, options?: RequestInit) => {
+      if (url.includes('/api/approvals/')) {
+        finish(encode('event: final\ndata: {"outcome":"unverified","text":"Answered"}\n\n'));
+        return { ok: true };
+      }
+      return { ok: true, body: { getReader: () => ({ read: async () => {
+        readCount += 1;
+        if (readCount === 1) return encode('event: confirmation_required\ndata: {"approval_id":"request1","token":"secret-token","task_id":"task1","tool":"open_url","arguments":{"url":"https://github.com"},"expires_in":60}\n\n');
+        if (readCount === 2) return waiting;
+        return { done: true };
+      } }) } };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    runCommand();
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Action approval' })).toBeTruthy());
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(screen.queryByText('secret-token')).toBeNull();
+    fireEvent.click(screen.getByText(approve ? 'Approve once' : 'Deny'));
+    await waitFor(() => expect(screen.getByText('Answered')).toBeTruthy());
+    expect(JSON.parse(fetchMock.mock.calls[1][1]?.body as string)).toEqual({ token: 'secret-token', approve });
+    expect(screen.queryByText('Approve once')).toBeNull();
+  });
   it('distinguishes launch acceptance from verified completion', async () => {
     mockEvents('event: final\ndata: {"outcome":"unverified","verified":false,"text":"Requests accepted, result not observed."}\n\n');
     runCommand();
-    await waitFor(() => expect(screen.getByText('Requests sent · not verified')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('Result not verified')).toBeTruthy());
     expect(screen.queryByText('Goal verified')).toBeNull();
   });
 
@@ -82,7 +119,7 @@ describe('App', () => {
     render(<App />);
 
     expect(screen.getByLabelText(/command input/i)).toBeTruthy();
-    expect(screen.getByPlaceholderText(/Ask a question/i)).toBeTruthy();
+    expect(screen.getByPlaceholderText(/Tell Wingent/i)).toBeTruthy();
     expect(screen.getByLabelText(/Start Ollama/i)).toBeTruthy();
     expect(screen.getByLabelText(/Run command/i)).toBeTruthy();
   });

@@ -6,14 +6,14 @@ import asyncio
 import time
 
 from app.llm import OllamaClient
-from app.planner import plan_request, compile_plan
+from app.capability_planner import plan_request, compile_plan
 
 
 CASES = [
     ('can you open chrome and search about genai on youtube and in new tab open github on it',
-     'execute', ['youtube.com/results?search_query=genai', 'github.com']),
+     'execute', ['youtube:genai', 'github.com']),
     ('Please look up generative AI tutorials on YouTube using Edge, then put github.com in another tab',
-     'execute', ['youtube.com/results?search_query=', 'github.com']),
+     'execute', ['youtube:', 'github.com']),
     ('I want you to open my Downloads folder and launch Notepad',
      'execute', ['downloads', 'notepad']),
     ('Open Chrome and something else', 'clarify', []),
@@ -30,7 +30,8 @@ async def main():
         try:
             plan = await plan_request(prompt, OllamaClient())
             actions = compile_plan(plan)
-            actual = [str(params.get('url') or params.get('path') or params.get('application')).lower()
+            actual = [str(f'{params["engine"]}:{params["query"]}' if 'engine' in params else
+                          params.get('url') or params.get('path') or params.get('application')).lower()
                       for _, params in actions]
             passed = plan.disposition == disposition and len(actual) == len(targets) and all(
                 expected in value for expected, value in zip(targets, actual))

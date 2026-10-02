@@ -1,6 +1,10 @@
 # Structure
 
 ## Desktop runtime additions
+- `backend/app/capabilities.py`: typed tool contracts and trusted capability guidance.
+- `backend/app/capability_planner.py`: registry-generated tool plan schemas and bounded generation/repair.
+- `backend/app/approvals.py`: task/action/revision-bound, expiring single-use approvals.
+- `scripts/smoke-approvals.py`: opt-in packaged approval test; denies a URL launch, then approves opening the repository folder once.
 - `backend/app/task_state.py`: generic task/action/observation/evidence models, execution budgets, compact working context.
 - `backend/app/runtime.py`: application-independent observation-driven execution and verification state machine.
 - `backend/app/launch_runtime.py`: production registry adapter, initial-plan compatibility, bounded provider, launch-only observation boundary.
@@ -30,3 +34,10 @@
 - `backend/app/llm.py` — Ollama provider wrapper.
 - `backend/app/models.py` — validated request/response schemas.
 - `backend/app/tools.py` — deterministic support tools with permission classifications.
+# General operator additions (2026-10-02)
+
+- `backend/app/operator.py`: production next-action reasoning from registry tools and observed outcomes.
+- `backend/app/file_tools.py`: approved directory discovery, bounded text reads and exclusive artifact creation.
+- `backend/app/plugins.py`: opt-in trusted installed skill entry points.
+- `scripts/evaluate-operator.py`: isolated real-model/file workflow, optionally through the packaged API.
+- `docs/SKILLS.md`: capability registration and plugin trust/packaging boundaries.

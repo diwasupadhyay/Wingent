@@ -1,5 +1,14 @@
 # Memory
 
+## Current direction — 2026-10-02
+
+- User explicitly requested a general-purpose personal computer operator. Examples are not product boundaries. The new active section in `docs/AGENT_IMPLEMENTATION_PLAN.md` supersedes the application-specific roadmap and legacy restrictions below.
+- Production natural-task execution now uses `operator.py`: dynamically select a registered tool, generate typed arguments, execute through approvals, observe actual output, and decide again. Preserve the existing runtime's cancellation, evidence and duplicate-action protections.
+- Added general approved file primitives and explicit trusted entry-point skills. No terminal/code execution, desktop input, browser DOM or vision has been implemented in this slice; these remain general capability layers, not named-application phases.
+- Phase 2 preceding work passed packaged approval/denial/replay checks. Current health marker is `operator-v3`; rebuild sidecar AND EXE after new code verification.
+- Live small-model evaluations exposed redundant clarification, invalid/empty actions, repeated discovery and premature finish. Record failures, evaluate actual model behavior, and never infer general competence from mocked tests.
+- Latest source checks: 123 backend / 12 UI tests pass. Real-model file workflow creates an artifact but fails to stop reliably; its evaluator remains failing and Phase 3 stays in progress. A model-only completion assessor hallucinated success and was removed. Read-page size is now fixed by the host (2048 bytes), after packaged testing exposed one-byte reads chosen by the model.
+
 ## Goal-driven agent plan — 2026-10-01
 
 - Phase 1 is now verified complete: application-independent task state and observe/decide/act/verify loop, compact context, task/model/action/recovery budgets, fresh-evidence completion gate, and production launch-adapter integration.

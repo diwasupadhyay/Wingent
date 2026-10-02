@@ -1,4 +1,5 @@
 import asyncio
+import json
 
 from fastapi.testclient import TestClient
 
@@ -24,12 +25,17 @@ def test_endpoint_runs_two_validated_browser_steps(monkeypatch):
     calls = []
     async def available(*args):
         return True
-    async def plan(*args):
-        return AgentPlan.model_validate({'disposition': 'execute', 'message': '', 'steps': [
-            {'action': 'search_youtube', 'target': 'genai', 'browser': 'chrome'},
-            {'action': 'open_url', 'target': 'https://github.com', 'browser': 'chrome'},
-        ]})
-    monkeypatch.setattr('app.main.plan_request', plan)
+    async def next_action(_self, prompt, system, schema):
+        context = json.loads(prompt)
+        count = len(context['untrusted_action_results'])
+        steps = [
+            {'tool': 'search_web', 'arguments': {'engine': 'youtube', 'query': 'genai', 'browser': 'chrome'}},
+            {'tool': 'open_url', 'arguments': {'url': 'https://github.com', 'browser': 'chrome'}},
+        ]
+        if context.get('selected_tool'):
+            return json.dumps(steps[count]['arguments'])
+        return json.dumps({'tool': steps[count]['tool'] if count < 2 else 'finish'})
+    monkeypatch.setattr('app.main.OllamaClient.structured', next_action)
     monkeypatch.setattr('app.main.OllamaClient.is_available', available)
     monkeypatch.setattr('app.tools.resolve_browser', lambda _: 'chrome.exe')
     monkeypatch.setattr('app.tools.subprocess.Popen', lambda args, **kwargs: calls.append(args))
@@ -38,7 +44,7 @@ def test_endpoint_runs_two_validated_browser_steps(monkeypatch):
         ['chrome.exe', 'https://www.youtube.com/results?search_query=genai'],
         ['chrome.exe', 'https://github.com'],
     ]
-    assert 'event: plan' in response.text
+    assert 'event: action' in response.text
     assert response.text.count('"state": "accepted"') == 2
     assert 'event: final' in response.text
 

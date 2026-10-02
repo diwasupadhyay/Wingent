@@ -1,9 +1,9 @@
-import asyncio
 import json
 import os
 from typing import AsyncGenerator
 
-from fastapi import FastAPI, Request
+from fastapi import FastAPI, Request, HTTPException
+from pydantic import BaseModel, ConfigDict, Field
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
 
@@ -15,10 +15,12 @@ from app.routing import (
     requests_unsupported_browser_automation,
 )
 from app.tools import ToolRegistry
-from app.planner import plan_request, compile_plan
 from app.executor import execute_plan, while_connected
-from app.launch_runtime import BudgetedProvider, ground_folders
-from app.task_state import TaskState, TaskStatus
+from app.launch_runtime import BudgetedProvider
+from app.operator import run_operator
+from app.file_tools import register as register_files
+from app.plugins import load_skills
+from app.task_state import TaskState, Limits
 
 app = FastAPI(title='Wingent', version='0.1.0')
 app.add_middleware(
@@ -36,6 +38,8 @@ app.add_middleware(
     allow_headers=['*'],
 )
 registry = ToolRegistry()
+register_files(registry)
+loaded_skills = load_skills(registry, [name.strip() for name in os.getenv('WINGENT_SKILLS', '').split(',') if name.strip()])
 
 
 def sse_event(event: str, payload: dict[str, object]) -> str:
@@ -44,7 +48,28 @@ def sse_event(event: str, payload: dict[str, object]) -> str:
 
 @app.get('/health')
 def health() -> dict[str, str]:
-    return {'status': 'ok', 'service': 'wingent', 'runtime': 'observation-loop-v1'}
+    return {'status': 'ok', 'service': 'wingent', 'runtime': 'operator-v3'}
+
+
+class ApprovalResponse(BaseModel):
+    model_config = ConfigDict(extra='forbid', strict=True)
+    token: str = Field(min_length=1, max_length=128)
+    approve: bool
+
+
+@app.post('/api/approvals/{approval_id}')
+async def respond_to_approval(approval_id: str, response: ApprovalResponse):
+    try:
+        registry.approvals.respond(approval_id, response.token, response.approve)
+    except PermissionError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {'accepted': True}
+
+
+@app.get('/api/capabilities')
+def capabilities():
+    return {'tools': registry.manifest(), 'loaded_skills': loaded_skills, 'capabilities': [
+        {'name': c.name, 'available': c.available, 'guidance': c.guidance} for c in registry.capabilities.values()]}
 
 
 @app.post('/api/command')
@@ -52,23 +77,10 @@ async def command(request: Request, command_request: CommandRequest) -> Streamin
     prompt = command_request.prompt.strip()
 
     async def event_stream() -> AsyncGenerator[str, None]:
-        state = TaskState(goal=prompt, criteria=[prompt])
+        state = TaskState(goal=prompt, criteria=[prompt], limits=Limits(model_calls=12, seconds=180.0))
         yield sse_event('status', {'stage': 'planning', 'message': 'Planning request'})
 
         if await request.is_disconnected():
-            return
-
-        if requests_unsupported_browser_automation(prompt):
-            yield sse_event(
-                'error',
-                {
-                    'message': (
-                        'I can launch Chrome and open a site, but selecting a browser profile '
-                        'requires browser automation, which is not enabled yet.'
-                    ),
-                    'code': 'unsupported_browser_automation',
-                },
-            )
             return
 
         llm = BudgetedProvider(OllamaClient(
@@ -77,7 +89,7 @@ async def command(request: Request, command_request: CommandRequest) -> Streamin
         ), state)
         actions = detect_deterministic_tools(prompt)
         if actions:
-            async for event, payload in execute_plan(actions, registry, request.is_disconnected, state=state):
+            async for event, payload in execute_plan(actions, registry, request.is_disconnected, state=state, review_actions=command_request.review_actions):
                 yield sse_event(event, payload)
             return
         available = await while_connected(llm.is_available(), request.is_disconnected)
@@ -88,48 +100,8 @@ async def command(request: Request, command_request: CommandRequest) -> Streamin
             )
             return
 
-        yield sse_event('status', {'stage': 'planning', 'message': 'Interpreting your request with the local model'})
-        try:
-            plan = await while_connected(plan_request(prompt, llm), request.is_disconnected)
-            if plan.disposition == 'clarify':
-                state.status = TaskStatus.AWAITING_INPUT
-                state.pending_question = plan.message
-                yield sse_event('clarification', {'text': plan.message + ' No actions were taken. Please submit the full request with any missing details.'})
-                return
-            if plan.disposition == 'execute':
-                actions = compile_plan(plan)
-                ground_folders(actions, prompt)
-        except asyncio.CancelledError:
-            return
-        except Exception as exc:
-            yield sse_event('error', {'message': f'Could not create a valid plan: {exc or "local model timed out"}. No actions were taken.', 'code': 'planning_failed'})
-            return
-
-        if plan.disposition == 'execute':
-            # Keep post-dispatch failures out of the planning exception handler.
-            async for event, payload in execute_plan(actions, registry, request.is_disconnected, state=state, provider=llm):
-                yield sse_event(event, payload)
-            return
-
-        yield sse_event('status', {'stage': 'streaming', 'message': 'Calling local model'})
-
-        try:
-            full = []
-            async for text in llm.stream(prompt):
-                if await request.is_disconnected():
-                    return
-                full.append(text)
-                yield sse_event('delta', {'text': text})
-        except asyncio.CancelledError:
-            return
-        except Exception as exc:  # pragma: no cover - defensive path
-            yield sse_event('error', {'message': str(exc)})
-            return
-
-        result = ''.join(full).strip()
-        if not result:
-            yield sse_event('error', {'message': 'The local model returned no response. Try again or check the selected model.'})
-            return
-        yield sse_event('final', {'text': result})
+        async for event, payload in run_operator(registry, state, llm, request.is_disconnected,
+                                                  review_actions=command_request.review_actions):
+            yield sse_event(event, payload)
 
     return StreamingResponse(event_stream(), media_type='text/event-stream')

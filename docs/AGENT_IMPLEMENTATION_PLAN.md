@@ -1,8 +1,68 @@
 # Wingent: Goal-Driven Agent Implementation Plan
 
+## Direction change — 2026-10-02 (current authority)
+
+The user explicitly changed the goal to a **general-purpose personal computer operator**. Applications and tasks below are examples, never the architecture or a fixed automation menu. This section supersedes the old application-by-application sequence retained below as historical context. Preserve useful code, not obsolete scope restrictions.
+
+Core contract: goal → understand → observe → choose next action → validate/approve → act → observe result → verify → replan. New trusted capabilities must register without changing the core loop. Prefer structured APIs/accessibility; controlled process execution and vision are general fallback mechanisms, not shortcuts around permissions.
+
+### Active tracker
+
+| Phase | Capability layer | Status |
+| --- | --- | --- |
+| 0–1 | Baseline and generic bounded runtime | Previously verified complete |
+| 2 | Typed registry and bound approvals | Verified complete: 113 backend / 12 UI tests; rebuilt EXE approval, denial and replay checks passed in preceding work |
+| 3 | Production next-action reasoning, discovery, skills and general file primitives | In progress: code/tests/build and packaged safety checks pass; live-model reliability gate fails |
+| 4 | Structured computer observation/control | Not complete: Windows/UI Automation, application APIs, managed browser as peer adapters; stable identities and fresh targets |
+| 5 | Controlled process/code execution and tool discovery | Not implemented: exact-command approval, bounded output, process-tree lifecycle, working-directory scope, installation/configuration safeguards |
+| 6 | Screenshot/vision and input fallback | Not implemented: explicit capture scope, available vision model, fresh-target checks, verified keyboard/mouse actions |
+| 7 | Task continuity and reliability | Not complete: resume clarifications without replay, durable checkpoints, source/evidence tracking, mixed-capability evaluations and packaged reliability |
+
+### Implemented in the current slice
+
+- Natural tasks now enter `operator.py`, not the initial fixed launch planner. The real local model selects the next tool after every outcome, then generates arguments against only that tool's schema. Exact simple launch shortcuts remain optional model-free paths.
+- Tool selection sees the runtime registry, capability guidance, original goal, and bounded actual results. New tools require no new action enum or phrase matching. Registered observers/verifiers remain the only authority for verified completion.
+- General `list_directory`, `read_text` and `create_text` primitives support discovering unknown filenames, bounded UTF-8 reads, and new artifacts with content read-back. Every access currently requires exact-path approval; writes preview the full content and cannot overwrite an existing file.
+- Explicitly enabled installed Python entry-point skills can add trusted tools at startup (`WINGENT_SKILLS`). No model-driven imports, downloads, or permission grants. This is trusted native extension code, not a plugin sandbox. Frozen distributions must bundle plugins and their metadata; loading arbitrary host Python packages into the EXE is not implemented.
+- Slow inference refreshes observations and revalidates before dispatch; changed facts trigger replanning. Missing read-only resources produce known no-effect outcomes instead of falsely claiming uncertain side effects.
+- API task budgets are 12 model calls / 180 seconds; tool selection and argument generation share those budgets. Unknown effects and accepted side-effect duplicates still stop safely.
+
+### Failures observed (do not erase)
+
+Live llama3.2:3b initially asked for redundant permission, emitted empty actions, repeated discovery, and asked the user to select a tool. A combined union decision schema was unreliable. Replaced it with separate tool selection and typed argument generation, retained host-managed approvals, and added capability-local guidance. Later testing reached real reading and caught incorrect missing-file outcome classification. These are measured limitations; passing mocked tests alone does not establish a competent general operator.
+
+Current source verification: **123 backend tests and 12 UI tests pass**. Real local-model trials reached directory discovery → reading → exclusive report creation with matching read-back bytes, but continued redundant inspection until the model-call limit. The end-to-end evaluator correctly exits nonzero. A separate model-only progress assessor falsely claimed completion after merely listing a directory; that experiment was removed. The final implementation retains host-controlled verification and labels any model final assessment unverified. **Phase 3 is not verified complete.** Do not solve this by silently raising budgets or auto-approving actions.
+
+Packaged testing also reproduced the failure and exposed a model-selected one-byte page size. Removed that unnecessary argument: `read_text` now uses host-controlled 2048-byte pages and the model chooses only path/offset. The subsequent source trial read complete input and created the expected 23-byte artifact but still exhausted the model-call budget after redundant inspections. This fix improves the primitive; it does not solve model planning or stopping. No terminal/vision/desktop-control success is claimed.
+
+Next exact reasoning work: compare a user-approved alternative local model and improve goal decomposition/evidence-grounded stopping with a broader corpus. No new model was downloaded. Structured Windows observation and task continuity are also unfinished; the model issue does not imply those capabilities already exist. The test harness only approves file actions inside its temporary fixture directory, and enables Review for packaged tests so unexpected safe launch proposals cannot execute.
+
+### Final packaged evidence — 2026-10-02
+
+- PyInstaller sidecar, frontend production build, and `npm.cmd run tauri:build -- --no-bundle` succeeded after the last code edit.
+- Launched `src-tauri/target/release/app.exe`; health reports `operator-v3`, and the live `read_text` input schema contains only path/offset (fixed page-size revision).
+- Packaged denial, approval, and replay-rejection smoke tests pass. The approved action opens this repository folder; the denied URL is not launched.
+- Source/packaged sidecar SHA-256 match: `1C5FEEB063136A65086F362CE507A794DE9367AA554EDFF7EBAEE05A0A412C0E`.
+- Wingent and Ollama left running for user testing. No new dependency/model or third-party plugin installed; no personal documents read. Temporary test artifacts were isolated and cleaned by the test harness.
+- Live operator evaluation is **not passing**. The final source revision creates the correct fixture artifact but repeats actions until budget exhaustion. Earlier packaged evaluation reproduced the same stopping defect and motivated the fixed page-size change. Do not mark Phase 3 complete or call this a finished general computer agent.
+
+### Remaining before claiming the product complete
+
+- [ ] Verify realistic mixed-capability goals and failure recovery with real tools and the packaged EXE.
+- [ ] Independent goal-level verification, not just a file write acknowledgement or model finish message.
+- [ ] General Windows/application observation, input, browser DOM, controlled terminal/code, and visual fallback.
+- [ ] Continuation through clarification, scoped session read grants, plugin packaging, and long-task checkpoints.
+- [ ] Broader model evaluation; request approval before downloading another model.
+
+The earlier launcher-only restrictions are superseded by this explicit direction change. Security boundaries, action-specific approvals, honest verification, user-file protection, and finite execution budgets remain mandatory. Do not describe this slice as “can do anything on the computer.”
+
+---
+
+## Historical plan (superseded sequence; preserve evidence)
+
 Created: 2026-10-01 (Asia/Calcutta)
 Last updated: 2026-10-01
-Status: AUTHORIZED — Phases 0 and 1 verified complete; Phase 2 next.
+Status: AUTHORIZED — Phases 0 and 1 complete; Phase 2 implemented, packaged verification in progress.
 
 ## Start here
 
@@ -10,8 +70,8 @@ This is the living plan and progress tracker for evolving Wingent from a bounded
 
 The user explicitly authorized starting this plan on 2026-10-01: "okay let's start with it go ahead". Work within the phased scope and existing safety rules; this is not blanket approval for consequential actions or unresolved personal-data access decisions.
 
-- Current phase: Phase 1 verified complete; Phase 2 not started.
-- Next action: Phase 2 registry-driven capability schemas, observation/retry metadata, and action-specific approval lifecycle.
+- Current phase: Phase 2 packaged verification.
+- Next action: verify rebuilt EXE approval/denial/replay flow, then Phase 3 Windows and file capabilities.
 - Verified pre-runtime rollback checkpoint: `48acd055b8d6577a86972c4df0c42edcb943617d`.
 - Current blockers: none for Phase 1. Browser-profile, model-installation, and test-data choices remain deferred to the phases that need them.
 - Scope: extend the existing project; do not rebuild it from scratch.
@@ -83,7 +143,7 @@ Use: Not started / In progress / Blocked / Verified complete. A phase is complet
 | --- | --- | --- | --- |
 | 0 | Audit and baseline | Verified complete | 2026-10-01 audit evidence below |
 | 1 | Observation-driven runtime | Verified complete | 82 backend tests, 9 UI tests, 7 live planner evaluations, rebuilt EXE/sidecar smoke check |
-| 2 | Capabilities, permissions, observations | Not started | — |
+| 2 | Capabilities, permissions, observations | In progress | 113 backend tests, 12 UI tests, 7 live planner cases; packaged verification pending |
 | 3 | Windows and file foundations | Not started | — |
 | 4 | Verified browser workflow | Not started | — |
 | 5 | Excel automation | Not started | — |

@@ -1,5 +1,11 @@
 # Wingent Codex Handoff
 
+## Latest direction — 2026-10-02
+
+Read the **Direction change** section of `AGENT_IMPLEMENTATION_PLAN.md` first. The user explicitly wants a general personal computer operator; older launcher-only restrictions and app-specific phase ordering below are superseded. Preserve useful runtime, approval, UI and packaging work.
+
+Natural tasks now use `operator.py` for registry-driven next-action selection and typed argument generation after actual tool outcomes. File discovery/read/new-file primitives and opt-in trusted Python skill entry points are implemented. `/health` marker is `operator-v3`. Phase 2's previous packaged approval/denial/replay tests passed. The new operator slice needs its own recorded live and packaged evidence; do not equate a few successful tasks with general computer competence. Terminal, UI Automation, browser DOM, vision and resumable task context are still unfinished capability layers.
+
 ## Active implementation plan
 
 The user authorized the goal-driven agent roadmap on 2026-10-01. Read [AGENT_IMPLEMENTATION_PLAN.md](AGENT_IMPLEMENTATION_PLAN.md) first for phase status, current evidence, unresolved decisions, and the next exact work slice. Phases 0 and 1 are verified complete; Phase 2 is next. The runtime is application-independent, but current real adapters still only launch safe targets and cannot verify page/window contents. Broader capabilities described there are planned, not implemented; older scope notes below describe the launcher baseline.

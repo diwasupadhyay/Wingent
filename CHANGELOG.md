@@ -1,6 +1,11 @@
 # Changelog
 
 ## Unreleased
+- Generate planner tool schemas from the registry, with typed inputs/outputs and application capability guidance.
+- Add expiring, single-use approve/deny requests bound to exact actions; remove boolean confirmation bypass.
+- Add the overlay Review toggle and explicit approval card; revalidate after approval and revoke pending approvals on cancellation.
+- Expose capability metadata and observer/verifier hooks; keep unavailable Excel/research capabilities explicit.
+- Fix live compound-plan regressions found while changing schemas; increase structured generation context and reject plans omitting explicit website targets.
 - Add application-independent task state and an observe/decide/act/verify runtime with bounded recovery, compact context, task/model budgets, and fresh-evidence completion checks.
 - Run existing safe tools through the runtime; keep their launch acceptance explicitly unverified instead of displaying Complete.
 - Distinguish unknown in-flight outcomes from failures, block automatic duplicate dispatch, and retain partial effects on runtime errors.
@@ -29,3 +34,9 @@
 - Added the Vite React TypeScript frontend and FastAPI backend.
 - Added a local Ollama provider interface and streaming response flow.
 - Added project docs, configuration, and environment templates.
+# 2026-10-02 — General operator direction (experimental)
+
+- Replaced natural-task fixed-plan execution with registry-discovered next-tool reasoning and typed argument generation from actual results.
+- Added approved general directory/text/artifact tools and explicit trusted installed-skill loading; retained action-specific approvals, bounded execution and independent verification gates.
+- Revised the roadmap around capability layers, not example applications.
+- 123 backend and 12 UI tests pass. Live small-model evaluation exposes stopping/reliability failures; Phase 3 remains incomplete and model completion claims remain unverified.

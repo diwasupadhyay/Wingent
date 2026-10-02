@@ -140,15 +140,33 @@ def test_recovery_budget_stops_known_failures():
     assert 'Recovery budget' in events[-1][1]['message']
 
 
-def test_decision_budget_stops_stale_observation_loop():
+def test_slow_reasoning_refreshes_unchanged_state_without_infinite_replanning():
     class SlowPlanner(World):
         async def decide(self, context):
             await asyncio.sleep(0.02)
             return await super().decide(context)
     state, _ = run(SlowPlanner(), TaskState(goal='Reach three', criteria=['value=3'],
         limits=Limits(decisions=2, observation_max_age=0.005)))
-    assert state.status == TaskStatus.FAILED
+    assert state.status == TaskStatus.COMPLETED
     assert state.decisions == 2
+    assert len(state.records) == 2
+
+
+def test_changed_state_after_slow_reasoning_cannot_dispatch_stale_action():
+    class Changing(World):
+        async def observe(self, state):
+            self.value += 1
+            return {'value': self.value}
+
+        async def decide(self, context):
+            await asyncio.sleep(0.02)
+            return await super().decide(context)
+
+        async def verify(self, state, observation):
+            return Verification()
+    state, _ = run(Changing(), TaskState(goal='Reach three', criteria=['value=3'],
+        limits=Limits(decisions=2, observation_max_age=0.005)))
+    assert state.status == TaskStatus.FAILED
     assert not state.records
 
 

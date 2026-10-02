@@ -39,7 +39,7 @@ class OllamaClient:
             response = await client.post(f'{self.base_url}/api/generate', json={
                 'model': self.model, 'system': system, 'prompt': prompt,
                 'stream': False, 'format': schema,
-                'options': {'temperature': 0, 'num_predict': 1200},
+                'options': {'temperature': 0, 'num_predict': 1200, 'num_ctx': 8192},
             })
             response.raise_for_status()
             payload = response.json()

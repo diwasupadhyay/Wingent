@@ -16,7 +16,7 @@ def test_endpoint_reports_unverified_not_complete(monkeypatch):
     assert '"task_id"' in response.text
     assert '"stage": "observing"' in response.text
     assert '"stage": "verifying"' in response.text
-    assert TestClient(app).get('/health').json()['runtime'] == 'observation-loop-v1'
+    assert TestClient(app).get('/health').json()['runtime'] == 'operator-v3'
 
 
 def test_oversized_goal_rejected_before_streaming():
@@ -26,7 +26,7 @@ def test_oversized_goal_rejected_before_streaming():
 def test_real_adapter_observes_unavailable_tool_without_faking_page_state(monkeypatch):
     state = TaskState(goal='Open site', criteria=['site visible'])
     adapter = LaunchAdapter([('open_url', {'url': 'https://github.com'})], ToolRegistry(), state, None)
-    def unavailable(*args):
+    def unavailable(*args, **kwargs):
         raise ValueError('Browser missing')
     monkeypatch.setattr(adapter.registry, 'validate', unavailable)
     facts = asyncio.run(adapter.observe(state))
@@ -46,7 +46,7 @@ def test_changed_precondition_replans_with_real_provider_boundary(monkeypatch):
     state = TaskState(goal='Open Chrome', criteria=['Chrome open'])
     adapter = LaunchAdapter([('open_application', {'application': 'chrome'})], ToolRegistry(), state,
         BudgetedProvider(ClarifyProvider(), state))
-    def unavailable(*args):
+    def unavailable(*args, **kwargs):
         raise ValueError('Browser missing')
     monkeypatch.setattr(adapter.registry, 'validate', unavailable)
     state.observe(asyncio.run(adapter.observe(state)))

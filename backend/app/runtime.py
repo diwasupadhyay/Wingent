@@ -38,11 +38,13 @@ class AgentRuntime:
         self.state, self.planner, self.observer = state, planner, observer
         self.executor, self.verifier, self.disconnected = executor, verifier, disconnected
 
-    async def checked(self, operation: Callable[[], Awaitable]):
+    async def checked(self, operation: Callable[[], Awaitable], timeout=None):
         """Bound every operation and cancel pending async work promptly on disconnect."""
         if await self.disconnected():
             raise TaskCancelled
         remaining = min(self.state.remaining_seconds(), self.state.limits.operation_seconds)
+        if timeout is not None:
+            remaining = min(remaining, timeout)
         if remaining <= 0:
             raise BudgetExceeded('Task time budget exhausted.')
         task = asyncio.create_task(operation())
@@ -118,8 +120,9 @@ class AgentRuntime:
                 if len(state.records) >= state.limits.actions:
                     raise BudgetExceeded('Task action budget exhausted.')
                 # Accepted actions are never automatically dispatched again.
-                if any(r.action.fingerprint() == action.fingerprint() and r.outcome.status != 'no_effect'
-                       for r in state.records):
+                if (not getattr(self.executor, 'safe_to_repeat', lambda _: False)(action) and
+                        any(r.action.fingerprint() == action.fingerprint() and r.outcome.status != 'no_effect'
+                            for r in state.records)):
                     yield self.terminal(TaskStatus.AWAITING_INPUT,
                         'The next action repeats an earlier accepted request. Please check its result before retrying.')
                     return
@@ -131,15 +134,38 @@ class AgentRuntime:
                     outcome = Outcome(status='no_effect', summary=str(exc)[:2000])
                     dispatched = False
                 else:
+                    request_approval = getattr(self.executor, 'request_approval', None)
+                    pending = await self.checked(lambda: request_approval(action)) if request_approval else None
+                    if pending:
+                        yield self.status(TaskStatus.AWAITING_INPUT, 'Waiting for your approval')
+                        yield 'confirmation_required', pending
+                        try:
+                            await self.checked(lambda: self.executor.await_approval(pending))
+                        except PermissionError as exc:
+                            yield self.terminal(TaskStatus.AWAITING_INPUT, str(exc))
+                            return
+                        # Approval does not freeze the world. Refresh and revalidate before dispatch.
+                        yield self.status(TaskStatus.OBSERVING, 'Approval received; rechecking the target')
+                        observation = state.observe(await self.checked(lambda: self.observer.observe(state)))
+                        await self.checked(lambda: self.executor.validate(action))
                     # Observe again if model generation/validation took long enough to stale the state.
                     if time.monotonic() - observation.captured_at > state.limits.observation_max_age:
                         yield self.status(TaskStatus.RECOVERING, 'State expired; observing again before acting')
-                        continue
+                        fresh = state.observe(await self.checked(lambda: self.observer.observe(state)))
+                        # Slow local inference must not force an endless identical generation.
+                        # Changed observations require replanning; unchanged facts can proceed
+                        # after target validation. No stale target is dispatched.
+                        if fresh.facts != observation.facts:
+                            continue
+                        await self.checked(lambda: self.executor.validate(action))
+                        if time.monotonic() - fresh.captured_at > state.limits.observation_max_age:
+                            continue
                     yield self.status(TaskStatus.EXECUTING, action.label)
                     yield 'step', {'index': index, 'state': 'running'}
                     in_flight = action
                     try:
-                        outcome = Outcome.model_validate(await self.checked(lambda: self.executor.execute(action)))
+                        outcome = Outcome.model_validate(await self.checked(lambda: self.executor.execute(action),
+                            timeout=getattr(self.executor, 'timeout_for', lambda _: None)(action)))
                     except (TaskCancelled, asyncio.CancelledError):
                         raise
                     except Exception as exc:

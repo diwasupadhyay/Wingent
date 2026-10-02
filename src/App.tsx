@@ -6,6 +6,7 @@ type Stage = 'idle' | 'planning' | 'observing' | 'verifying' | 'recovering' | 'a
 type OllamaState = 'checking' | 'running' | 'stopped' | 'starting';
 type StepState = 'pending' | 'running' | 'accepted' | 'failed' | 'not_run' | 'unknown';
 type ActionStep = { label: string; state: StepState };
+type Approval = { approval_id: string; token: string; task_id: string; tool: string; arguments: Record<string, unknown>; expires_in: number };
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
 const isTauri = () => '__TAURI_INTERNALS__' in window;
@@ -16,6 +17,10 @@ export default function App() {
   const [progress, setProgress] = useState('Ready');
   const [content, setContent] = useState('');
   const [steps, setSteps] = useState<ActionStep[]>([]);
+  const [reviewActions, setReviewActions] = useState(false);
+  const [approval, setApproval] = useState<Approval | null>(null);
+  const [approvalBusy, setApprovalBusy] = useState(false);
+  const [approvalError, setApprovalError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
@@ -80,6 +85,30 @@ export default function App() {
     setContent('Stopped. Already accepted launch requests cannot be undone; an in-flight launch may still finish.');
     setError(null);
     setErrorCode(null);
+    setApproval(null);
+    setApprovalBusy(false);
+    setApprovalError(null);
+  };
+
+  const answerApproval = async (approve: boolean) => {
+    if (!approval || approvalBusy) return;
+    const current = approval;
+    const controller = abortRef.current;
+    setApprovalBusy(true);
+    setApprovalError(null);
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/approvals/${encodeURIComponent(current.approval_id)}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: current.token, approve }), signal: controller?.signal,
+      });
+      if (!response.ok) throw new Error('Approval expired or was already answered. Stop and submit a new request.');
+      if (abortRef.current !== controller) return;
+      setApproval((pending) => pending?.approval_id === current.approval_id ? null : pending);
+    } catch (cause) {
+      if (abortRef.current === controller) setApprovalError(cause instanceof Error ? cause.message : 'Approval could not be sent.');
+    } finally {
+      if (abortRef.current === controller) setApprovalBusy(false);
+    }
   };
 
   const startOllama = async () => {
@@ -116,6 +145,9 @@ export default function App() {
     setErrorCode(null);
     setContent('');
     setSteps([]);
+    setApproval(null);
+    setApprovalError(null);
+    setApprovalBusy(false);
     let terminal = false;
     let launchStarted = false;
 
@@ -123,7 +155,7 @@ export default function App() {
       const response = await fetch(`${API_BASE_URL}/api/command`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: trimmed }),
+        body: JSON.stringify({ prompt: trimmed, review_actions: reviewActions }),
         signal: controller.signal,
       });
       if (!response.ok || !response.body) throw new Error('Wingent service is offline. Start the local backend and try again.');
@@ -143,7 +175,7 @@ export default function App() {
           const name = lines.find((line) => line.startsWith('event:'))?.slice(6).trim();
           const raw = lines.find((line) => line.startsWith('data:'))?.slice(5).trim();
           if (!raw) continue;
-          let data: { stage?: string; message?: string; text?: string; code?: string; steps?: string[]; index?: number; state?: StepState; label?: string; outcome?: string; verified?: boolean };
+          let data: { stage?: string; message?: string; text?: string; code?: string; steps?: string[]; index?: number; state?: StepState; label?: string; outcome?: string; verified?: boolean } & Partial<Approval>;
           try { data = JSON.parse(raw); } catch { continue; }
           if (name === 'status') {
             setStatus(data.stage === 'executing' ? 'tool_running' : (data.stage as Stage) ?? 'idle');
@@ -163,6 +195,12 @@ export default function App() {
             const index = data.index;
             const state = data.state;
             if (typeof index === 'number' && state) setSteps((current) => current.map((step, i) => i === index ? { ...step, state } : step));
+          } else if (name === 'confirmation_required' && data.approval_id && data.token && data.tool && data.arguments) {
+            setApproval(data as Approval);
+            setApprovalBusy(false);
+            setApprovalError(null);
+            setStatus('awaiting_input');
+            setProgress('Waiting for your approval');
           } else if (name === 'clarification') {
             terminal = true;
             setStatus('awaiting_input');
@@ -175,7 +213,7 @@ export default function App() {
           } else if (name === 'final') {
             terminal = true;
             setStatus(data.outcome === 'unverified' ? 'unverified' : 'done');
-            setProgress(data.outcome === 'unverified' ? 'Requests sent · not verified' : data.verified ? 'Goal verified' : 'Response ready');
+            setProgress(data.outcome === 'unverified' ? 'Result not verified' : data.verified ? 'Goal verified' : 'Response ready');
             setContent((current) => current || data.text || current);
           } else if (name === 'error') {
             terminal = true;
@@ -200,6 +238,8 @@ export default function App() {
       if (abortRef.current === controller) {
         abortRef.current = null;
         setLoading(false);
+        setApproval(null);
+        setApprovalBusy(false);
       }
     }
   };
@@ -225,10 +265,14 @@ export default function App() {
                 loading ? cancel() : isTauri() && void invoke('hide_overlay');
               }
             }}
-            placeholder='Ask a question or open an app or site...'
+            placeholder='Tell Wingent what you want done...'
             autoComplete='off'
             spellCheck='false'
           />
+          <button type='button' className={`review-toggle ${reviewActions ? 'review-active' : ''}`}
+            aria-label='Review actions before running' aria-pressed={reviewActions}
+            disabled={loading} onClick={() => setReviewActions((value) => !value)}
+            title='Ask before each action, including safe launches'>Review</button>
           <button
             type='button'
             className={`ollama-control ollama-${ollama}`}
@@ -256,6 +300,18 @@ export default function App() {
                 )}
               </div>
             </div>
+            {approval && (
+              <section className='approval-card' aria-label='Action approval'>
+                <div>Approve <strong>{approval.tool}</strong>?</div>
+                <pre>{JSON.stringify(approval.arguments, null, 2)}</pre>
+                <div className='approval-actions'>
+                  <button type='button' disabled={approvalBusy} onClick={() => void answerApproval(false)}>Deny</button>
+                  <button type='button' disabled={approvalBusy} onClick={() => void answerApproval(true)}>Approve once</button>
+                  <span>One action only · expires automatically</span>
+                </div>
+                {approvalError && <div role='alert'>{approvalError}</div>}
+              </section>
+            )}
             {steps.length > 0 && (
               <ol className='action-steps' aria-label='Task steps'>
                 {steps.map((step, index) => (

@@ -1,5 +1,17 @@
 # Roadmap
 
+## Current roadmap — 2026-10-02
+
+The general-purpose operator direction supersedes the legacy milestones below. Authoritative progress: `AGENT_IMPLEMENTATION_PLAN.md`, **Direction change** section.
+
+1. Production observe/reason/act/replan with runtime capability discovery and trusted extensible skills.
+2. Structured computer adapters: Windows accessibility, files, application APIs and browser DOM.
+3. Controlled process/code execution, installed-tool discovery and approved installation/configuration.
+4. Screenshot/vision with fresh-target keyboard/mouse fallback.
+5. Task continuation, checkpoints, independent verification and measured mixed-capability reliability.
+
+Individual apps are adapters and evaluation fixtures, never separate core architectures. Preserve the existing overlay/tray and local provider; build general primitives instead of hardcoded example workflows.
+
 ## Active phase tracker
 
 Use [AGENT_IMPLEMENTATION_PLAN.md](AGENT_IMPLEMENTATION_PLAN.md) for the current sequence. Phases 0 and 1 are verified complete. Phase 1 adds a generic bounded observation-driven runtime; actual launch adapters report unverified outcomes honestly. Next: Phase 2 registry-driven tool schemas and action-specific approvals, followed by Windows, browser, and Excel capabilities. These applications are adapters, not limits in the runtime.
