@@ -1,8 +1,8 @@
 # Wingent: General Computer Agent Implementation Plan
 
-Updated: 2026-10-02 (Asia/Calcutta)
+Updated: 2026-10-03 (Asia/Calcutta)
 Current instruction: **Scoped implementation is authorized. The user requested lean checks and will manually test the desktop app. Do not claim phase completion without its real-world exit gate.**
-Current implementation phase: **Phase 3 remains in progress; Phase 4 structured Windows control has begun. Phase 6 visual understanding is not implemented.**
+Current implementation phase: **Phase 3 remains in progress; Phases 4 and 5 have bounded adapters in progress. Phase 6 visual understanding is not implemented.**
 
 ## 1. Product direction
 
@@ -43,7 +43,7 @@ The current user request authorizes scoped implementation and lean verification.
 | Extensions | Explicit startup loading of trusted installed Python skill entry points | No model-enabled installation; arbitrary host plugins in frozen EXE are unsupported |
 | Verification | Host evidence gate; file content read-back | No general independent goal verifier; model finish stays unverified |
 | Working context | Bounded request-local goal/results/observations; short-lived in-memory clarification resume | No durable task checkpoints or personal memory; interrupted resumes may be lost |
-| Computer operation | Approved launches, experimental browser DOM, visible-window observation and bounded Win32 child-control observation/click/text | No general UI Automation, browser canvas control, terminal/code execution, screenshot understanding or arbitrary keyboard/mouse control |
+| Computer operation | Approved launches, experimental browser DOM, bounded Win32 control input, and exact-action-approved native process execution | No general UI Automation, browser canvas control, durable process cancellation, screenshot understanding or arbitrary keyboard/mouse control |
 
 ## 4. Phase tracker
 
@@ -56,7 +56,7 @@ Completed means the recorded phase's bounded exit criteria were met, not that th
 | 2 | Typed capability and approval contracts | Verified complete for current contracts | Validation and exact-action approval/denial/replay protections demonstrated |
 | 3 | Reliable general reasoning, working context and discovery | In progress | Held-out live tasks progress, recover and stop honestly without fixed workflows |
 | 4 | Structured computer observation and action | In progress; file, experimental browser and first approved Win32 control adapters present, but live control not yet verified | Correct targets, meaningful observations and verified effects across independent adapters |
-| 5 | Controlled process/code execution and environment discovery | Planned | Scoped approved execution, bounded output and controlled process-tree lifecycle |
+| 5 | Controlled process/code execution and environment discovery | In progress; executable discovery and approved bounded native execution added | Scoped approved execution, bounded output and controlled process-tree lifecycle |
 | 6 | Visual observation and input fallback | Planned | Fresh visual targets, scoped input and observed postconditions under failure injection |
 | 7 | Cross-capability reliability and release readiness | Planned | Reproducible mixed-task and safety evidence from the packaged application |
 
@@ -166,10 +166,12 @@ Browser acceptance example (a test, not a hardcoded route): given an unfamiliar 
 
 ### Phase 5 — Controlled process and code execution
 
-- [ ] Discover installed executables/tools and declared versions without running arbitrary discovery scripts.
-- [ ] Use explicit executable, argument vector, working directory and environment scope.
+Initial slice: `process_discover` finds native executables on PATH without running them. `process_run` accepts an exact absolute native executable, argument vector and local working directory, requires host approval for that exact action, inherits only a small environment allowlist, caps output and attempts to stop its process tree on timeout. A timeout is an unknown outcome because detached children or earlier effects may remain. This is not a sandbox, durable cancellation, installation workflow or independent goal verifier. Interactive and packaged checks are still needed.
+
+- [x] Discover native executables on PATH without running arbitrary discovery scripts; version probing remains a separate approved action.
+- [x] Use explicit executable, argument vector, working directory and minimized inherited environment for the initial native adapter.
 - [ ] Define command preview/approval, interpreter/script rules and trust boundaries; no claim that shell=false is a sandbox.
-- [ ] Bound runtime/output and own process trees; cancellation/timeouts cannot silently leave uncontrolled work running.
+- [ ] Bound runtime/output and own process trees across timeout AND cancellation; timeout handling is present, cancellation can still leave an in-flight worker until its own deadline.
 - [ ] Inspect files/diffs before modifications; verify requested outcomes independently of exit code.
 - [ ] Handle tests/builds and project repair in disposable workspaces before personal repositories.
 - [ ] Require approval for installations, elevation, system/security changes, downloads and externally visible effects as appropriate.
@@ -248,14 +250,14 @@ No open decision grants blanket authority. Continue with safe, local and isolate
 
 Recorded implementation checkpoint: `999671c` — general operator groundwork and live evaluation gaps. Earlier checkpoints: `98b95bf` (runtime), `75e2109` (audit), `48acd05` (launcher baseline). These identify source history, not bundled binaries.
 
-Current EXE path: `src-tauri/target/release/app.exe`; source health marker `operator-v5` for the new Windows-control build.
+Current EXE path: `src-tauri/target/release/app.exe`; packaged health marker `operator-v6` for the new process-capability build.
 Recorded source/packaged sidecar SHA-256:
 `1C5FEEB063136A65086F362CE507A794DE9367AA554EDFF7EBAEE05A0A412C0E`.
 
-The current backend suite passed 148 tests; the previous UI check passed 14 tests and the real model passed a simulated-browser task. This slice also ran 8 focused backend tests and 1 Rust contract test, then rebuilt the sidecar and EXE. The native shell requires `operator-v5` before using port 8000. Chrome and Edge managed control crashed in this restricted session previously, and normal Chrome fallback showed no new visible window. The EXE desktop lifecycle, live Windows control and real YouTube playback remain unverified. Previous packaged approval checks passed denial/replay but Explorer launch returned unknown here. Do not claim a working browser operator or full desktop lifecycle.
+The current backend suite passed 153 tests; the previous UI check passed 14 tests and the real model passed a simulated-browser task. This slice rebuilt the sidecar and EXE; source and packaged sidecar hashes match. The native shell requires `operator-v6` before using port 8000. Chrome and Edge managed control crashed in this restricted session previously, and normal Chrome fallback showed no new visible window. The EXE desktop lifecycle, live Windows control, process cancellation and real YouTube playback remain unverified. Previous packaged approval checks passed denial/replay but Explorer launch returned unknown here. Do not claim a working browser operator or full desktop lifecycle.
 
-Current sidecar SHA-256: `1377E969CD36138FC58C27676D07EEAB2B75922317C61C6CD215C06A423770AE`.
-Current EXE SHA-256: `79EC300E8F24EA1A1D59E5D6406232516B34B682ADA8A6A80061AA1F5D36A625`.
+Current sidecar SHA-256: `4C7404D8A36BB8F67E063D2D5921B3752B31DE14DC1EB0AB445015644F435C1E`.
+Current EXE SHA-256: `37B9AC82157057739DFE4991058830032E5B283E8F5E4AC5A5F7F8932925AE2C`.
 
 ## 10. Next execution slices
 
@@ -280,5 +282,6 @@ At each slice, distinguish four outcomes: model selected sensible actions; tools
 | 2026-10-02 | Reaffirmed general PC-operator direction, corrected current authorization, and reordered proposed work around real desktop/browser evidence | Documentation only. No implementation, test, launch, download or build was authorized or performed for this revision. Phase statuses unchanged. |
 | 2026-10-02 | Reduced agent-owned browser startup to its existing page target and bounded navigation within a longer tool timeout | Focused browser tests: 7 passed. Sidecar and no-bundle release EXE built; source and release-folder sidecar hashes match. Real interactive Chrome/YouTube playback and the EXE desktop lifecycle are not verified in this slice; Phase 4 remains in progress. |
 | 2026-10-02 | Added general Win32 child-control observation and approval-gated click/text dispatch with freshness and identity checks; changed packaged runtime marker to operator-v5 | Full backend suite: 148 passed; Rust contract test: 1 passed; sidecar and EXE builds passed, sidecar hashes match. Live desktop input, screenshots/vision and full agent reliability remain unverified; Phases 3 and 4 stay in progress, Phase 6 is not complete. |
+| 2026-10-03 | Added approved bounded native process discovery/execution, removed unused routing detector and redundant application-specific capability hints; rebuilt operator-v6 | Backend suite: 153 passed; Rust contract test: 1 passed; sidecar/EXE build passed and sidecar hashes match. Timeout is unknown; cancellation/detached children, packaged execution and goal verification remain unverified. Phase 5 in progress. |
 
 For each future slice record: authorization, phase/checklist items, hypothesis, changes, tests, live failures, packaged version, actual checkpoint, remaining risks and next action.

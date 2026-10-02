@@ -28,19 +28,19 @@ Stack: Tauri v2, React/TypeScript/Vite, Python FastAPI/SSE, replaceable local LL
 - Skills: explicitly enabled trusted Python entry points at startup. No model-controlled imports/installations or arbitrary host-plugin loading in the frozen EXE.
 - UI supports SSE progress, actions, approval/denial, cancellation, clarification answers and unverified results.
 - Packaged Windows app owns its FastAPI sidecar, stays in the tray and uses Ctrl+Space.
-- Native shell and overlay now require backend marker `operator-v5`; they refuse a stale/other listener on port 8000 instead of sending tasks to it. The user must quit the old process and restart the new EXE; Wingent does not kill an unknown port occupant.
+- Native shell and overlay now require backend marker `operator-v6`; they refuse a stale/other listener on port 8000 instead of sending tasks to it. The user must quit the old process and restart the new EXE; Wingent does not kill an unknown port occupant.
 
-An initial Win32 child-control adapter offers bounded observation and approved, fresh-target click/text dispatch. General Windows UI Automation, terminal/code execution, arbitrary keyboard/mouse and screenshot vision are not implemented. The narrow browser DOM/media slice is experimental. Genuine model clarifications can resume the original task from a short-lived in-memory state without replaying completed actions; state is not durable.
+An initial Win32 child-control adapter offers bounded observation and approved, fresh-target click/text dispatch. An approved native process adapter can discover executables and run exact arguments with bounded output/time, but is not a sandbox or durable cancellation. General Windows UI Automation, arbitrary keyboard/mouse and screenshot vision are not implemented. The narrow browser DOM/media slice is experimental. Genuine model clarifications can resume the original task from a short-lived in-memory state without replaying completed actions; state is not durable.
 
 ## Status and evidence
 
 Phases 0–2 are complete for their bounded recorded contracts. **Phase 3 remains in progress.**
 
-Current slice: 148 backend tests, previous 14 UI tests, 1 Rust contract test and frontend/sidecar/EXE builds pass. Two isolated live file variants passed once each in source and again through the frozen sidecar. The installed model passed a simulated-browser Joji sequence, but actual Chrome/Edge CDP control crashed with `0x80000003` here; real playback is not verified. This does not meet the held-out/repeated reliability gate. Packaged approval denial/replay passed previously; approved Explorer launch returned unknown in this restricted launch environment. The GUI EXE also exited before its backend was reachable when launched hidden here; desktop lifecycle needs an interactive check. A model-only completion assessor had previously hallucinated success and was removed.
+Current slice: 153 backend tests, previous 14 UI tests, 1 Rust contract test and frontend/sidecar/EXE builds pass. Two isolated live file variants passed once each in source and again through the frozen sidecar. The installed model passed a simulated-browser Joji sequence, but actual Chrome/Edge CDP control crashed with `0x80000003` here; real playback is not verified. This does not meet the held-out/repeated reliability gate. Packaged approval denial/replay passed previously; approved Explorer launch returned unknown in this restricted launch environment. The GUI EXE also exited before its backend was reachable when launched hidden here; desktop lifecycle needs an interactive check. A model-only completion assessor had previously hallucinated success and was removed.
 
 Do not treat read-back equality, a model finish message or launch acceptance as whole-goal verification. The model is not proven to be the sole source of failure.
 
-Prior source checkpoint: 999671c. Release path: src-tauri/target/release/app.exe. Backend health marker in source: operator-v5. Check hashes and current process state before treating a running binary as current.
+Prior source checkpoint: 60d7a44. Release path: src-tauri/target/release/app.exe. Backend health marker in source: operator-v6. Check hashes and current process state before treating a running binary as current.
 
 ## Next work
 

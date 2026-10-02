@@ -1,6 +1,6 @@
 # Wingent Roadmap
 
-Updated: 2026-10-02. The latest request authorizes scoped implementation and evaluation.
+Updated: 2026-10-03. The latest request authorizes scoped implementation and evaluation.
 
 The product is a general-purpose personal computer agent. The user supplies a goal; Wingent discovers and combines capabilities to achieve it. Applications are adapters and test fixtures, not separate product phases.
 
@@ -13,7 +13,7 @@ The sole detailed tracker is [AGENT_IMPLEMENTATION_PLAN.md](AGENT_IMPLEMENTATION
 | 2 | Typed capabilities and bound approvals | Complete for current contracts |
 | 3 | Reliable reasoning, working context and skill discovery | In progress; two isolated live file variants passed once, full reliability gate unmet |
 | 4 | Structured computer observation/action | Experimental Chrome adapter added; live control/playback not verified; file primitives exist |
-| 5 | Controlled process/code execution | Planned |
+| 5 | Controlled process/code execution | In progress; discovery and approved native execution added, cancellation/recovery not complete |
 | 6 | Vision and input fallback | Planned |
 | 7 | Cross-capability reliability and release readiness | Planned |
 

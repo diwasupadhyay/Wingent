@@ -1,6 +1,6 @@
 # Wingent Architecture
 
-Updated: 2026-10-02. This document separates current implementation from proposed design. Phase status and execution authorization belong to [AGENT_IMPLEMENTATION_PLAN.md](AGENT_IMPLEMENTATION_PLAN.md).
+Updated: 2026-10-03. This document separates current implementation from proposed design. Phase status and execution authorization belong to [AGENT_IMPLEMENTATION_PLAN.md](AGENT_IMPLEMENTATION_PLAN.md).
 
 ## Product and boundaries
 
@@ -20,6 +20,8 @@ Intended loop: goal → understand → plan → observe → select capability �
 | tools.py / capabilities.py | Typed tool contracts, permissions, metadata, guidance | Built-in launchers retain narrow compatibility behavior |
 | approvals.py | Expiring task/action/revision-bound single-use approvals | Not a security boundary against a compromised local session |
 | file_tools.py | Approved list/read/create primitives | No destructive mutation or adversarial filesystem sandbox |
+| desktop_tools.py | Approved fresh-target Win32 child-control click and text dispatch | Does not see browser/canvas pixels or verify whole workflows |
+| process_tools.py | Native executable discovery and approved bounded process run | Not a sandbox; cancellation/detached children are not fully controlled |
 | browser_tools.py | Experimental isolated Chrome profile, page/link/media observation and bounded navigation/play attempt | Live CDP control did not complete in this restricted session; no playback claim |
 | window_observer.py | Read-only visible top-level window/process/title observations and launch visibility check | Does not establish focus, page state or user-visible foreground |
 | plugins.py | Explicit trusted startup entry-point loading | No model-driven loading or arbitrary frozen host-plugin support |
@@ -68,6 +70,6 @@ A planner proposes criteria; it cannot certify its own execution. Planned verifi
 
 Tauri hosts the React overlay; the packaged app owns a frozen FastAPI sidecar on loopback. Development starts the backend separately. Tray Quit handles the owned backend tree; closing the overlay hides it. Ollama remains a separately installed local service.
 
-An initial Win32 child-control adapter observes selected visible windows and provides approval-gated, fresh-target click/text dispatch. It is not general Windows UI Automation or screenshot/vision understanding. Terminal/code execution and arbitrary visual input do not exist yet. A limited agent-owned Chrome DOM/media adapter is present but not live-verified; personal Chrome sessions remain untouched. Plugin entry points are trusted code and must be packaged with the frozen backend. Current local approval tokens and filesystem path checks are not a universal sandbox.
+An initial Win32 child-control adapter observes selected visible windows and provides approval-gated, fresh-target click/text dispatch. It is not general Windows UI Automation or screenshot/vision understanding. An approved native process adapter can discover executables and run exact argument vectors with bounded output/time; it is not a sandbox or durable cancellation. Arbitrary visual input does not exist yet. A limited agent-owned Chrome DOM/media adapter is present but not live-verified; personal Chrome sessions remain untouched. Plugin entry points are trusted code and must be packaged with the frozen backend. Current local approval tokens and filesystem path checks are not a universal sandbox.
 
 Code slices must rebuild and test both backend sidecar and EXE. The current slice did so; see the plan for exact evidence and limitations.

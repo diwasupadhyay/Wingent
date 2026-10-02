@@ -1,6 +1,6 @@
 # Wingent Memory
 
-Updated: 2026-10-02. This is resume context, not a second phase tracker.
+Updated: 2026-10-03. This is resume context, not a second phase tracker.
 
 ## Latest user instruction
 
@@ -18,7 +18,7 @@ Authoritative tracker: [docs/AGENT_IMPLEMENTATION_PLAN.md](docs/AGENT_IMPLEMENTA
 - Phase 3: registry-driven next-tool reasoning, typed arguments, outcome feedback, general approved file primitives and opt-in trusted skill entry points exist.
 - Phase 3 remains incomplete. Recent bounded duplicate repair and distinct-result context let two isolated real-model file tasks pass once each; this does not meet the varied/held-out reliability gate. A model-only completion assessor had hallucinated success and was removed.
 - Fixed 2048-byte read pages replaced model-selected page sizes after a one-byte-read failure.
-- No general desktop/accessibility, terminal/code, arbitrary keyboard/mouse or vision tools yet; the narrow browser DOM adapter remains experimental.
+- Initial Win32 child-control input and exact-action-approved native process execution exist; general UI accessibility, durable terminal lifecycle, arbitrary keyboard/mouse and vision remain unavailable. The narrow browser DOM adapter remains experimental.
 - An experimental agent-owned Chrome DOM/media adapter was added after a reported YouTube playback failure; Chrome and Edge exited with `0x80000003` on CDP commands in this restricted session. Normal Chrome fallback showed no new visible window here. Playback remains unverified. The installed model passed a simulated-browser search → observed link → play fixture. Read-only window observation, invented-path/URL/index rejection and duplicate no-effect prevention were added.
 - After the same old trace recurred, native startup was found to accept any `service: wingent` on port 8000. It now requires the current runtime marker and blocks incompatible submissions instead of silently using a stale backend.
 - Initial desktop adapter: observe visible Win32 child controls, then exact-action-approved click or text entry against a fresh window/control identity. This is not visual screen understanding or a claim of general computer control.
@@ -27,9 +27,9 @@ Authoritative tracker: [docs/AGENT_IMPLEMENTATION_PLAN.md](docs/AGENT_IMPLEMENTA
 
 ## Recorded evidence
 
-Current slice: 148 backend, previous 14 UI and 1 Rust contract test pass; frontend, sidecar and native EXE built. Two isolated live file variants passed once with llama3.2:3b, also through the frozen sidecar. A simulated-browser Joji sequence passed with the real model; actual Chrome/Edge control crashed and playback was not verified. Packaged denial/replay passed previously; approved Explorer launch had an unknown outcome here. Alternative model and Playwright downloads failed because outbound access is blocked.
+Current slice: 153 backend, previous 14 UI and 1 Rust contract test pass; frontend, sidecar and native EXE built. Two isolated live file variants passed once with llama3.2:3b, also through the frozen sidecar. A simulated-browser Joji sequence passed with the real model; actual Chrome/Edge control crashed and playback was not verified. Packaged denial/replay passed previously; approved Explorer launch had an unknown outcome here. Alternative model and Playwright downloads failed because outbound access is blocked.
 
-Prior checkpoint: 999671c. Current source backend marker: operator-v5. EXE: src-tauri/target/release/app.exe. Rebuild and check process identity before calling it current.
+Latest checkpoint: 60d7a44. Current source backend marker: operator-v6. EXE: src-tauri/target/release/app.exe. Rebuild and check process identity before calling it current.
 
 ## Next when authorized
 

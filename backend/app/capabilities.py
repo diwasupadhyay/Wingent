@@ -58,7 +58,4 @@ CAPABILITIES = (
     Capability('windows', 'observe_windows lists visible window_id, process and title. desktop_observe reads bounded Win32 child controls of a selected window_id; desktop_click_control and desktop_type_text require exact-action user approval and a fresh observation_id. These do not see Chrome DOM, canvas pixels or the whole screen. Never claim a click or typed text completed the goal without a later observation.'),
     Capability('browser', 'For interactive web goals use browser_search/browser_open in a separate agent-owned Chrome profile, then browser_inspect, browser_follow_link using an observed index, and browser_play_media for playback. Legacy open_url/search_web only send launch requests and cannot observe a page. Do not use file tools for web content or invent local media paths. Personal Chrome tabs/profiles are not attached.'),
     Capability('files', 'Open existing local directories only. Known aliases: downloads, desktop, documents, pictures, music, videos, home. For other folders require an exact user-supplied path. Never invent a path.'),
-    Capability('youtube', 'For playback search keywords with browser_search site youtube, inspect observed video links, follow one, then call browser_play_media and use its time-progress result. If access/playback fails, report it honestly.'),
-    Capability('excel', 'Workbook inspection and editing are not installed yet.', False),
-    Capability('research', 'Page extraction and source-backed research are not installed yet.', False),
 )

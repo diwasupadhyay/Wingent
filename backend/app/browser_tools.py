@@ -56,7 +56,6 @@ class BrowserSession:
         self._page_id = None
         self._observed_links = []
         self._fallback_url = None
-        self._startup_error = None
         atexit.register(self.close)
 
     def close(self):
@@ -94,7 +93,6 @@ class BrowserSession:
             return
         self.close()
         self._profile = tempfile.TemporaryDirectory(prefix='wingent-browser-', ignore_cleanup_errors=True)
-        self._startup_error = None
         self._process = subprocess.Popen([
             resolve_browser(self.browser), f'--user-data-dir={self._profile.name}',
             '--remote-debugging-port=0', '--remote-debugging-address=127.0.0.1',

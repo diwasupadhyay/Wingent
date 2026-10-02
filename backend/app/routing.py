@@ -18,12 +18,6 @@ _APP_NAMES = {
 }
 _BROWSER_APPS = {'chrome', 'edge'}
 _DOMAIN = r'(?:https?://)?(?:www\.)?[a-z0-9][a-z0-9.-]+\.(?:com|org|net|io|dev)(?:/[^\s]*)?'
-_ACTION_PREFIX = re.compile(
-    r'^(?:(?:please|can you|could you|would you)\s+)?'
-    r'(?:open|launch|start|visit|go to|search|seach|serach|look up|check|read|send|delete|'
-    r'move|rename|type|click|take a screenshot|find a file)\b',
-    re.IGNORECASE,
-)
 
 
 def requests_unsupported_browser_automation(prompt: str) -> bool:
@@ -34,10 +28,6 @@ def requests_unsupported_browser_automation(prompt: str) -> bool:
             flags=re.IGNORECASE,
         )
     )
-
-
-def looks_like_action_request(prompt: str) -> bool:
-    return bool(_ACTION_PREFIX.match(prompt.strip()))
 
 
 def _parse_segment(segment: str) -> ToolAction | None:

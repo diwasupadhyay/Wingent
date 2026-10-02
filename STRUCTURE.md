@@ -15,6 +15,8 @@ Updated: 2026-10-02. Current ownership map; proposed work is tracked in docs/AGE
 - backend/app/file_tools.py — approved directory listing, bounded text reads and exclusive new artifacts.
 - backend/app/browser_tools.py — experimental agent-owned Chrome page/link/media adapter; live control remains unverified.
 - backend/app/window_observer.py — read-only visible-window/process/title enumeration and launch visibility check.
+- backend/app/desktop_tools.py — bounded Win32 child-control observation and approved fresh-target input.
+- backend/app/process_tools.py — native executable discovery and exact-action-approved bounded process run.
 - backend/app/plugins.py — explicitly enabled trusted skill entry points.
 - backend/app/launch_runtime.py — shared registry execution/approval adapter, budgeted provider and launch compatibility behavior.
 - backend/app/executor.py — compatibility execution and disconnect-aware waits.
