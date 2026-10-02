@@ -10,6 +10,8 @@ import threading
 import time
 from ctypes import wintypes
 
+from typing import Literal
+
 from pydantic import Field
 
 from app.capabilities import Arguments
@@ -28,6 +30,12 @@ class ClickTarget(ObserveTarget):
 
 class TypeTarget(ClickTarget):
     text: str = Field(min_length=1, max_length=500)
+
+
+class KeyTarget(ObserveTarget):
+    observation_id: int = Field(gt=0)
+    key: Literal['enter', 'escape', 'tab', 'shift_tab', 'space', 'up', 'down',
+                 'left', 'right', 'home', 'end', 'page_up', 'page_down']
 
 
 def _user32():
@@ -78,12 +86,13 @@ def _control_snapshot(window_id):
 
 class DesktopSession:
     def __init__(self, snapshot=_control_snapshot, windows=list_visible_windows,
-                 clock=time.monotonic, click=None, type_text=None):
+                 clock=time.monotonic, click=None, type_text=None, press_key=None):
         self.snapshot = snapshot
         self.windows = windows
         self.clock = clock
         self.click_dispatch = click or _click
         self.type_dispatch = type_text or _type_text
+        self.key_dispatch = press_key or _press_key
         self.lock = threading.RLock()
         self.last = None
         self.sequence = 0
@@ -104,6 +113,17 @@ class DesktopSession:
                     'limitation': 'Win32 child controls only; browser and canvas contents are not visible.'}
 
     def _target(self, window_id, control_id, observation_id):
+        self._target_window(window_id, observation_id)
+        prior = self.last
+        old = prior['controls'].get(control_id)
+        new = next((c for c in self.snapshot(window_id) if c['control_id'] == control_id), None)
+        if not old or not new or any(old[k] != new[k] for k in ('class', 'text', 'rect', 'password')):
+            raise ValueError('Control changed; observe again.')
+        if old['password']:
+            raise ValueError('Password controls require direct user interaction.')
+        return new
+
+    def _target_window(self, window_id, observation_id):
         prior = self.last
         if not prior or prior['id'] != observation_id or prior['window']['hwnd'] != window_id:
             raise ValueError('Target is not from the latest desktop observation.')
@@ -112,13 +132,19 @@ class DesktopSession:
         current = next((w for w in self.windows() if w['hwnd'] == window_id), None)
         if not current or any(current[k] != prior['window'][k] for k in ('pid', 'executable', 'title')):
             raise ValueError('Window identity changed; observe again.')
-        old = prior['controls'].get(control_id)
-        new = next((c for c in self.snapshot(window_id) if c['control_id'] == control_id), None)
-        if not old or not new or any(old[k] != new[k] for k in ('class', 'text', 'rect', 'password')):
-            raise ValueError('Control changed; observe again.')
-        if old['password']:
-            raise ValueError('Password controls require direct user interaction.')
-        return new
+        return current
+
+    def press_key(self, window_id, observation_id, key):
+        with self.lock:
+            try:
+                self._target_window(window_id, observation_id)
+            except ValueError as exc:
+                return {'ok': False, 'effect': 'no_effect', 'reason': str(exc)}
+            self.last = None
+            self.key_dispatch(window_id, key)
+            return {'ok': True, 'effect': 'accepted',
+                    'reason': 'Key dispatched to the selected window; whole-goal effect not verified.',
+                    'post_observation': self._post_observe(window_id)}
 
     def click(self, window_id, control_id, observation_id):
         with self.lock:
@@ -170,6 +196,44 @@ def _focus_control(window_id, control_id):
     user32.SetFocus(control_id)
 
 
+def _press_key(window_id, key):
+    codes = {'enter': 0x0D, 'escape': 0x1B, 'tab': 0x09, 'space': 0x20,
+             'up': 0x26, 'down': 0x28, 'left': 0x25, 'right': 0x27,
+             'home': 0x24, 'end': 0x23, 'page_up': 0x21, 'page_down': 0x22}
+    user32 = _user32()
+    user32.SetForegroundWindow.argtypes = [wintypes.HWND]
+    user32.GetForegroundWindow.restype = wintypes.HWND
+    if not user32.SetForegroundWindow(window_id) or user32.GetForegroundWindow() != window_id:
+        raise RuntimeError('Could not focus the target window; no key was dispatched.')
+
+    class KEYBDINPUT(ctypes.Structure):
+        _fields_ = [('wVk', wintypes.WORD), ('wScan', wintypes.WORD),
+                    ('dwFlags', wintypes.DWORD), ('time', wintypes.DWORD),
+                    ('dwExtraInfo', ctypes.c_size_t)]
+
+    class MOUSEINPUT(ctypes.Structure):
+        _fields_ = [('dx', wintypes.LONG), ('dy', wintypes.LONG),
+                    ('mouseData', wintypes.DWORD), ('dwFlags', wintypes.DWORD),
+                    ('time', wintypes.DWORD), ('dwExtraInfo', ctypes.c_size_t)]
+
+    class INPUTUNION(ctypes.Union):
+        _fields_ = [('ki', KEYBDINPUT), ('mi', MOUSEINPUT)]
+
+    class INPUT(ctypes.Structure):
+        _fields_ = [('type', wintypes.DWORD), ('data', INPUTUNION)]
+
+    sequence = [0x10, codes.get(key, 0x09)] if key == 'shift_tab' else [codes[key]]
+    events = [INPUT(1, INPUTUNION(ki=KEYBDINPUT(code, 0, 0, 0, 0))) for code in sequence]
+    events.extend(INPUT(1, INPUTUNION(ki=KEYBDINPUT(code, 0, 0x0002, 0, 0)))
+                  for code in reversed(sequence))
+    user32.SendInput.argtypes = [wintypes.UINT, ctypes.POINTER(INPUT), ctypes.c_int]
+    user32.SendInput.restype = wintypes.UINT
+    batch = (INPUT * len(events))(*events)
+    sent = user32.SendInput(len(events), batch, ctypes.sizeof(INPUT))
+    if sent != len(events):
+        raise RuntimeError('Key input was only partly dispatched; effect is unknown.')
+
+
 def _click(window_id, control_id, rect):
     _focus_control(window_id, control_id)
     user32 = _user32()
@@ -208,4 +272,7 @@ def register(registry, session=None):
     registry.register('desktop_type_text', 'Type up to 500 characters into a freshly observed non-password Win32 Edit control.',
                       ToolPermission.CONFIRMATION_REQUIRED, {}, lambda p: session.type_text(**p),
                       input_model=TypeTarget, capability='windows', timeout_seconds=10)
+    registry.register('desktop_press_key', 'Press one navigation or activation key in a freshly observed visible window; observe the result.',
+                      ToolPermission.CONFIRMATION_REQUIRED, {}, lambda p: session.press_key(**p),
+                      input_model=KeyTarget, capability='windows', timeout_seconds=10)
     return session

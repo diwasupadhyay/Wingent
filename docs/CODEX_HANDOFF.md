@@ -28,9 +28,9 @@ Stack: Tauri v2, React/TypeScript/Vite, Python FastAPI/SSE, replaceable local LL
 - Skills: explicitly enabled trusted Python entry points at startup. No model-controlled imports/installations or arbitrary host-plugin loading in the frozen EXE.
 - UI supports SSE progress, actions, approval/denial, cancellation, clarification answers and unverified results.
 - Packaged Windows app owns its FastAPI sidecar, stays in the tray and uses Ctrl+Space.
-- Native shell and overlay now require backend marker `operator-v8`; they refuse a stale/other listener on port 8000 instead of sending tasks to it. The user must quit the old process and restart the new EXE; Wingent does not kill an unknown port occupant.
+- Native shell and overlay now require backend marker `operator-v9`; they refuse a stale/other listener on port 8000 instead of sending tasks to it. The user must quit the old process and restart the new EXE; Wingent does not kill an unknown port occupant.
 
-An initial Win32 child-control adapter offers bounded observation and approved, fresh-target click/text dispatch with post-action observations. An approved native process adapter can discover executables and run exact arguments with bounded output/time; task cancellation attempts to stop its owned process, but detached descendants remain uncertain. It is not a sandbox. General Windows UI Automation, arbitrary keyboard/mouse and screenshot vision are not implemented. The narrow browser DOM/media slice is experimental. Genuine model clarifications can resume the original task from a short-lived in-memory state without replaying completed actions; state is not durable.
+An initial Win32 child-control adapter offers bounded observation and approved, fresh-target click/text plus single navigation-key dispatch with post-action observations. An approved native process adapter can discover executables and run exact arguments with bounded output/time; task cancellation attempts to stop its owned process, but detached descendants remain uncertain. It is not a sandbox. General Windows UI Automation, arbitrary keyboard/mouse and screenshot vision are not implemented. The narrow browser DOM/media slice is experimental. Genuine model clarifications can resume the original task from a short-lived in-memory state without replaying completed actions; state is not durable.
 
 ## Status and evidence
 
@@ -40,7 +40,7 @@ Current slice: 159 backend tests, previous 14 UI tests, 1 Rust contract test and
 
 Do not treat read-back equality, a model finish message or launch acceptance as whole-goal verification. The model is not proven to be the sole source of failure.
 
-Prior source checkpoint: c1bd440. Release path: src-tauri/target/release/app.exe. Backend health marker in source: operator-v8. Check hashes and current process state before treating a running binary as current.
+Prior source checkpoint: e6cfbb6. Release path: src-tauri/target/release/app.exe. Backend health marker in source: operator-v9. Check hashes and current process state before treating a running binary as current.
 
 ## Next work
 

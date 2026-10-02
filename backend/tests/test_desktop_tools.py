@@ -64,3 +64,39 @@ def test_click_returns_fresh_bounded_post_action_observation(monkeypatch):
     assert result['effect'] == 'accepted'
     assert result['post_observation']['controls'][0]['text'] == 'After'
     assert result['post_observation']['observation_id'] > observed['observation_id']
+
+
+def test_key_requires_fresh_window_and_returns_post_observation(monkeypatch):
+    monkeypatch.setattr('app.desktop_tools.time.sleep', lambda _: None)
+    now = [100.0]
+    state = {'title': 'Fixture', 'text': 'Before'}
+    calls = []
+    session = DesktopSession(
+        snapshot=lambda _: [{'control_id': 14, 'class': 'Button', 'text': state['text'],
+                              'rect': [0, 0, 100, 40], 'password': False}],
+        windows=lambda: [{'hwnd': 12, 'pid': 40, 'executable': 'fixture.exe',
+                          'title': state['title'], 'process': 'fixture.exe'}],
+        clock=lambda: now[0],
+        press_key=lambda window_id, key: (calls.append((window_id, key)), state.update(text='After')))
+    observation = session.observe(12)
+    state['title'] = 'Different'
+    assert session.press_key(12, observation['observation_id'], 'enter')['effect'] == 'no_effect'
+    assert not calls
+    state['title'] = 'Fixture'
+    now[0] += 11
+    assert session.press_key(12, observation['observation_id'], 'enter')['effect'] == 'no_effect'
+    fresh = session.observe(12)
+    result = session.press_key(12, fresh['observation_id'], 'enter')
+    assert calls == [(12, 'enter')]
+    assert result['effect'] == 'accepted'
+    assert result['post_observation']['controls'][0]['text'] == 'After'
+    assert session.press_key(12, fresh['observation_id'], 'enter')['effect'] == 'no_effect'
+
+
+def test_key_tool_has_exact_action_approval_and_bounded_schema():
+    registry = ToolRegistry()
+    register(registry, DesktopSession(snapshot=lambda _: [], windows=lambda: []))
+    tool = registry.get_tool('desktop_press_key')
+    assert tool.permission == ToolPermission.CONFIRMATION_REQUIRED
+    assert 'enter' in str(tool.input_model.model_json_schema())
+    assert 'ctrl_alt_delete' not in str(tool.input_model.model_json_schema())
