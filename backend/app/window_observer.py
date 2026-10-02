@@ -9,6 +9,14 @@ from app.capabilities import Arguments
 from app.tools import ToolPermission
 
 
+def foreground_window_id():
+    if os.name != 'nt':
+        return None
+    user32 = ctypes.WinDLL('user32', use_last_error=True)
+    user32.GetForegroundWindow.restype = wintypes.HWND
+    return int(user32.GetForegroundWindow() or 0) or None
+
+
 def list_visible_windows(limit=40):
     if os.name != 'nt':
         return []
@@ -62,11 +70,14 @@ def visible_window_for_executable(executable: str) -> bool:
 def register(registry):
     def observe(_):
         windows = list_visible_windows()
+        foreground = foreground_window_id()
+        observed_foreground = foreground if any(item['hwnd'] == foreground for item in windows) else 0
         return {'ok': True, 'windows': [
             {'title': item['title'], 'process': item['process'], 'pid': item['pid'],
-             'window_id': item['hwnd']}
+             'window_id': item['hwnd'], 'is_foreground': item['hwnd'] == observed_foreground}
             for item in windows], 'truncated': len(windows) >= 40,
-            'observation': 'Visible top-level windows only; no focus or page-content guarantee.'}
-    registry.register('observe_windows', 'List visible top-level Windows application windows, with process names and titles.',
+            'foreground_window_id': observed_foreground,
+            'observation': 'Visible top-level windows and foreground identity at capture time (0 means unlisted); no page-content or pixel understanding.'}
+    registry.register('observe_windows', 'List visible top-level Windows windows, with process/title and current foreground window.',
                       ToolPermission.SAFE, {}, observe, input_model=Arguments,
                       capability='windows', timeout_seconds=10, retry_safe=True)

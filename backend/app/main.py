@@ -58,7 +58,7 @@ def sse_event(event: str, payload: dict[str, object]) -> str:
 
 @app.get('/health')
 def health() -> dict[str, str]:
-    return {'status': 'ok', 'service': 'wingent', 'runtime': 'operator-v9'}
+    return {'status': 'ok', 'service': 'wingent', 'runtime': 'operator-v10'}
 
 
 class ApprovalResponse(BaseModel):

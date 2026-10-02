@@ -77,7 +77,8 @@ def test_key_requires_fresh_window_and_returns_post_observation(monkeypatch):
         windows=lambda: [{'hwnd': 12, 'pid': 40, 'executable': 'fixture.exe',
                           'title': state['title'], 'process': 'fixture.exe'}],
         clock=lambda: now[0],
-        press_key=lambda window_id, key: (calls.append((window_id, key)), state.update(text='After')))
+        press_key=lambda window_id, key: (calls.append((window_id, key)), state.update(text='After')),
+        foreground=lambda: 12)
     observation = session.observe(12)
     state['title'] = 'Different'
     assert session.press_key(12, observation['observation_id'], 'enter')['effect'] == 'no_effect'
@@ -90,6 +91,7 @@ def test_key_requires_fresh_window_and_returns_post_observation(monkeypatch):
     assert calls == [(12, 'enter')]
     assert result['effect'] == 'accepted'
     assert result['post_observation']['controls'][0]['text'] == 'After'
+    assert result['post_observation']['is_foreground'] is True
     assert session.press_key(12, fresh['observation_id'], 'enter')['effect'] == 'no_effect'
 
 

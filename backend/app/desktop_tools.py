@@ -16,7 +16,7 @@ from pydantic import Field
 
 from app.capabilities import Arguments
 from app.tools import ToolPermission
-from app.window_observer import list_visible_windows
+from app.window_observer import foreground_window_id, list_visible_windows
 
 
 class ObserveTarget(Arguments):
@@ -86,13 +86,15 @@ def _control_snapshot(window_id):
 
 class DesktopSession:
     def __init__(self, snapshot=_control_snapshot, windows=list_visible_windows,
-                 clock=time.monotonic, click=None, type_text=None, press_key=None):
+                 clock=time.monotonic, click=None, type_text=None, press_key=None,
+                 foreground=foreground_window_id):
         self.snapshot = snapshot
         self.windows = windows
         self.clock = clock
         self.click_dispatch = click or _click
         self.type_dispatch = type_text or _type_text
         self.key_dispatch = press_key or _press_key
+        self.foreground = foreground
         self.lock = threading.RLock()
         self.last = None
         self.sequence = 0
@@ -109,6 +111,7 @@ class DesktopSession:
                          'controls': {c['control_id']: c for c in controls}}
             return {'ok': True, 'window_id': window_id, 'observation_id': self.sequence,
                     'process': match['process'], 'title': match['title'],
+                    'is_foreground': self.foreground() == window_id,
                     'controls': controls, 'truncated': len(controls) >= 60,
                     'limitation': 'Win32 child controls only; browser and canvas contents are not visible.'}
 
