@@ -99,7 +99,8 @@ class AgentRuntime:
                 # An uncertain effect cannot be retried or ignored by a model.
                 if state.records and state.records[-1].outcome.status == 'unknown':
                     yield self.terminal(TaskStatus.FAILED,
-                        'The last action has an unknown outcome. Check its result before submitting another task. '
+                        'The last action has an unknown outcome: ' + state.records[-1].outcome.summary + ' '
+                        'Check its result before submitting another task. '
                         'Remaining actions were not run.', 'partial_execution')
                     return
                 if state.decisions >= state.limits.decisions:

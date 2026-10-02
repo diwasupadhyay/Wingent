@@ -14,6 +14,24 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 const COLLAPSED_HEIGHT: f64 = 92.0;
 const EXPANDED_HEIGHT: f64 = 300.0;
+const REQUIRED_BACKEND_RUNTIME: &str = "operator-v5";
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum BackendHealth {
+  Ready,
+  Incompatible,
+  Unavailable,
+}
+
+impl BackendHealth {
+  fn as_str(self) -> &'static str {
+    match self {
+      Self::Ready => "ready",
+      Self::Incompatible => "incompatible",
+      Self::Unavailable => "unavailable",
+    }
+  }
+}
 
 struct BackendProcess(Mutex<Option<Child>>);
 
@@ -48,10 +66,29 @@ impl Drop for BackendProcess {
   }
 }
 
-fn backend_is_running() -> bool {
+fn classify_backend_response(response: &str) -> BackendHealth {
+  if !response.starts_with("HTTP/1.1 200") {
+    return BackendHealth::Incompatible;
+  }
+  let Some((_, body)) = response.split_once("\r\n\r\n") else {
+    return BackendHealth::Incompatible;
+  };
+  let Ok(value) = serde_json::from_str::<serde_json::Value>(body) else {
+    return BackendHealth::Incompatible;
+  };
+  if value.get("service").and_then(|item| item.as_str()) == Some("wingent")
+    && value.get("runtime").and_then(|item| item.as_str()) == Some(REQUIRED_BACKEND_RUNTIME)
+  {
+    BackendHealth::Ready
+  } else {
+    BackendHealth::Incompatible
+  }
+}
+
+fn backend_health() -> BackendHealth {
   let address = SocketAddr::from(([127, 0, 0, 1], 8000));
   let Ok(mut stream) = TcpStream::connect_timeout(&address, Duration::from_millis(300)) else {
-    return false;
+    return BackendHealth::Unavailable;
   };
   let _ = stream.set_read_timeout(Some(Duration::from_millis(500)));
   let _ = stream.set_write_timeout(Some(Duration::from_millis(500)));
@@ -59,7 +96,7 @@ fn backend_is_running() -> bool {
     .write_all(b"GET /health HTTP/1.1\r\nHost: 127.0.0.1\r\nConnection: close\r\n\r\n")
     .is_err()
   {
-    return false;
+    return BackendHealth::Incompatible;
   }
   let mut response = Vec::with_capacity(512);
   let mut buffer = [0u8; 512];
@@ -71,12 +108,12 @@ fn backend_is_running() -> bool {
     }
   }
   let response = String::from_utf8_lossy(&response);
-  response.starts_with("HTTP/1.1 200") && response.contains("\"service\":\"wingent\"")
+  classify_backend_response(&response)
 }
 
 #[tauri::command]
-fn backend_status() -> bool {
-  backend_is_running()
+fn backend_status() -> &'static str {
+  backend_health().as_str()
 }
 
 fn start_backend_sidecar() -> Result<Child, String> {
@@ -204,16 +241,19 @@ pub fn run() {
       set_overlay_expanded
     ])
     .setup(|app| {
-      let backend_child = if backend_is_running() {
-        None
-      } else {
-        match start_backend_sidecar() {
+      let backend_child = match backend_health() {
+        BackendHealth::Ready => None,
+        BackendHealth::Incompatible => {
+          log::error!("Another service or an outdated Wingent backend occupies 127.0.0.1:8000; refusing to use it.");
+          None
+        }
+        BackendHealth::Unavailable => match start_backend_sidecar() {
           Ok(child) => Some(child),
           Err(error) => {
             log::error!("{error}");
             None
           }
-        }
+        },
       };
       app.manage(BackendProcess(Mutex::new(backend_child)));
 
@@ -277,4 +317,19 @@ pub fn run() {
         app.state::<BackendProcess>().stop();
       }
     });
+}
+
+#[cfg(test)]
+mod tests {
+  use super::{classify_backend_response, BackendHealth};
+
+  #[test]
+  fn refuses_stale_or_unrelated_loopback_backend() {
+    let current = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"service\":\"wingent\",\"runtime\":\"operator-v5\"}";
+    let stale = current.replace("operator-v5", "operator-v4");
+    let unrelated = current.replace("wingent", "another-service");
+    assert!(matches!(classify_backend_response(current), BackendHealth::Ready));
+    assert!(matches!(classify_backend_response(&stale), BackendHealth::Incompatible));
+    assert!(matches!(classify_backend_response(&unrelated), BackendHealth::Incompatible));
+  }
 }

@@ -1,43 +1,48 @@
-# Structure
+# Wingent Repository Structure
 
-## Desktop runtime additions
-- `backend/app/capabilities.py`: typed tool contracts and trusted capability guidance.
-- `backend/app/capability_planner.py`: registry-generated tool plan schemas and bounded generation/repair.
-- `backend/app/approvals.py`: task/action/revision-bound, expiring single-use approvals.
-- `scripts/smoke-approvals.py`: opt-in packaged approval test; denies a URL launch, then approves opening the repository folder once.
-- `backend/app/task_state.py`: generic task/action/observation/evidence models, execution budgets, compact working context.
-- `backend/app/runtime.py`: application-independent observation-driven execution and verification state machine.
-- `backend/app/launch_runtime.py`: production registry adapter, initial-plan compatibility, bounded provider, launch-only observation boundary.
-- `backend/tests/test_runtime.py`: controlled-adapter tests for adaptive actions, verification, failure recovery, cancellation, and budgets.
-- `backend/tests/test_launch_runtime.py`: production-adapter and API integration regression tests.
-- `backend/app/planner.py`: strict bounded plans and semantic action compilation.
-- `backend/app/executor.py`: runtime compatibility entry point and disconnect-aware planning wait.
-- `backend/app/folders.py`: known-folder and explicit local directory resolution.
-- `scripts/evaluate-planner.py`: opt-in live Ollama regression corpus; no tool execution.
-- `backend/app/applications.py` resolves approved Chrome and Edge executables for direct browser launches.
-- `backend/sidecar.py` is the frozen-backend entry point used by the Windows package.
-- `scripts/build-backend-sidecar.ps1` produces the target-triple-named PyInstaller binary.
-- `src-tauri/src/lib.rs` owns the overlay, tray, backend child process, shortcut, and Ollama controls.
-- `backend/app/routing.py` contains conservative deterministic command parsing and action classification.
-- `backend/app/model_routing.py` selects the configured local model tier for text-only requests.
+Updated: 2026-10-02. Current ownership map; proposed work is tracked in docs/AGENT_IMPLEMENTATION_PLAN.md.
 
-## Root
-- `src/` — Vite React application shell and polished command bar UI.
-- `backend/` — FastAPI backend, local model provider integration, and API tests.
-- `src-tauri/` — Tauri v2 Windows shell and native global shortcut integration.
-- `scripts/` — development helpers for local startup.
-- `docs/` — project architecture, security, setup, and status documents.
+## Runtime and capabilities
 
-## Responsibilities
-- `src/App.tsx` — command bar UX, retry/cancellation state, stream parsing, and web fallback shortcut handling.
-- `backend/app/main.py` — persistent service entry point, deterministic routing, disconnect-aware SSE command API.
-- `backend/app/llm.py` — Ollama provider wrapper.
-- `backend/app/models.py` — validated request/response schemas.
-- `backend/app/tools.py` — deterministic support tools with permission classifications.
-# General operator additions (2026-10-02)
+- backend/app/main.py — loopback API, registry startup and natural-task/shortcut routing.
+- backend/app/operator.py — production registry-driven next-tool selection, typed arguments and outcome context.
+- backend/app/runtime.py — generic observe/decide/validate/execute/verify loop and lifecycle.
+- backend/app/task_state.py — task contracts, observations, evidence, budgets and bounded working state.
+- backend/app/task_store.py — bounded, expiring, single-use in-memory clarification continuation.
+- backend/app/tools.py — typed registry, permissions, metadata and launch tools.
+- backend/app/capabilities.py — argument/output models and trusted capability guidance.
+- backend/app/approvals.py — exact-action expiring single-use approval lifecycle.
+- backend/app/file_tools.py — approved directory listing, bounded text reads and exclusive new artifacts.
+- backend/app/browser_tools.py — experimental agent-owned Chrome page/link/media adapter; live control remains unverified.
+- backend/app/window_observer.py — read-only visible-window/process/title enumeration and launch visibility check.
+- backend/app/plugins.py — explicitly enabled trusted skill entry points.
+- backend/app/launch_runtime.py — shared registry execution/approval adapter, budgeted provider and launch compatibility behavior.
+- backend/app/executor.py — compatibility execution and disconnect-aware waits.
+- backend/app/planner.py / capability_planner.py — legacy/bounded planning compatibility and evaluation; not the natural-task execution owner.
+- backend/app/routing.py / applications.py / folders.py — exact launch shortcuts and approved target resolution.
+- backend/app/llm.py / model_routing.py — local provider interface and configured model selection.
+- backend/app/models.py — API request/response models.
 
-- `backend/app/operator.py`: production next-action reasoning from registry tools and observed outcomes.
-- `backend/app/file_tools.py`: approved directory discovery, bounded text reads and exclusive artifact creation.
-- `backend/app/plugins.py`: opt-in trusted installed skill entry points.
-- `scripts/evaluate-operator.py`: isolated real-model/file workflow, optionally through the packaged API.
-- `docs/SKILLS.md`: capability registration and plugin trust/packaging boundaries.
+## UI and packaging
+
+- src/App.tsx / styles.css — minimal overlay, SSE progress, actions, approvals, cancellation, clarification answers and unverified results.
+- src-tauri/src/lib.rs — native shortcut, tray/window lifecycle, backend ownership and Ollama controls.
+- backend/sidecar.py — packaged backend entry point.
+- scripts/build-backend-sidecar.ps1 — PyInstaller build helper.
+- src-tauri/target/release/app.exe — last recorded native build location; generated artifact, not a source rollback checkpoint.
+
+## Evidence and documentation
+
+- backend/tests/ and src/App.test.tsx — contract, integration and UI regressions.
+- scripts/evaluate-operator.py — opt-in live model plus two isolated real file variants; narrow passes do not satisfy the overall reliability gate.
+- scripts/evaluate-browser-operator.py — real local-model reasoning against a simulated browser; never proves actual website/playback behavior.
+- scripts/diagnose-browser.py — isolated Chrome/Edge debugger crash probe; no personal profile attachment.
+- scripts/evaluate-planner.py — legacy bounded-planner regression corpus; does not validate the current operator.
+- scripts/smoke-approvals.py — opt-in packaged approval/denial/replay checks.
+- docs/AGENT_IMPLEMENTATION_PLAN.md — sole phase/checklist/evidence/decision tracker.
+- docs/ARCHITECTURE.md / ROADMAP.md / CODEX_HANDOFF.md — current design, roadmap index and resume instructions.
+- docs/SECURITY.md / API.md / SKILLS.md — trust boundaries, protocol and extension contracts.
+- MEMORY.md — concise current context.
+- docs/history/AGENT_PLAN_BEFORE_DOCS_REALIGNMENT.md — historical evidence and superseded plan; never active execution guidance.
+
+This ownership map does not itself grant new permissions; the latest user request and tool policy govern execution.

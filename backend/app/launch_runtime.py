@@ -149,7 +149,8 @@ class LaunchAdapter:
         else:
             result = await asyncio.to_thread(self.registry.execute, action.tool, action.arguments)
         if not result.get('ok'):
-            return Outcome(status=result.get('effect') or 'unknown', summary='Tool did not confirm acceptance.', data=result)
+            return Outcome(status=result.get('effect') or 'unknown',
+                           summary=str(result.get('reason') or 'Tool did not confirm acceptance.')[:1000], data=result)
         if self.pending and self.pending[0] == action:
             self.pending.pop(0)
         return Outcome(status='accepted', summary='Launch request accepted; resulting window/page not observed.', data=result)

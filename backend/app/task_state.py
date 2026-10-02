@@ -107,7 +107,22 @@ class TaskState(StrictModel):
     model_calls: int = 0
     recoveries: int = 0
     pending_question: str | None = None
+    clarifications: list[dict[str, str]] = Field(default_factory=list, max_length=3)
     evidence: list[Evidence] = Field(default_factory=list)
+
+    def resume(self, answer: str):
+        if not self.pending_question or not answer.strip():
+            raise ValueError('A pending question and a nonempty answer are required.')
+        if len(self.clarifications) >= 3:
+            raise ValueError('This task has reached its clarification limit. Start a new task.')
+        self.clarifications.append({'question': self.pending_question, 'answer': answer.strip()[:1000]})
+        self.pending_question = None
+        self.started_at = time.monotonic()
+        self.model_calls = 0
+        self.decisions = 0
+        self.recoveries = 0
+        self.evidence = []
+        self.status = TaskStatus.OBSERVING
 
     def remaining_seconds(self) -> float:
         return self.limits.seconds - (time.monotonic() - self.started_at)
@@ -130,6 +145,7 @@ class TaskState(StrictModel):
             return value if len(encoded) <= max_chars else {'truncated': True, 'excerpt': encoded[:max_chars]}
         return {
             'goal': self.goal, 'criteria': self.criteria,
+            'clarifications': self.clarifications,
             'actions_taken': len(self.records), 'recoveries': self.recoveries,
             'recent_actions': [compact(record.model_dump(mode='json'), 1000) for record in self.records[-6:]],
             'observations': [compact(item.model_dump(mode='json'), 2000) for item in self.observations[-2:]],

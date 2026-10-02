@@ -1,66 +1,40 @@
-# Memory
+# Wingent Memory
 
-## Current direction — 2026-10-02
+Updated: 2026-10-02. This is resume context, not a second phase tracker.
 
-- User explicitly requested a general-purpose personal computer operator. Examples are not product boundaries. The new active section in `docs/AGENT_IMPLEMENTATION_PLAN.md` supersedes the application-specific roadmap and legacy restrictions below.
-- Production natural-task execution now uses `operator.py`: dynamically select a registered tool, generate typed arguments, execute through approvals, observe actual output, and decide again. Preserve the existing runtime's cancellation, evidence and duplicate-action protections.
-- Added general approved file primitives and explicit trusted entry-point skills. No terminal/code execution, desktop input, browser DOM or vision has been implemented in this slice; these remain general capability layers, not named-application phases.
-- Phase 2 preceding work passed packaged approval/denial/replay checks. Current health marker is `operator-v3`; rebuild sidecar AND EXE after new code verification.
-- Live small-model evaluations exposed redundant clarification, invalid/empty actions, repeated discovery and premature finish. Record failures, evaluate actual model behavior, and never infer general competence from mocked tests.
-- Latest source checks: 123 backend / 12 UI tests pass. Real-model file workflow creates an artifact but fails to stop reliably; its evaluator remains failing and Phase 3 stays in progress. A model-only completion assessor hallucinated success and was removed. Read-page size is now fixed by the host (2048 bytes), after packaged testing exposed one-byte reads chosen by the model.
+## Latest user instruction
 
-## Goal-driven agent plan — 2026-10-01
+Implement the next scoped steps toward general screen/computer control, and create timely Git checkpoints. Preserve honest verification and exact-action approval.
 
-- Phase 1 is now verified complete: application-independent task state and observe/decide/act/verify loop, compact context, task/model/action/recovery budgets, fresh-evidence completion gate, and production launch-adapter integration.
-- Existing launches intentionally end `unverified`; the UI no longer labels launch acceptance Complete. Unknown effects prevent automatic retries. No general browser/desktop observation tools exist yet.
-- Latest verification: 82 backend tests, 9 UI tests, 7 live planner cases, rebuilt sidecar/EXE and packaged two-tab smoke test. `/health` runtime marker: `observation-loop-v1`.
-- Next is Phase 2 registry-driven capabilities and approvals, then general Windows tools; architecture is not restricted to Chrome/Excel. Rebuild both sidecar and EXE after each code phase so the user can test it.
+## Direction
 
-- User authorized starting `docs/AGENT_IMPLEMENTATION_PLAN.md`; use its phase tracker as the current work queue.
-- Phase 0 audit verified complete: 57 backend tests, 6 UI tests, frontend build, offline cargo check, 7 live planner evaluations, and packaged startup/health/clarification.
-- Pre-runtime rollback checkpoints: implementation `48acd05`, Phase 0 audit `75e2109`. No new computer-control features were implemented during the audit.
-- Chrome and desktop Excel executable/COM registration confirmed. Excel automation itself is not verified. Existing local model is llama3.2:3b; browser profile and larger-model decisions remain deferred.
-- Detailed environment, evidence, architectural gaps, and Phase 1 checklist live in the implementation plan. Do not mistake accepted launches for verified goal completion.
+General-purpose personal computer agent: user provides the goal, agent discovers tools, reasons, observes, acts, verifies and replans. Examples are not architectural limits. Keep local-first reasoning, minimal overlay/tray, explicit sensitive-action approvals and honest results.
 
-## October 2026 desktop update
-- Natural command planning now uses Ollama structured JSON with Pydantic validation, max eight steps, one format repair, and a 60-second deadline. New modules: planner, executor, folders.
-- Complex site/tab modifiers defer to the model; exact simple actions remain model-free. Text requests outside the fast path are classified by the planner before text streaming.
-- Safe folder opening supports known folders (Windows redirected paths respected) and user-supplied absolute existing directories. Do not invent paths, execute files, or use arbitrary shell commands.
-- UI displays plan/step states and explicit clarification. Partial launches have no whole-task retry; cancellation does not undo accepted launches.
-- Launch acceptance is not verification of page/window contents. No DOM tools, email reading, file editing, persistent memory, or general computer control yet.
-- Live planner corpus: `scripts/evaluate-planner.py` (seven cases, no side effects). Unit/integration suites: 57 backend, 6 frontend at this update.
-- Browser commands support generic search/search-for/look-up and common search typos. Explicit Chrome/Edge selection is retained through URL execution.
-- "Open Chrome and search GitHub" opens a web search in Chrome; "open GitHub and search tauri" searches GitHub itself.
-- Wingent now uses a borderless, taskbar-free launcher overlay that expands only for progress and results.
-- A system tray icon provides Open and Quit; left-click toggles the overlay.
-- Packaged builds start and own a PyInstaller FastAPI sidecar when port 8000 is free.
-- The command bar shows native Ollama status and can run the constrained ollama serve action.
-- Deterministic routing now executes only when every requested step is supported; mixed tasks fail without side effects.
-- Text-only requests route to the configured local model, with an optional complex model tier.
-- Tray Quit now stops the owned PyInstaller process tree so the backend does not remain running after normal exit.
-- Native backend readiness verifies Wingent's health response, and the overlay shows a compact service error when it is unavailable.
-- Optional launch-at-login, voice, vision, semantic memory, and autonomous computer use remain deferred.
+Authoritative tracker: [docs/AGENT_IMPLEMENTATION_PLAN.md](docs/AGENT_IMPLEMENTATION_PLAN.md). Earlier application-specific phases and launcher-only restrictions are superseded. Historical evidence is retained in docs/history/AGENT_PLAN_BEFORE_DOCS_REALIGNMENT.md.
 
-## Current status
-- Repository initialized as a local-first Windows AI command bar project.
-- The workspace is intentionally minimal: a Vite + React + TypeScript frontend, a Python FastAPI backend, and an Ollama-backed local LLM provider interface.
-- M1 is complete: the command bar is live, persistent, streaming, and connected to a local backend.
-- M2 is complete for deterministic safe app and URL launches, with enforced permission-aware execution.
-- The Tauri shell is active with a native Ctrl+Space shortcut and close-to-hide behavior.
-- The desktop UI is a borderless, taskbar-free launcher overlay that expands only for progress and results.
-- A system tray icon provides Open and Quit actions; left-click toggles the overlay.
-- The packaged app starts and owns a PyInstaller FastAPI sidecar when port 8000 is not already in use.
-- Ollama status is shown in the command bar and a constrained native action can start ollama serve.
+## Implemented and unfinished
 
-## Architectural intent
-- Keep the UI and backend loosely coupled through HTTP/streaming APIs.
-- Prefer deterministic, safe actions and avoid speculative complexity.
-- Treat Ollama as the initial local model provider behind a clean interface for future providers.
-- Keep the desktop/windowing integration intentionally lightweight until the core command loop proves useful.
+- Phases 0–2: recorded baseline, generic bounded runtime and typed/approved tool contracts complete for their stated scope.
+- Phase 3: registry-driven next-tool reasoning, typed arguments, outcome feedback, general approved file primitives and opt-in trusted skill entry points exist.
+- Phase 3 remains incomplete. Recent bounded duplicate repair and distinct-result context let two isolated real-model file tasks pass once each; this does not meet the varied/held-out reliability gate. A model-only completion assessor had hallucinated success and was removed.
+- Fixed 2048-byte read pages replaced model-selected page sizes after a one-byte-read failure.
+- No general desktop/accessibility, terminal/code, arbitrary keyboard/mouse or vision tools yet; the narrow browser DOM adapter remains experimental.
+- An experimental agent-owned Chrome DOM/media adapter was added after a reported YouTube playback failure; Chrome and Edge exited with `0x80000003` on CDP commands in this restricted session. Normal Chrome fallback showed no new visible window here. Playback remains unverified. The installed model passed a simulated-browser search → observed link → play fixture. Read-only window observation, invented-path/URL/index rejection and duplicate no-effect prevention were added.
+- After the same old trace recurred, native startup was found to accept any `service: wingent` on port 8000. It now requires the current runtime marker and blocks incompatible submissions instead of silently using a stale backend.
+- Initial desktop adapter: observe visible Win32 child controls, then exact-action-approved click or text entry against a fresh window/control identity. This is not visual screen understanding or a claim of general computer control.
+- Genuine clarification questions have 15-minute, single-use in-memory resume preserving prior actions and answer history. No durable checkpoints or persistent personal memory; interrupted resumes may be lost.
+- Plugin code is trusted native code, not sandboxed. Frozen releases must bundle enabled plugins and metadata.
 
-## Important constraints
-- Do not ship secrets or .env files.
-- Do not add semantic memory or voice features before the core command bar is solid.
-- Keep model/provider access local-first and explicit.
-- Cancellation is client-disconnect aware, and the UI preserves failed requests for retry.
-- Startup launch, voice, vision, semantic memory, and autonomous computer-use remain deferred.
+## Recorded evidence
+
+Current slice: 148 backend, previous 14 UI and 1 Rust contract test pass; frontend, sidecar and native EXE built. Two isolated live file variants passed once with llama3.2:3b, also through the frozen sidecar. A simulated-browser Joji sequence passed with the real model; actual Chrome/Edge control crashed and playback was not verified. Packaged denial/replay passed previously; approved Explorer launch had an unknown outcome here. Alternative model and Playwright downloads failed because outbound access is blocked.
+
+Prior checkpoint: 999671c. Current source backend marker: operator-v5. EXE: src-tauri/target/release/app.exe. Rebuild and check process identity before calling it current.
+
+## Next when authorized
+
+Expand the varied/held-out live corpus; improve explicit remaining-work, observation completeness and independent verification. Harden continuation against disconnect/restart and start read-only structured Windows observation before general UI actions. The current failures do not prove model size is the sole cause.
+
+Every new capability needs typed input/output, declared permissions, target validation, bounded execution, truthful outcomes, observation and verification/recovery behavior. Prefer structured mechanisms, but plan general process and visual fallbacks.
+
+Ask before new personal data/profile access, downloads, executable skill installation, elevation and consequential changes. Rebuild both sidecar and EXE after authorized code slices; record actual evidence and phase status.

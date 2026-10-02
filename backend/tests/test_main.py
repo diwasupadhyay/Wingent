@@ -1,3 +1,5 @@
+import json
+
 from fastapi.testclient import TestClient
 
 from app.main import app, detect_deterministic_tools, requests_unsupported_browser_automation
@@ -195,3 +197,67 @@ def test_empty_model_decision_is_error(monkeypatch):
     assert 'event: error' in response.text
     assert 'Invalid JSON' in response.text
     assert 'event: final' not in response.text
+
+
+def test_clarification_resumes_same_task_without_replaying_accepted_action(monkeypatch):
+    from app.capabilities import Arguments
+    from app.task_store import TaskStore
+
+    local_registry = ToolRegistry()
+    calls = []
+    for name in ('first_probe', 'second_probe'):
+        local_registry.register(name, 'Controlled probe', ToolPermission.SAFE, {},
+                                lambda _, label=name: calls.append(label) or {'ok': True, 'label': label},
+                                input_model=Arguments)
+    monkeypatch.setattr('app.main.registry', local_registry)
+    monkeypatch.setattr('app.main.task_store', TaskStore())
+
+    async def available(_self):
+        return True
+
+    async def decide(_self, prompt, _system, _schema):
+        context = json.loads(prompt)
+        if context.get('selected_tool'):
+            return '{}'
+        results = context['untrusted_action_results']
+        if not results:
+            return '{"tool":"first_probe"}'
+        if not context['clarification_history']:
+            return '{"tool":"ask","message":"Which option should I use?"}'
+        assert context['clarification_history'][-1]['answer'] == 'Use option B'
+        return '{"tool":"second_probe"}' if len(results) == 1 else '{"tool":"finish"}'
+
+    monkeypatch.setattr('app.main.OllamaClient.is_available', available)
+    monkeypatch.setattr('app.main.OllamaClient.structured', decide)
+
+    first = client.post('/api/command', json={'prompt': 'Use two probes, asking for my option between them'})
+    assert first.status_code == 200
+    clarification = json.loads(first.text.split('event: clarification\ndata: ')[1].split('\n')[0])
+    task_id = clarification['resume_task_id']
+    assert clarification['attempted'] == 1
+    assert calls == ['first_probe']
+
+    second = client.post('/api/command', json={'prompt': 'Use option B', 'resume_task_id': task_id})
+    assert second.status_code == 200
+    assert '"attempted": 2' in second.text
+    assert calls == ['first_probe', 'second_probe']
+    assert client.post('/api/command', json={'prompt': 'Again', 'resume_task_id': task_id}).status_code == 409
+
+
+def test_invalid_resume_id_does_not_start_a_new_task():
+    response = client.post('/api/command', json={'prompt': 'Continue', 'resume_task_id': 'a' * 32})
+    assert response.status_code == 409
+
+
+def test_offline_model_does_not_consume_pending_clarification(monkeypatch):
+    from app.main import task_store
+    from app.task_state import TaskState
+    state = TaskState(goal='Inspect a target', criteria=['target checked'], pending_question='Which target?')
+    task_store.put(state)
+    async def unavailable(_self):
+        return False
+    monkeypatch.setattr('app.main.OllamaClient.is_available', unavailable)
+    response = client.post('/api/command', json={'prompt': 'Target B', 'resume_task_id': state.id})
+    assert response.status_code == 503
+    assert task_store.take(state.id) is state
+    assert state.clarifications == []

@@ -2,6 +2,10 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, vi } from 'vitest';
 import App from './App';
 
+vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(async (command: string) =>
+  command === 'backend_status' ? 'incompatible' : false) }));
+vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async () => () => {}) }));
+
 afterEach(() => vi.unstubAllGlobals());
 
 function mockEvents(events: string) {
@@ -21,6 +25,14 @@ function runCommand() {
 }
 
 describe('App', () => {
+  it('refuses to submit to an outdated backend in the desktop app', async () => {
+    vi.stubGlobal('__TAURI_INTERNALS__', {});
+    const send = vi.fn();
+    vi.stubGlobal('fetch', send);
+    runCommand();
+    await waitFor(() => expect(screen.getByText(/older or unrelated backend is using port 8000/i)).toBeTruthy());
+    expect(send).not.toHaveBeenCalled();
+  });
   it('sends review mode explicitly when enabled', async () => {
     mockEvents('event: final\ndata: {"text":"Ready"}\n\n');
     render(<App />);
@@ -98,6 +110,37 @@ describe('App', () => {
     await waitFor(() => expect(screen.getByText('Needs your input')).toBeTruthy());
     expect(screen.getByText('Which folder?')).toBeTruthy();
     expect(screen.queryByText('Complete')).toBeNull();
+  });
+
+  it('submits an answer using the one-use task continuation', async () => {
+    const responses = [
+      'event: action\ndata: {"index":0,"label":"First probe"}\n\n' +
+      'event: step\ndata: {"index":0,"state":"accepted"}\n\n' +
+      'event: clarification\ndata: {"text":"Which option?","resume_task_id":"abc123"}\n\n',
+      'event: action\ndata: {"index":1,"label":"Second probe"}\n\n' +
+      'event: step\ndata: {"index":1,"state":"accepted"}\n\n' +
+      'event: final\ndata: {"outcome":"unverified","text":"Two actions recorded."}\n\n',
+    ];
+    const fetchMock = vi.fn(async (_url: string, _options?: RequestInit) => {
+      const payload = responses.shift() ?? '';
+      let reads = 0;
+      return { ok: true, body: { getReader: () => ({ read: async () => reads++ === 0
+        ? { done: false, value: new TextEncoder().encode(payload) }
+        : { done: true } }) } };
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    runCommand();
+    await waitFor(() => expect(screen.getByText('Which option?')).toBeTruthy());
+    expect(screen.getByPlaceholderText(/Answer Wingent/)).toBeTruthy();
+    expect(screen.getByText('New task')).toBeTruthy();
+    fireEvent.change(screen.getByLabelText(/command input/i), { target: { value: 'Option B' } });
+    fireEvent.click(screen.getByLabelText(/Run command/i));
+    await waitFor(() => expect(screen.getByText('Two actions recorded.')).toBeTruthy());
+    expect(JSON.parse(fetchMock.mock.calls[1][1]?.body as string)).toMatchObject({
+      prompt: 'Option B', resume_task_id: 'abc123',
+    });
+    expect(screen.getByText('First probe')).toBeTruthy();
+    expect(screen.getByText('Second probe')).toBeTruthy();
   });
 
   it('does not offer whole-task retry after partial execution', async () => {

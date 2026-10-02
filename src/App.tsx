@@ -7,6 +7,7 @@ type OllamaState = 'checking' | 'running' | 'stopped' | 'starting';
 type StepState = 'pending' | 'running' | 'accepted' | 'failed' | 'not_run' | 'unknown';
 type ActionStep = { label: string; state: StepState };
 type Approval = { approval_id: string; token: string; task_id: string; tool: string; arguments: Record<string, unknown>; expires_in: number };
+type BackendState = 'ready' | 'incompatible' | 'unavailable';
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
 const isTauri = () => '__TAURI_INTERNALS__' in window;
@@ -25,11 +26,15 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [lastPrompt, setLastPrompt] = useState('');
+  const [resumeTaskId, setResumeTaskId] = useState<string | null>(null);
   const [ollama, setOllama] = useState<OllamaState>('checking');
-  const [backendReady, setBackendReady] = useState<boolean | null>(null);
+  const [backendReady, setBackendReady] = useState<BackendState | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
-  const expanded = loading || Boolean(content) || Boolean(error) || backendReady === false;
+  const backendProblem = backendReady === 'incompatible'
+    ? 'An older or unrelated backend is using port 8000. Quit the old Wingent process, then restart this EXE.'
+    : 'Wingent service is unavailable. Restart Wingent if this persists.';
+  const expanded = loading || Boolean(content) || Boolean(error) || (backendReady !== null && backendReady !== 'ready');
 
   const checkOllama = useCallback(async () => {
     if (!isTauri()) return setOllama('stopped');
@@ -50,9 +55,9 @@ export default function App() {
     if (!isTauri()) return;
     const checkBackend = async () => {
       try {
-        setBackendReady(await invoke<boolean>('backend_status'));
+        setBackendReady(await invoke<BackendState>('backend_status'));
       } catch {
-        setBackendReady(false);
+        setBackendReady('unavailable');
       }
     };
     void checkBackend();
@@ -82,12 +87,13 @@ export default function App() {
     setStatus('idle');
     setProgress('Cancelled');
     setSteps((current) => current.map((step) => step.state === 'running' ? { ...step, state: 'unknown' } : step.state === 'pending' ? { ...step, state: 'not_run' } : step));
-    setContent('Stopped. Already accepted launch requests cannot be undone; an in-flight launch may still finish.');
+    setContent('Stopped. Already accepted actions cannot be undone; an in-flight action may still finish.');
     setError(null);
     setErrorCode(null);
     setApproval(null);
     setApprovalBusy(false);
     setApprovalError(null);
+    setResumeTaskId(null);
   };
 
   const answerApproval = async (approve: boolean) => {
@@ -135,6 +141,7 @@ export default function App() {
   const submit = async (value = prompt) => {
     const trimmed = value.trim();
     if (!trimmed || loading) return;
+    const continuingTask = resumeTaskId;
     const controller = new AbortController();
     abortRef.current = controller;
     setLastPrompt(trimmed);
@@ -144,21 +151,36 @@ export default function App() {
     setError(null);
     setErrorCode(null);
     setContent('');
-    setSteps([]);
+    if (!continuingTask) setSteps([]);
     setApproval(null);
     setApprovalError(null);
     setApprovalBusy(false);
     let terminal = false;
-    let launchStarted = false;
+    let launchStarted = Boolean(continuingTask);
 
     try {
+      if (isTauri()) {
+        const currentBackend = await invoke<BackendState>('backend_status');
+        setBackendReady(currentBackend);
+        if (currentBackend !== 'ready') {
+          throw new Error(currentBackend === 'incompatible'
+            ? 'An older or unrelated backend is using port 8000. Quit it and restart this Wingent EXE.'
+            : 'Wingent backend is not ready. Restart Wingent and try again.');
+        }
+      }
       const response = await fetch(`${API_BASE_URL}/api/command`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ prompt: trimmed, review_actions: reviewActions }),
+        body: JSON.stringify({ prompt: trimmed, review_actions: reviewActions,
+          ...(continuingTask ? { resume_task_id: continuingTask } : {}) }),
         signal: controller.signal,
       });
+      if (response.status === 409 && continuingTask) {
+        setResumeTaskId(null);
+        throw new Error('That question expired or was already answered. Start a new task.');
+      }
       if (!response.ok || !response.body) throw new Error('Wingent service is offline. Start the local backend and try again.');
+      if (continuingTask) setResumeTaskId(null);
 
       const reader = response.body.getReader();
       const decoder = new TextDecoder();
@@ -175,7 +197,7 @@ export default function App() {
           const name = lines.find((line) => line.startsWith('event:'))?.slice(6).trim();
           const raw = lines.find((line) => line.startsWith('data:'))?.slice(5).trim();
           if (!raw) continue;
-          let data: { stage?: string; message?: string; text?: string; code?: string; steps?: string[]; index?: number; state?: StepState; label?: string; outcome?: string; verified?: boolean } & Partial<Approval>;
+          let data: { stage?: string; message?: string; text?: string; code?: string; steps?: string[]; index?: number; state?: StepState; label?: string; outcome?: string; verified?: boolean; resume_task_id?: string } & Partial<Approval>;
           try { data = JSON.parse(raw); } catch { continue; }
           if (name === 'status') {
             setStatus(data.stage === 'executing' ? 'tool_running' : (data.stage as Stage) ?? 'idle');
@@ -206,6 +228,11 @@ export default function App() {
             setStatus('awaiting_input');
             setProgress('Needs your input');
             setContent(data.text ?? 'Please clarify the request.');
+            setResumeTaskId(data.resume_task_id ?? null);
+            if (data.resume_task_id) {
+              setPrompt('');
+              requestAnimationFrame(() => inputRef.current?.focus());
+            }
             setSteps((current) => current.map((step) => step.state === 'pending' ? { ...step, state: 'not_run' } : step));
           } else if (name === 'delta') {
             setStatus('streaming');
@@ -265,7 +292,7 @@ export default function App() {
                 loading ? cancel() : isTauri() && void invoke('hide_overlay');
               }
             }}
-            placeholder='Tell Wingent what you want done...'
+            placeholder={resumeTaskId ? 'Answer Wingent’s question...' : 'Tell Wingent what you want done...'}
             autoComplete='off'
             spellCheck='false'
           />
@@ -291,10 +318,13 @@ export default function App() {
         {expanded && (
           <div className='result-panel' aria-live='polite' aria-busy={loading}>
             <div className='result-meta'>
-              <span className={`activity-dot activity-${backendReady === false && !loading ? 'error' : status}`} />
-              <span>{backendReady === false && !loading && !error ? 'Service unavailable' : progress}</span>
+              <span className={`activity-dot activity-${backendReady !== null && backendReady !== 'ready' && !loading ? 'error' : status}`} />
+              <span>{backendReady !== null && backendReady !== 'ready' && !loading && !error ? 'Service unavailable' : progress}</span>
               <div className='result-actions'>
                 {loading && <button type='button' onClick={cancel}>Stop</button>}
+                {!loading && resumeTaskId && <button type='button' onClick={() => {
+                  setResumeTaskId(null); setContent(''); setSteps([]); setStatus('idle'); setProgress('Ready');
+                }}>New task</button>}
                 {!loading && error && errorCode !== 'partial_execution' && !errorCode?.startsWith('unsupported_') && lastPrompt && (
                   <button type='button' onClick={() => void submit(lastPrompt)}>Retry</button>
                 )}
@@ -322,9 +352,9 @@ export default function App() {
                 ))}
               </ol>
             )}
-            {(content || error || backendReady === false) && (
-              <div className={`result-copy ${error || backendReady === false ? 'result-error' : ''}`}>
-                {error || content || 'Wingent service is unavailable. Restart Wingent if this persists.'}
+            {(content || error || (backendReady !== null && backendReady !== 'ready')) && (
+              <div className={`result-copy ${error || (backendReady !== null && backendReady !== 'ready') ? 'result-error' : ''}`}>
+                {error || content || backendProblem}
               </div>
             )}
           </div>

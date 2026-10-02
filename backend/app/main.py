@@ -21,6 +21,10 @@ from app.operator import run_operator
 from app.file_tools import register as register_files
 from app.plugins import load_skills
 from app.task_state import TaskState, Limits
+from app.task_store import TaskStore
+from app.browser_tools import register as register_browser
+from app.window_observer import register as register_windows
+from app.desktop_tools import register as register_desktop
 
 app = FastAPI(title='Wingent', version='0.1.0')
 app.add_middleware(
@@ -39,7 +43,11 @@ app.add_middleware(
 )
 registry = ToolRegistry()
 register_files(registry)
+register_windows(registry)
+register_desktop(registry)
+register_browser(registry)
 loaded_skills = load_skills(registry, [name.strip() for name in os.getenv('WINGENT_SKILLS', '').split(',') if name.strip()])
+task_store = TaskStore()
 
 
 def sse_event(event: str, payload: dict[str, object]) -> str:
@@ -48,7 +56,7 @@ def sse_event(event: str, payload: dict[str, object]) -> str:
 
 @app.get('/health')
 def health() -> dict[str, str]:
-    return {'status': 'ok', 'service': 'wingent', 'runtime': 'operator-v3'}
+    return {'status': 'ok', 'service': 'wingent', 'runtime': 'operator-v5'}
 
 
 class ApprovalResponse(BaseModel):
@@ -75,9 +83,23 @@ def capabilities():
 @app.post('/api/command')
 async def command(request: Request, command_request: CommandRequest) -> StreamingResponse:
     prompt = command_request.prompt.strip()
+    resuming = command_request.resume_task_id is not None
+    if resuming:
+        available = await OllamaClient(
+            base_url=os.getenv('OLLAMA_BASE_URL', 'http://127.0.0.1:11434'),
+            model=select_model(prompt),
+        ).is_available()
+        if not available:
+            raise HTTPException(status_code=503, detail='Ollama is unavailable. The task remains resumable.')
+        try:
+            state = task_store.take(command_request.resume_task_id)
+            state.resume(prompt)
+        except (KeyError, ValueError) as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+    else:
+        state = TaskState(goal=prompt, criteria=[prompt], limits=Limits(model_calls=12, seconds=180.0))
 
     async def event_stream() -> AsyncGenerator[str, None]:
-        state = TaskState(goal=prompt, criteria=[prompt], limits=Limits(model_calls=12, seconds=180.0))
         yield sse_event('status', {'stage': 'planning', 'message': 'Planning request'})
 
         if await request.is_disconnected():
@@ -85,9 +107,9 @@ async def command(request: Request, command_request: CommandRequest) -> Streamin
 
         llm = BudgetedProvider(OllamaClient(
             base_url=os.getenv('OLLAMA_BASE_URL', 'http://127.0.0.1:11434'),
-            model=select_model(prompt),
+            model=select_model(state.goal),
         ), state)
-        actions = detect_deterministic_tools(prompt)
+        actions = [] if resuming else detect_deterministic_tools(prompt)
         if actions:
             async for event, payload in execute_plan(actions, registry, request.is_disconnected, state=state, review_actions=command_request.review_actions):
                 yield sse_event(event, payload)
@@ -102,6 +124,8 @@ async def command(request: Request, command_request: CommandRequest) -> Streamin
 
         async for event, payload in run_operator(registry, state, llm, request.is_disconnected,
                                                   review_actions=command_request.review_actions):
+            if event == 'clarification' and payload.get('resume_task_id'):
+                task_store.put(state)
             yield sse_event(event, payload)
 
     return StreamingResponse(event_stream(), media_type='text/event-stream')
