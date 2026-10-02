@@ -196,6 +196,76 @@ def test_browser_fallback_limitation_is_in_terminal_text():
     assert 'playback was not verified' in events[-1][1]['text']
 
 
+def test_browser_control_failure_stops_before_wasting_model_calls():
+    registry = ToolRegistry()
+    state = TaskState(goal='Play a song', criteria=['playing'])
+    state.records.append(ActionRecord(action=Action(tool='browser_search', arguments={}, label='search'),
+        outcome=Outcome(status='accepted', summary='Window opened', data={
+            'browser_control': False, 'new_window_visible': True,
+            'limitation': 'The page and playback were not observed.'}), dispatched=True))
+    class NoProvider:
+        async def structured(self, *args):
+            raise AssertionError('No more model calls when the browser cannot be controlled.')
+    decision = asyncio.run(OperatorAdapter(registry, state, NoProvider()).decide(state.context()))
+    assert decision.kind == 'finish'
+    assert 'cannot select a result' in decision.message
+
+
+def test_search_page_cannot_be_reopened_instead_of_following_an_observed_link():
+    registry = ToolRegistry()
+    opened = []
+    registry.register('browser_open', 'Navigate browser', ToolPermission.SAFE, {},
+                      lambda p: opened.append(p) or {'ok': True}, input_model=BrowserUrl)
+    registry.register('browser_follow_link', 'Follow observed link', ToolPermission.SAFE, {},
+                      lambda p: opened.append(p) or {'ok': True}, input_model=BrowserLink)
+    state = TaskState(goal='Play 777 by Joji', criteria=['777 playing'])
+    state.records.append(ActionRecord(
+        action=Action(tool='browser_search', arguments={'query': 'Joji 777'}, label='search'),
+        outcome=Outcome(status='accepted', summary='Observed', data={
+            'page_observed': True, 'url': 'https://www.youtube.com/results?search_query=Joji+777',
+            'links': [{'index': 1, 'text': 'Joji - 777',
+                       'url': 'https://www.youtube.com/watch?v=observed'}], 'media': []}),
+        dispatched=True))
+    class Provider:
+        async def structured(self, prompt, system, schema):
+            context = json.loads(prompt)
+            if context.get('selected_tool') == 'browser_open':
+                return '{"url":"https://www.youtube.com/results?search_query=Joji+777"}'
+            if context.get('selected_tool') == 'browser_follow_link':
+                return '{"index":1}'
+            return '{"tool":"browser_follow_link"}' if context.get('rejected_navigation') else '{"tool":"browser_open"}'
+    decision = asyncio.run(OperatorAdapter(registry, state, BudgetedProvider(Provider(), state)).decide(state.context()))
+    assert decision.action.tool == 'browser_follow_link'
+    assert decision.action.arguments == {'index': 1}
+    assert not opened
+
+
+def test_play_is_not_dispatched_on_observed_page_without_media():
+    registry = ToolRegistry()
+    calls = []
+    registry.register('browser_play_media', 'Play media', ToolPermission.SAFE, {},
+                      lambda _: calls.append('played') or {'ok': True}, input_model=Arguments)
+    registry.register('browser_follow_link', 'Follow link', ToolPermission.SAFE, {},
+                      lambda p: calls.append(p) or {'ok': True}, input_model=BrowserLink)
+    state = TaskState(goal='Play observed media', criteria=['playing'])
+    state.records.append(ActionRecord(action=Action(tool='browser_search', arguments={}, label='search'),
+        outcome=Outcome(status='accepted', summary='Observed', data={
+            'page_observed': True, 'url': 'https://example.com/results',
+            'links': [{'index': 0, 'url': 'https://example.com/watch', 'text': 'Result'}],
+            'media': []}), dispatched=True))
+    class Provider:
+        async def structured(self, prompt, system, schema):
+            context = json.loads(prompt)
+            if context.get('selected_tool') == 'browser_follow_link':
+                return '{"index":0}'
+            if context.get('selected_tool') == 'browser_play_media':
+                return '{}'
+            return '{"tool":"browser_follow_link"}' if context.get('rejected_play') else '{"tool":"browser_play_media"}'
+    decision = asyncio.run(OperatorAdapter(registry, state, BudgetedProvider(Provider(), state)).decide(state.context()))
+    assert decision.action.tool == 'browser_follow_link'
+    assert not calls
+
+
 def test_reasoning_budget_stops_with_partial_results_without_another_model_call():
     registry = ToolRegistry()
     state = TaskState(goal='Continue task', criteria=['goal complete'])

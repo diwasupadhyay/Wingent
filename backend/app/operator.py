@@ -39,6 +39,9 @@ Finish only when the whole goal is supported by observations, or explain the rem
 If the requested work is already represented in successful results, select finish NOW. Do not
 restart discovery or add extra work. finish is a valid decision; it does not claim host verification.
 An accepted launch/exit code is not proof of the requested application/workflow result.
+For interactive web tasks, use observable browser tools, not launch-only open_url/search_web.
+After a browser search returns links, choose a relevant observed link; do not reopen the
+current results URL. Start media only after a page observation contains a media element.
 For a purely informational question use answer. Never use answer to pretend a computer task ran.
 Select a tool by its exact registered name, or ask/finish/answer. Include a concise message.
 You will generate the selected tool's arguments separately. Do not include arguments yet.
@@ -62,6 +65,14 @@ class OperatorAdapter(LaunchAdapter):
         if self.state.records and self.state.model_calls >= self.state.limits.model_calls:
             self.final_message = 'Reasoning budget reached. Review the recorded results; remaining goal steps are unverified.'
             return Decision(kind='finish', message=self.final_message)
+        if self.state.records:
+            last = self.state.records[-1]
+            if (last.action.tool.startswith('browser_') and
+                    last.outcome.data.get('browser_control') is False):
+                self.final_message = ('The browser window may be open, but page control failed. '
+                                      'I cannot select a result or verify playback in that window. '
+                                      'No further browser action was attempted.')
+                return Decision(kind='finish', message=self.final_message)
         catalogue = [{'name': t['name'], 'description': t['description'], 'permission': t['permission']}
                      for t in self.registry.manifest()]
         choices = tuple(t['name'] for t in catalogue) + ('ask', 'finish', 'answer')
@@ -100,6 +111,15 @@ class OperatorAdapter(LaunchAdapter):
             system += '\nThe user answered your previous question. Apply that answer to the ORIGINAL goal and keep earlier accepted effects. Do not restart them.'
         if recent:
             system += '\nThe last tool has ALREADY RUN. Choose the next unfinished action using its result. Never restart the goal.'
+        latest_browser = next((record for record in reversed(self.state.records)
+                               if record.action.tool.startswith('browser_')), None)
+        browser_page = (latest_browser.outcome.data if latest_browser and
+                        latest_browser.outcome.status == 'accepted' and
+                        latest_browser.outcome.data.get('page_observed') is True else None)
+        if browser_page and browser_page.get('links') and not browser_page.get('media'):
+            system += ('\nThe current browser page has observed links but no media. '
+                       'For a goal involving linked content, choose browser_follow_link with '
+                       'an index whose text matches the requested target. Do not call browser_play_media yet.')
         system += '\nUse the original goal as a checklist. Select finish if every requested part has a successful result. Otherwise choose the NEXT incomplete part. Never start the checklist over.'
         for choice_attempt in range(2):
             for attempt in range(2):
@@ -133,6 +153,21 @@ class OperatorAdapter(LaunchAdapter):
                         raise
                     argument_system += '\nPrevious arguments failed validation. Return the exact input schema.'
             action = action_from_pair(tool.name, args)
+            if browser_page and tool.name in {'browser_open', 'open_url'} and args.get('url') == browser_page.get('url'):
+                if choice_attempt == 0 and self.state.limits.model_calls - self.state.model_calls >= 2:
+                    prompt = json.dumps({**json.loads(prompt), 'rejected_navigation': args['url'],
+                                         'reason': 'This is the already-observed current page; reopening it makes no progress.'})
+                    system += '\nThat navigation was NOT dispatched. Select a relevant observed link or a different unfinished action.'
+                    continue
+                self.final_message = 'Stopped because the proposed navigation repeated the current browser page.'
+                return Decision(kind='finish', message=self.final_message)
+            if browser_page and tool.name == 'browser_play_media' and not browser_page.get('media'):
+                if choice_attempt == 0 and self.state.limits.model_calls - self.state.model_calls >= 2:
+                    prompt = json.dumps({**json.loads(prompt), 'rejected_play': 'The current observed page has no media element.'})
+                    system += '\nPlay was NOT dispatched. Follow a relevant observed link first.'
+                    continue
+                self.final_message = 'Stopped because no media was observed on the current browser page.'
+                return Decision(kind='finish', message=self.final_message)
             if tool.name in {'browser_open', 'open_url'}:
                 url = args.get('url', '')
                 parsed = urlparse(url)

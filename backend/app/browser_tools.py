@@ -217,10 +217,12 @@ class BrowserSession:
             expression = """(() => ({
               url: location.href, title: document.title,
               links: [...document.querySelectorAll('a[href]')]
-                .filter(a => a.innerText.trim() && a.getBoundingClientRect().width > 0)
-                .map(a => ({text: a.innerText.trim().slice(0, 140),
+                .filter(a => a.getBoundingClientRect().width > 0)
+                .map(a => ({text: (a.innerText || a.getAttribute('aria-label') ||
+                                    a.getAttribute('title') || '').trim().slice(0, 140),
                             url: new URL(a.getAttribute('href'), location.href).href,
                             content: !!a.closest('main,article,ytd-video-renderer')}))
+                .filter(a => a.text)
                 .sort((a,b) => Number(b.content) - Number(a.content)).slice(0, 100),
               media: [...document.querySelectorAll('video,audio')].map(v => ({
                 paused: v.paused, current_time: v.currentTime, ready_state: v.readyState,
