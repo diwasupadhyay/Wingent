@@ -6,12 +6,13 @@ import shutil
 import signal
 import subprocess
 import threading
+import time
 from pathlib import Path
 
 from pydantic import Field
 
 from app.capabilities import Arguments, Capability
-from app.tools import ToolPermission
+from app.tools import ToolPermission, execution_task_id
 
 
 class DiscoverExecutable(Arguments):
@@ -84,12 +85,66 @@ def _stop_tree(process):
             os.killpg(process.pid, signal.SIGKILL)
         process.wait(timeout=3)
     except (OSError, subprocess.TimeoutExpired):
+        try:
+            # taskkill may be unavailable in a restricted session. At minimum,
+            # stop the exact child PID this adapter launched; descendants remain unknown.
+            process.kill()
+            process.wait(timeout=2)
+        except (OSError, subprocess.TimeoutExpired):
+            pass
         return False
     return process.poll() is not None
 
 
-def run(params, *, timeout_seconds=12):
+class ProcessManager:
+    """Tracks only processes launched for Wingent task IDs, never unrelated PIDs."""
+
+    def __init__(self):
+        self.lock = threading.Lock()
+        self.active = {}
+        self.cancelled = {}
+
+    def _prune(self):
+        now = time.monotonic()
+        self.cancelled = {key: at for key, at in self.cancelled.items() if now - at < 60}
+
+    def register(self, task_id, process):
+        if not task_id:
+            return False
+        with self.lock:
+            self._prune()
+            if task_id in self.cancelled:
+                return True
+            self.active[task_id] = process
+            return False
+
+    def release(self, task_id, process):
+        if not task_id:
+            return
+        with self.lock:
+            if self.active.get(task_id) is process:
+                self.active.pop(task_id, None)
+            self.cancelled.pop(task_id, None)
+
+    def cancel(self, task_id):
+        with self.lock:
+            self._prune()
+            self.cancelled[task_id] = time.monotonic()
+            process = self.active.get(task_id)
+        if process is not None:
+            # Do not block the event loop while Windows stops an owned process tree.
+            threading.Thread(target=_stop_tree, args=(process,), daemon=True).start()
+
+    def was_cancelled(self, task_id):
+        with self.lock:
+            return task_id in self.cancelled
+
+
+def run(params, *, timeout_seconds=12, manager=None):
     params = validate_run(params)
+    task_id = execution_task_id.get()
+    if manager and task_id and manager.register(task_id, None):
+        return {'ok': False, 'effect': 'no_effect', 'reason': 'Task was cancelled before process launch.'}
     # Do not pass the backend's whole environment (which may contain credentials).
     allowed = ('SystemRoot', 'WINDIR', 'PATH', 'PATHEXT', 'TEMP', 'TMP',
                'APPDATA', 'LOCALAPPDATA', 'USERPROFILE')
@@ -102,20 +157,35 @@ def run(params, *, timeout_seconds=12):
                                    stderr=subprocess.PIPE, creationflags=flags,
                                    start_new_session=os.name != 'nt')
     except OSError as exc:
+        if manager:
+            manager.release(task_id, None)
         return {'ok': False, 'effect': 'no_effect', 'reason': f'Process did not start: {type(exc).__name__}.'}
+    if manager and manager.register(task_id, process):
+        _stop_tree(process)
+        manager.release(task_id, process)
+        return {'ok': False, 'effect': 'unknown',
+                'reason': 'Task was cancelled during process launch; earlier effects may remain.'}
     stdout, stderr = [], []
     readers = [threading.Thread(target=_bounded_reader, args=(pipe, chunks), daemon=True)
                for pipe, chunks in ((process.stdout, stdout), (process.stderr, stderr))]
     for reader in readers:
         reader.start()
     try:
-        code = process.wait(timeout=timeout_seconds)
-    except subprocess.TimeoutExpired:
-        stopped = _stop_tree(process)
-        return {'ok': False, 'effect': 'unknown', 'reason':
-                'Process timed out; its process tree was stopped as far as the host could verify. '
-                'Detached children or earlier side effects may remain.' if stopped else
-                'Process timed out; its process tree may still be running.', 'pid': process.pid}
+        try:
+            code = process.wait(timeout=timeout_seconds)
+        except subprocess.TimeoutExpired:
+            stopped = _stop_tree(process)
+            return {'ok': False, 'effect': 'unknown', 'reason':
+                    'Process timed out; its process tree was stopped as far as the host could verify. '
+                    'Detached children or earlier side effects may remain.' if stopped else
+                    'Process timed out; its process tree may still be running.', 'pid': process.pid}
+        cancelled = bool(manager and manager.was_cancelled(task_id))
+    finally:
+        if manager:
+            manager.release(task_id, process)
+    if cancelled:
+        return {'ok': False, 'effect': 'unknown',
+                'reason': 'Task was cancelled while the process was running; earlier effects may remain.'}
     for reader in readers:
         reader.join(timeout=2)
     return {'ok': True, 'effect': 'accepted', 'exit_code': code,
@@ -126,6 +196,7 @@ def run(params, *, timeout_seconds=12):
 
 
 def register(registry):
+    manager = ProcessManager()
     registry.capabilities['process'] = Capability(
         'process', 'process_discover finds native executables on PATH. process_run requires an exact absolute executable, '
         'argument vector and working directory plus user approval. It has no shell and a short timeout, but is NOT '
@@ -134,5 +205,8 @@ def register(registry):
                       ToolPermission.SAFE, {}, discover, input_model=DiscoverExecutable,
                       capability='process', timeout_seconds=5, retry_safe=True)
     registry.register('process_run', 'Run one native executable with exact arguments and cwd after user approval; 12-second limit and bounded output.',
-                      ToolPermission.CONFIRMATION_REQUIRED, {}, run, input_model=RunProcess,
-                      capability='process', timeout_seconds=25, precondition=validate_run)
+                      ToolPermission.CONFIRMATION_REQUIRED, {}, lambda p: run(p, manager=manager),
+                      input_model=RunProcess, capability='process', timeout_seconds=25,
+                      cancellation='attempt_to_stop_owned_process_tree',
+                      precondition=validate_run, cancel_task=manager.cancel)
+    return manager

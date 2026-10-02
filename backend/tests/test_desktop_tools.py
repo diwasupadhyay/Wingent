@@ -47,3 +47,20 @@ def test_input_tools_require_exact_action_approval():
     assert registry.get_tool('desktop_observe').permission == ToolPermission.SAFE
     assert registry.get_tool('desktop_click_control').permission == ToolPermission.CONFIRMATION_REQUIRED
     assert registry.get_tool('desktop_type_text').permission == ToolPermission.CONFIRMATION_REQUIRED
+
+
+def test_click_returns_fresh_bounded_post_action_observation(monkeypatch):
+    monkeypatch.setattr('app.desktop_tools.time.sleep', lambda _: None)
+    state = {'text': 'Before'}
+    window = {'hwnd': 12, 'pid': 40, 'executable': 'fixture.exe',
+              'title': 'Fixture', 'process': 'fixture.exe'}
+    session = DesktopSession(
+        snapshot=lambda _: [{'control_id': 14, 'class': 'Button', 'text': state['text'],
+                              'rect': [0, 0, 100, 40], 'password': False}],
+        windows=lambda: [window.copy()],
+        click=lambda *args: state.update(text='After'))
+    observed = session.observe(12)
+    result = session.click(12, 14, observed['observation_id'])
+    assert result['effect'] == 'accepted'
+    assert result['post_observation']['controls'][0]['text'] == 'After'
+    assert result['post_observation']['observation_id'] > observed['observation_id']

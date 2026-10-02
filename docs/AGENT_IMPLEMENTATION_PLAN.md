@@ -43,7 +43,7 @@ The current user request authorizes scoped implementation and lean verification.
 | Extensions | Explicit startup loading of trusted installed Python skill entry points | No model-enabled installation; arbitrary host plugins in frozen EXE are unsupported |
 | Verification | Host evidence gate; file content read-back | No general independent goal verifier; model finish stays unverified |
 | Working context | Bounded request-local goal/results/observations; short-lived in-memory clarification resume | No durable task checkpoints or personal memory; interrupted resumes may be lost |
-| Computer operation | Approved launches, experimental browser DOM, bounded Win32 control input, and exact-action-approved native process execution | No general UI Automation, browser canvas control, durable process cancellation, screenshot understanding or arbitrary keyboard/mouse control |
+| Computer operation | Approved launches, experimental browser DOM, bounded Win32 input with post-action observation, and exact-action-approved native process execution with cancellation hook | No general UI Automation, browser canvas control, guaranteed descendant cleanup, screenshot understanding or arbitrary keyboard/mouse control |
 
 ## 4. Phase tracker
 
@@ -151,7 +151,7 @@ Current experimental browser slice: an isolated temporary Chrome profile, loopba
 
 The exact "Joji 777" request exposed a second planning failure: with a simulated search page containing the requested result, the model reopened the same results URL and attempted Play before reaching media. Host no-progress checks now reject those proposals, and the local model then selected search → the observed 777 link → Play in the simulated fixture. The browser-level DevTools socket answers, but enabling a page-level session crashes Chrome/Edge here with `0x80000003`; disabling GPU did not help. Direct YouTube fetch is also blocked by outbound network policy in this execution environment. These observations isolate the reasoning fix from the unresolved live browser-control failure. When browser control fails, the operator now stops with a page-control limitation instead of spending more model calls. None of this verifies actual playback.
 
-Initial Windows-control slice: `observe_windows` exposes visible window IDs; `desktop_observe` reads bounded Win32 child controls from a selected visible window. An approved `desktop_click_control` or `desktop_type_text` requires the latest observation ID, rechecks window PID/executable/title and control class/text/rectangle, rejects stale targets and password fields, and returns accepted dispatch rather than verified goal completion. This is a general adapter, not application-specific automation. Win32 child controls do not expose Chromium DOM or canvas pixels. Cross-process focus, control behavior and resulting effects still need interactive validation; no claim of full computer control follows from this slice.
+Initial Windows-control slice: `observe_windows` exposes visible window IDs; `desktop_observe` reads bounded Win32 child controls from a selected visible window. An approved `desktop_click_control` or `desktop_type_text` requires the latest observation ID, rechecks window PID/executable/title and control class/text/rectangle, rejects stale targets and password fields, and returns accepted dispatch with a bounded post-action window observation rather than verified goal completion. This is a general adapter, not application-specific automation. Win32 child controls do not expose Chromium DOM or canvas pixels. Cross-process focus, control behavior and resulting effects still need interactive validation; no claim of full computer control follows from this slice.
 
 - [ ] Windows: discover applications/windows with stable identity, focus checks and capability availability.
 - [ ] Accessibility: inspect controls and state; invoke supported actions; handle dialogs/loading/stale controls.
@@ -168,12 +168,12 @@ Browser acceptance example (a test, not a hardcoded route): given an unfamiliar 
 
 ### Phase 5 — Controlled process and code execution
 
-Initial slice: `process_discover` finds native executables on PATH without running them. `process_run` accepts an exact absolute native executable, argument vector and local working directory, requires host approval for that exact action, inherits only a small environment allowlist, caps output and attempts to stop its process tree on timeout. A timeout is an unknown outcome because detached children or earlier effects may remain. This is not a sandbox, durable cancellation, installation workflow or independent goal verifier. Interactive and packaged checks are still needed.
+Initial slice: `process_discover` finds native executables on PATH without running them. `process_run` accepts an exact absolute native executable, argument vector and local working directory, requires host approval for that exact action, inherits only a small environment allowlist and caps output. Timeout and task cancellation now request termination of the owned process tree; if Windows tree termination fails, the exact launched child PID is killed. Both remain unknown outcomes because detached children or earlier effects may remain. This is not a sandbox, guaranteed descendant cleanup, installation workflow or independent goal verifier. Interactive and packaged checks are still needed.
 
 - [x] Discover native executables on PATH without running arbitrary discovery scripts; version probing remains a separate approved action.
 - [x] Use explicit executable, argument vector, working directory and minimized inherited environment for the initial native adapter.
 - [ ] Define command preview/approval, interpreter/script rules and trust boundaries; no claim that shell=false is a sandbox.
-- [ ] Bound runtime/output and own process trees across timeout AND cancellation; timeout handling is present, cancellation can still leave an in-flight worker until its own deadline.
+- [ ] Bound runtime/output and own process trees across timeout AND cancellation; cancellation now reaches the owned child, but detached descendants and concurrent launch/termination races still need stronger lifecycle tests.
 - [ ] Inspect files/diffs before modifications; verify requested outcomes independently of exit code.
 - [ ] Handle tests/builds and project repair in disposable workspaces before personal repositories.
 - [ ] Require approval for installations, elevation, system/security changes, downloads and externally visible effects as appropriate.
@@ -228,7 +228,7 @@ These are release-direction gates; the current small live fixtures do not satisf
 | Packaged approval/denial/replay | Denial and replay passed; approved Explorer launch returned unknown in this restricted session, so that smoke scenario did not pass |
 | Real model, isolated file workflow | Fruit and supplies fixtures passed once each in source and again through frozen sidecar; both remain unverified whole-goal outcomes |
 | Real model, simulated browser task | Search → observed Joji result → play selected in order; not a real browser/playback test |
-| General desktop/browser/terminal/vision | First Win32 control adapter implemented but not live-evaluated; browser experimental; terminal/vision not implemented |
+| General desktop/browser/terminal/vision | Win32 and bounded process adapters implemented but not live-evaluated; browser experimental; vision not implemented |
 
 ## 7. Known failures and lessons
 
@@ -252,14 +252,14 @@ No open decision grants blanket authority. Continue with safe, local and isolate
 
 Recorded implementation checkpoint: `999671c` — general operator groundwork and live evaluation gaps. Earlier checkpoints: `98b95bf` (runtime), `75e2109` (audit), `48acd05` (launcher baseline). These identify source history, not bundled binaries.
 
-Current EXE path: `src-tauri/target/release/app.exe`; packaged health marker `operator-v7` for the current browser-reasoning slice.
+Current EXE path: `src-tauri/target/release/app.exe`; packaged health marker `operator-v8` for the current cancellation/post-observation slice.
 Recorded source/packaged sidecar SHA-256:
 `1C5FEEB063136A65086F362CE507A794DE9367AA554EDFF7EBAEE05A0A412C0E`.
 
-The current backend suite passed 156 tests; the previous UI check passed 14 tests. The local model selected search → the observed Joji 777 result → Play in a simulated browser. This slice rebuilt the sidecar and EXE; source and packaged sidecar hashes match. The native shell requires `operator-v7` before using port 8000. Chrome and Edge page-level control still crashed in this restricted session. A direct EXE launch here exited without a reachable backend. The EXE desktop lifecycle, live Windows control, process cancellation and real YouTube playback remain unverified. Previous packaged approval checks passed denial/replay but Explorer launch returned unknown here. Do not claim a working browser operator or full desktop lifecycle.
+The current backend suite passed 159 tests and the Rust contract test passed; the previous UI check passed 14 tests. The local model selected search → the observed Joji 777 result → Play in a simulated browser. This slice rebuilt the sidecar and EXE; source and packaged sidecar hashes match. The native shell requires `operator-v8` before using port 8000. A controlled sleeping-process cancellation fixture passed, but full descendant cleanup and packaged cancellation remain unverified. Chrome and Edge page-level control still crashed in this restricted session. A direct EXE launch here previously exited without a reachable backend. The EXE desktop lifecycle, live Windows control and real YouTube playback remain unverified. Do not claim a working browser operator or full desktop lifecycle.
 
-Current sidecar SHA-256: `4394FF6A4417D6798161BE576B8816139E222870A24B9C85CC6A4408E323C3E1`.
-Current EXE SHA-256: `5D6D2731A91C5D620C0864D48C5B3B4B9BEC21848FD369F913BD8DC61C0F4D62`.
+Current sidecar SHA-256: `80E25C483CE0D147ACA2F7879037357324FAC91C3941B1BC165CDC59B55239AD`.
+Current EXE SHA-256: `7ED34C25BF92AE55B315CF99844332853EB2974AC494446651A32D511E180007`.
 
 ## 10. Next execution slices
 
@@ -286,5 +286,6 @@ At each slice, distinguish four outcomes: model selected sensible actions; tools
 | 2026-10-02 | Added general Win32 child-control observation and approval-gated click/text dispatch with freshness and identity checks; changed packaged runtime marker to operator-v5 | Full backend suite: 148 passed; Rust contract test: 1 passed; sidecar and EXE builds passed, sidecar hashes match. Live desktop input, screenshots/vision and full agent reliability remain unverified; Phases 3 and 4 stay in progress, Phase 6 is not complete. |
 | 2026-10-03 | Added approved bounded native process discovery/execution, removed unused routing detector and redundant application-specific capability hints; rebuilt operator-v6 | Backend suite: 153 passed; Rust contract test: 1 passed; sidecar/EXE build passed and sidecar hashes match. Timeout is unknown; cancellation/detached children, packaged execution and goal verification remain unverified. Phase 5 in progress. |
 | 2026-10-03 | Reproduced Joji 777 planning failure; added host checks for reopening an observed page and playing before media exists; retained accessible-name links; made browser-control failure stop early; rebuilt operator-v7 | 156 backend and 1 Rust test pass; sidecar/EXE builds pass and sidecar hashes match. Local model now follows the correct observed 777 result in a simulated browser. Chrome/Edge page-level DevTools still crashes here; direct EXE launch had no reachable backend. Real playback and Phase 3/4 exit gates remain unverified. |
+| 2026-10-03 | Added task-bound process cancellation hook with exact-PID fallback and bounded post-action Win32 observation; rebuilt operator-v8 | 159 backend and 1 Rust test pass; sidecar/EXE builds pass and sidecar hashes match. Owned sleeping child stopped in a controlled cancellation test. Detached children, packaged cancellation, real UI effects, vision and live browser playback are not verified. Phases 3–5 remain in progress. |
 
 For each future slice record: authorization, phase/checklist items, hypothesis, changes, tests, live failures, packaged version, actual checkpoint, remaining risks and next action.

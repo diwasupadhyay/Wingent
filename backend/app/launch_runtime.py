@@ -8,7 +8,7 @@ from app.llm import LLMProvider
 from app.capability_planner import compile_plan, plan_request
 from app.runtime import AgentRuntime, TaskCancelled
 from app.task_state import Action, Decision, Evidence, Outcome, TaskState, TaskStatus, Verification
-from app.tools import ToolRegistry, ToolPermission
+from app.tools import ToolRegistry, ToolPermission, execution_task_id
 
 
 class BudgetedProvider:
@@ -142,12 +142,20 @@ class LaunchAdapter:
         # Registry launch methods are short synchronous OS calls. Move off the event loop.
         # Cancelling the await cannot undo an in-flight OS call: runtime records unknown.
         tool = self.registry.get_tool(action.tool)
-        if self.approval_id or self.review_actions or tool.permission == ToolPermission.CONFIRMATION_REQUIRED:
-            result = await asyncio.to_thread(self.registry.execute, action.tool, action.arguments,
-                approval_id=self.approval_id, task_id=self.state.id, review_required=self.review_actions)
-            self.approval_id = None
-        else:
-            result = await asyncio.to_thread(self.registry.execute, action.tool, action.arguments)
+        token = execution_task_id.set(self.state.id)
+        try:
+            if self.approval_id or self.review_actions or tool.permission == ToolPermission.CONFIRMATION_REQUIRED:
+                result = await asyncio.to_thread(self.registry.execute, action.tool, action.arguments,
+                    approval_id=self.approval_id, task_id=self.state.id, review_required=self.review_actions)
+                self.approval_id = None
+            else:
+                result = await asyncio.to_thread(self.registry.execute, action.tool, action.arguments)
+        except asyncio.CancelledError:
+            if tool.cancel_task:
+                tool.cancel_task(self.state.id)
+            raise
+        finally:
+            execution_task_id.reset(token)
         if not result.get('ok'):
             return Outcome(status=result.get('effect') or 'unknown',
                            summary=str(result.get('reason') or 'Tool did not confirm acceptance.')[:1000], data=result)

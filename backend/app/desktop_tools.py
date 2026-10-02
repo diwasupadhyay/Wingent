@@ -128,7 +128,9 @@ class DesktopSession:
                 return {'ok': False, 'effect': 'no_effect', 'reason': str(exc)}
             self.last = None
             self.click_dispatch(window_id, control_id, control['rect'])
-            return {'ok': True, 'effect': 'accepted', 'reason': 'Click dispatched; effect not verified.'}
+            return {'ok': True, 'effect': 'accepted',
+                    'reason': 'Click dispatched; whole-goal effect not verified.',
+                    'post_observation': self._post_observe(window_id)}
 
     def type_text(self, window_id, control_id, observation_id, text):
         with self.lock:
@@ -140,7 +142,22 @@ class DesktopSession:
                 return {'ok': False, 'effect': 'no_effect', 'reason': str(exc)}
             self.last = None
             self.type_dispatch(window_id, control_id, text)
-            return {'ok': True, 'effect': 'accepted', 'reason': 'Text input dispatched; resulting text not verified.'}
+            return {'ok': True, 'effect': 'accepted',
+                    'reason': 'Text input dispatched; whole-goal effect not verified.',
+                    'post_observation': self._post_observe(window_id)}
+
+    def _post_observe(self, window_id):
+        # A control can disappear after a valid click. Preserve the dispatch result
+        # and expose the changed/closed window instead of pretending nothing happened.
+        time.sleep(0.15)
+        try:
+            observation = self.observe(window_id)
+        except (OSError, ValueError, RuntimeError) as exc:
+            return {'ok': False, 'reason': f'Post-action observation failed: {type(exc).__name__}.'}
+        if observation.get('ok'):
+            return {**observation, 'controls': observation['controls'][:12],
+                    'truncated': observation['truncated'] or len(observation['controls']) > 12}
+        return observation
 
 
 def _focus_control(window_id, control_id):

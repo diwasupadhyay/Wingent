@@ -1,10 +1,12 @@
 import sys
+import threading
+import time
 from pathlib import Path
 
 import pytest
 
-from app.process_tools import discover, register, run, validate_run
-from app.tools import ToolPermission, ToolRegistry
+from app.process_tools import ProcessManager, discover, register, run, validate_run
+from app.tools import ToolPermission, ToolRegistry, execution_task_id
 
 
 def test_process_tools_are_discoverable_but_execution_needs_approval():
@@ -54,3 +56,33 @@ def test_timeout_is_unknown_even_when_tree_is_stopped():
                   'args': ['-c', 'import time; time.sleep(3)'],
                   'cwd': str(Path.cwd())}, timeout_seconds=0.1)
     assert result['effect'] == 'unknown'
+
+
+def test_cancel_stops_only_owned_running_process():
+    manager = ProcessManager()
+    results = []
+
+    def worker():
+        token = execution_task_id.set('fixture-task')
+        try:
+            results.append(run({'executable': sys.executable,
+                                'args': ['-c', 'import time; time.sleep(10)'],
+                                'cwd': str(Path.cwd())}, manager=manager))
+        finally:
+            execution_task_id.reset(token)
+
+    thread = threading.Thread(target=worker)
+    thread.start()
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        with manager.lock:
+            process = manager.active.get('fixture-task')
+        if process is not None:
+            break
+        time.sleep(0.01)
+    assert process is not None
+    manager.cancel('fixture-task')
+    thread.join(timeout=5)
+    assert not thread.is_alive()
+    assert process.poll() is not None
+    assert results[0]['effect'] == 'unknown'

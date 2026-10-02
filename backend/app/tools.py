@@ -2,6 +2,7 @@ import subprocess
 import os
 import re
 import webbrowser
+from contextvars import ContextVar
 from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Callable
@@ -21,6 +22,10 @@ class ToolPermission(str, Enum):
     RESTRICTED = 'restricted'
 
 
+# asyncio.to_thread copies this context into the worker executing a tool.
+execution_task_id: ContextVar[str] = ContextVar('wingent_execution_task_id', default='')
+
+
 @dataclass(frozen=True)
 class ToolDefinition:
     name: str
@@ -37,6 +42,7 @@ class ToolDefinition:
     precondition: Callable | None = None
     observe: Callable | None = None
     verify: Callable | None = None
+    cancel_task: Callable[[str], None] | None = None
     revision: str = field(default_factory=lambda: uuid4().hex)
 
 
@@ -89,6 +95,7 @@ class ToolRegistry:
         capability: str = 'windows', timeout_seconds: float = 15.0,
         cancellation: str = 'cannot_undo_dispatch', retry_safe: bool = False,
         precondition: Callable | None = None, observe: Callable | None = None, verify: Callable | None = None,
+        cancel_task: Callable[[str], None] | None = None,
     ) -> None:
         if not re.fullmatch(r'[a-z][a-z0-9_]{0,79}', name) or name in {'ask', 'finish', 'answer'}:
             raise ValueError('Tool names must be lowercase identifiers and cannot use reserved decisions.')
@@ -103,6 +110,7 @@ class ToolRegistry:
             executor=executor,
             capability=capability, timeout_seconds=timeout_seconds, cancellation=cancellation,
             retry_safe=retry_safe, precondition=precondition, observe=observe, verify=verify,
+            cancel_task=cancel_task,
         )
 
     def manifest(self):

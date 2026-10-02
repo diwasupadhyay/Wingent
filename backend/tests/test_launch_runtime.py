@@ -1,11 +1,15 @@
 import asyncio
+import threading
+
+import pytest
 
 from fastapi.testclient import TestClient
 
 from app.launch_runtime import LaunchAdapter, BudgetedProvider
 from app.main import app
-from app.task_state import TaskState
-from app.tools import ToolRegistry
+from app.capabilities import Arguments
+from app.task_state import Action, TaskState
+from app.tools import ToolPermission, ToolRegistry
 
 
 def test_endpoint_reports_unverified_not_complete(monkeypatch):
@@ -16,7 +20,7 @@ def test_endpoint_reports_unverified_not_complete(monkeypatch):
     assert '"task_id"' in response.text
     assert '"stage": "observing"' in response.text
     assert '"stage": "verifying"' in response.text
-    assert TestClient(app).get('/health').json()['runtime'] == 'operator-v7'
+    assert TestClient(app).get('/health').json()['runtime'] == 'operator-v8'
 
 
 def test_oversized_goal_rejected_before_streaming():
@@ -55,3 +59,32 @@ def test_changed_precondition_replans_with_real_provider_boundary(monkeypatch):
     assert 'Chrome is unavailable' in decision.message
     assert state.model_calls == 1
     assert state.recoveries == 1
+
+
+def test_cancelled_execution_invokes_only_its_tool_cancel_hook():
+    registry = ToolRegistry()
+    started, release = threading.Event(), threading.Event()
+    cancelled = []
+
+    def slow(_):
+        started.set()
+        release.wait(timeout=3)
+        return {'ok': True}
+
+    registry.register('slow_fixture', 'Fixture', ToolPermission.SAFE, {}, slow,
+                      input_model=Arguments, cancel_task=cancelled.append)
+    state = TaskState(goal='Run fixture', criteria=['finished'])
+    adapter = LaunchAdapter([], registry, state, None)
+
+    async def scenario():
+        task = asyncio.create_task(adapter.execute(Action(tool='slow_fixture', arguments={}, label='slow')))
+        await asyncio.to_thread(started.wait, 1)
+        task.cancel()
+        with pytest.raises(asyncio.CancelledError):
+            await task
+
+    try:
+        asyncio.run(scenario())
+    finally:
+        release.set()
+    assert cancelled == [state.id]
