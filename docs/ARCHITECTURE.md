@@ -22,6 +22,7 @@ Intended loop: goal → understand → plan → observe → select capability �
 | file_tools.py | Approved list/read/create primitives | No destructive mutation or adversarial filesystem sandbox |
 | desktop_tools.py | Approved fresh-target Win32 child-control click/text and scoped navigation-key dispatch with bounded post-action observation | Does not see browser/canvas pixels or verify whole workflows |
 | process_tools.py | Native executable discovery and approved bounded process run with task cancellation hook | Not a sandbox; detached descendants are not guaranteed to stop |
+| application_tools.py | Bounded App Paths/Start menu/PATH/install-root discovery and exact-path approved launch | Native `.exe` only; launch/window effects not live verified, UWP may be missed |
 | browser_tools.py | Experimental isolated Chrome profile, page/link/media observation and bounded navigation/play attempt | Live CDP control did not complete in this restricted session; no playback claim |
 | window_observer.py | Read-only visible top-level window/process/title and foreground-at-capture observations, plus launch visibility check | Does not establish page state, pixel content or sustained focus |
 | plugins.py | Explicit trusted startup entry-point loading | No model-driven loading or arbitrary frozen host-plugin support |

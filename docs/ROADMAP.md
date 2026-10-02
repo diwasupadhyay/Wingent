@@ -11,8 +11,8 @@ The sole detailed tracker is [AGENT_IMPLEMENTATION_PLAN.md](AGENT_IMPLEMENTATION
 | 0 | Audit and rollback baseline | Historically complete |
 | 1 | Application-independent runtime | Complete for recorded runtime contracts |
 | 2 | Typed capabilities and bound approvals | Complete for current contracts |
-| 3 | Reliable reasoning, working context and skill discovery | In progress; two isolated live file variants passed once, full reliability gate unmet |
-| 4 | Structured computer observation/action | Experimental Chrome adapter added; live control/playback not verified; file primitives exist |
+| 3 | Reliable reasoning, working context and skill discovery | In progress; frozen four-case app corpus passes 1/4 with current model in either prompt variant; alternative model comparison pending |
+| 4 | Structured computer observation/action | Native app discovery/approved launch, experimental Chrome, Win32 controls and files exist; live cross-app control/playback not verified |
 | 5 | Controlled process/code execution | In progress; discovery and approved native execution added, cancellation/recovery not complete |
 | 6 | Vision and input fallback | Planned |
 | 7 | Cross-capability reliability and release readiness | Planned |

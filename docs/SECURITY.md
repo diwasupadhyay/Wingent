@@ -24,6 +24,7 @@ Updated: 2026-10-03. Current implementation and future requirements are distingu
 - File tools reject linked/junction paths, remote/device paths, alternate streams and ambiguous reserved names.
 - Natural tasks validate the next action at execution time. Whole-plan preflight applies only to the fixed launch compatibility path, not all dynamic tasks.
 - Genuine model clarifications may retain bounded task state in memory for 15 minutes and resume once; completed effects are not replayed by the continuation. Approval tokens are not persisted in this state.
+- Native app discovery is read-only and bounded to App Paths, matching Start menu shortcut targets, PATH and standard install roots. Launch requires a fresh task-owned discovery ID, host-bound exact executable path and explicit approval; file identity is rechecked and the same executable is not relaunched within one task. This is not a sandbox and does not prove a window appeared.
 
 ## Important limitations
 

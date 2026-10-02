@@ -2,6 +2,7 @@ import asyncio
 import json
 
 from app.capabilities import Arguments
+from app.application_tools import OpenDiscoveredApplication
 from app.browser_tools import BrowserLink, BrowserQuery, BrowserUrl
 from app.file_tools import FilePath
 from app.launch_runtime import BudgetedProvider
@@ -103,6 +104,82 @@ def test_repeated_accepted_write_stops_without_second_dispatch():
     assert events[-1][0] == 'final'
     assert events[-1][1]['outcome'] == 'unverified'
     assert 'repeats' in events[-1][1]['text']
+
+
+def test_new_discovery_id_cannot_relaunch_same_app_in_one_task():
+    registry = ToolRegistry()
+    registry.register('application_open', 'Open discovered app', ToolPermission.CONFIRMATION_REQUIRED,
+                      {}, lambda p: {'ok': True}, input_model=OpenDiscoveredApplication)
+    path = 'C:/Apps/Fixture.exe'
+    older = 'a' * 32
+    newer = 'b' * 32
+    state = TaskState(goal='Open Fixture', criteria=['Fixture visible'])
+    state.records.extend([
+        ActionRecord(action=Action(tool='application_open', arguments={'discovery_id': older, 'path': path}, label='open'),
+                     outcome=Outcome(status='accepted', summary='Launched', data={'path': path}), dispatched=True),
+        ActionRecord(action=Action(tool='application_search', arguments={'query': 'Fixture'}, label='search'),
+                     outcome=Outcome(status='accepted', summary='Found', data={'applications': [
+                         {'discovery_id': newer, 'path': path, 'name': 'Fixture'}]}), dispatched=True),
+    ])
+    class Provider:
+        async def structured(self, prompt, system, schema):
+            if json.loads(prompt).get('selected_tool'):
+                return json.dumps({'discovery_id': newer})
+            return '{"tool":"application_open"}'
+    decision = asyncio.run(OperatorAdapter(registry, state, BudgetedProvider(Provider(), state)).decide(state.context()))
+    assert decision.kind == 'finish'
+    assert 'already launched' in decision.message
+
+
+def test_discovery_only_finish_is_challenged_for_open_goal():
+    registry = ToolRegistry()
+    registry.register('application_open', 'Open discovered app', ToolPermission.CONFIRMATION_REQUIRED,
+                      {}, lambda p: {'ok': True}, input_model=OpenDiscoveredApplication)
+    state = TaskState(goal='Open Fixture', criteria=['Fixture visible'])
+    state.records.append(ActionRecord(
+        action=Action(tool='application_search', arguments={'query': 'Fixture'}, label='search'),
+        outcome=Outcome(status='accepted', summary='Found', data={'applications': [
+            {'discovery_id': 'a' * 32, 'path': 'C:/Apps/Fixture.exe', 'name': 'Fixture'}]}), dispatched=True))
+    class Provider:
+        async def structured(self, prompt, system, schema):
+            if json.loads(prompt).get('selected_tool'):
+                return json.dumps({'discovery_id': 'a' * 32})
+            return '{"tool":"application_open"}' if 'finish proposal is premature' in system else '{"tool":"finish"}'
+    decision = asyncio.run(OperatorAdapter(registry, state, BudgetedProvider(Provider(), state)).decide(state.context()))
+    assert decision.kind == 'act'
+    assert decision.action.tool == 'application_open'
+    assert decision.action.arguments['path'] == 'C:/Apps/Fixture.exe'
+
+
+def test_empty_application_search_stops_without_invented_launch():
+    registry = ToolRegistry()
+    state = TaskState(goal='Open MissingScope', criteria=['opened'])
+    state.records.append(ActionRecord(
+        action=Action(tool='application_search', arguments={'query': 'MissingScope'}, label='search'),
+        outcome=Outcome(status='accepted', summary='Searched', data={'applications': []}), dispatched=True))
+    class NoProvider:
+        async def structured(self, *args):
+            raise AssertionError('No model call after a definitive empty indexed search.')
+    decision = asyncio.run(OperatorAdapter(registry, state, NoProvider()).decide(state.context()))
+    assert decision.kind == 'finish'
+    assert 'No matching native application' in decision.message
+
+
+def test_app_search_query_must_come_from_named_goal():
+    from app.application_tools import SearchApplications
+    registry = ToolRegistry()
+    registry.register('application_search', 'Search apps', ToolPermission.SAFE,
+                      {}, lambda p: {'ok': True}, input_model=SearchApplications)
+    class Provider:
+        async def structured(self, prompt, system, schema):
+            if json.loads(prompt).get('selected_tool'):
+                return '{"query":"NoteSpace"}' if 'rejected_app_query' in json.loads(prompt) else \
+                    '{"query":"Search installed native apps by name"}'
+            return '{"tool":"application_search"}'
+    state = TaskState(goal='Open NoteSpace', criteria=['opened'])
+    decision = asyncio.run(OperatorAdapter(registry, state, BudgetedProvider(Provider(), state)).decide(state.context()))
+    assert decision.kind == 'act'
+    assert decision.action.arguments['query'] == 'NoteSpace'
 
 
 def test_invented_local_path_is_rejected_before_dispatch():

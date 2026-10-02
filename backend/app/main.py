@@ -26,6 +26,7 @@ from app.browser_tools import register as register_browser
 from app.window_observer import register as register_windows
 from app.desktop_tools import register as register_desktop
 from app.process_tools import register as register_process
+from app.application_tools import register as register_applications
 
 app = FastAPI(title='Wingent', version='0.1.0')
 app.add_middleware(
@@ -47,6 +48,7 @@ register_files(registry)
 register_windows(registry)
 register_desktop(registry)
 register_process(registry)
+register_applications(registry)
 register_browser(registry)
 loaded_skills = load_skills(registry, [name.strip() for name in os.getenv('WINGENT_SKILLS', '').split(',') if name.strip()])
 task_store = TaskStore()
@@ -58,7 +60,7 @@ def sse_event(event: str, payload: dict[str, object]) -> str:
 
 @app.get('/health')
 def health() -> dict[str, str]:
-    return {'status': 'ok', 'service': 'wingent', 'runtime': 'operator-v10'}
+    return {'status': 'ok', 'service': 'wingent', 'runtime': 'operator-v11'}
 
 
 class ApprovalResponse(BaseModel):

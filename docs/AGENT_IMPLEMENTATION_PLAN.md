@@ -37,13 +37,13 @@ The current user request authorizes scoped implementation and lean verification.
 | --- | --- | --- |
 | Desktop shell | Minimal overlay, Ctrl+Space, tray, taskbar exclusion, packaged backend ownership | Daily-use/lifecycle hardening remains |
 | Agent runtime | Observe/decide/validate/execute/verify, budgets, cancellation, bounded recovery | Generic runtime correctness is not real-world task competence |
-| Natural-task operator | Registry-based next-tool selection, separate typed argument generation, actual result feedback | Repetition, incomplete interpretation and unreliable stopping in live evaluation |
+| Natural-task operator | Registry-based next-tool selection, separate typed argument generation, actual result feedback; frozen Phase 3A app corpus | Repetition, incomplete interpretation and unreliable stopping in live evaluation; current model passed only 1/4 app cases in each prompt variant |
 | Tools and approvals | Typed schemas, permission classes, exact-action expiring approvals, replay protection | Host policy and target-identity hardening remain; metadata is not a sandbox |
 | Files | Approved nonrecursive listing, 2048-byte UTF-8 pages, exclusive new text files with read-back | No overwrite/delete/move tools, broad search or robust mutation sandbox |
 | Extensions | Explicit startup loading of trusted installed Python skill entry points | No model-enabled installation; arbitrary host plugins in frozen EXE are unsupported |
 | Verification | Host evidence gate; file content read-back | No general independent goal verifier; model finish stays unverified |
 | Working context | Bounded request-local goal/results/observations; short-lived in-memory clarification resume | No durable task checkpoints or personal memory; interrupted resumes may be lost |
-| Computer operation | Approved launches, experimental browser DOM, read-only foreground-window identity, bounded Win32 control input and navigation keys with post-action observation, and exact-action-approved native process execution with cancellation hook | No general UI Automation, browser canvas control, guaranteed descendant cleanup, screenshot understanding or arbitrary keyboard/mouse control |
+| Computer operation | Discovery of native apps from App Paths, Start menu shortcuts, PATH and bounded install roots; approved exact-path launch, experimental browser DOM, read-only foreground-window identity, bounded Win32 control input and navigation keys with post-action observation, and approved native process execution | No UWP coverage, general UI Automation, browser canvas control, guaranteed descendant cleanup, screenshot understanding or arbitrary keyboard/mouse control |
 
 ## 4. Phase tracker
 
@@ -110,9 +110,9 @@ Already present:
 
 3A — Diagnose and measure before choosing a model:
 
-- [ ] Freeze a repeatable baseline corpus and record model/configuration, latency, calls, outcomes and failure reasons.
-- [ ] Separate schema, argument, context-loss, planning, observation and termination failures.
-- [ ] Evaluate context/tool-description changes against the same cases; do not tune only for one fixture.
+- [x] Freeze an initial repeatable app baseline corpus and record model/configuration, latency, calls, outcomes and failure reasons. Scope is four isolated app cases, not the full capability surface; see [Phase 3A baseline](evaluations/PHASE3A_BASELINE.md).
+- [x] Define separate schema, argument, context-loss, planning, observation and termination failure classes in the harness; final app run produced planning and termination failures.
+- [x] Compare default and focused tool guidance against the same four cases. Both passed 1/4; no measured improvement. Broader/held-out comparison remains open.
 - [ ] Compare another local model only after download approval and resource assessment. A larger model is not an assumed solution.
 
 3B — Goal and progress representation:
@@ -153,6 +153,8 @@ The exact "Joji 777" request exposed a second planning failure: with a simulated
 
 Initial Windows-control slice: `observe_windows` exposes visible window IDs and foreground identity at capture time (0 if unlisted); `desktop_observe` reads bounded Win32 child controls and whether the selected window is foreground. Approved `desktop_click_control` and `desktop_type_text` require the latest observation ID, recheck window PID/executable/title and control class/text/rectangle, reject stale targets and password fields, and return accepted dispatch with a bounded post-action window observation. `desktop_press_key` adds approved, single-key navigation/activation (Enter, Escape, Tab, arrows and similar) scoped to a fresh observed window; it is not arbitrary keyboard access. This is a general adapter, not application-specific automation. Window titles, foreground identity and Win32 child controls do not expose Chromium DOM or canvas pixels. Cross-process focus, control behavior and resulting effects still need interactive validation; no claim of full computer control follows from this slice.
 
+Native application discovery now reads Windows App Paths, matching Start menu shortcut targets, PATH, and bounded standard install roots. It returns local native `.exe` matches only. `application_open` binds a fresh, task-owned discovery ID to the exact executable path in the approval request; it rechecks file identity and refuses duplicate launch of the same path within one task. A missing/unresolvable shortcut or UWP app may still be absent. This is discovery and launch dispatch, not verified application control. The local model's [Phase 3A app corpus](evaluations/PHASE3A_BASELINE.md) still fails to choose launch reliably, so do not claim the natural-language app workflow works end to end.
+
 - [ ] Windows: discover applications/windows with stable identity, focus checks and capability availability.
 - [ ] Accessibility: inspect controls and state; invoke supported actions; handle dialogs/loading/stale controls.
 - [ ] Browser: managed sessions, semantic DOM targets, navigation/extraction and observed postconditions.
@@ -183,7 +185,7 @@ Exit gate: controlled fixtures demonstrate execution, failure, timeout, cancella
 
 ### Phase 6 — Vision and general input fallback
 
-The currently installed `llama3.2:3b` reports completion/tools but no vision capability. No local vision model, screenshot-to-model pathway, Pillow, mss or WinRT Python package is available here. User intent to grant broad control does not itself solve pixel interpretation or justify invisible capture of private displays; define scope and local retention before enabling it. This restricted session enumerated zero visible windows, so interactive display behavior cannot be validated here.
+The currently installed `llama3.2:3b` reports completion/tools but no vision capability. No local vision model, screenshot-to-model pathway, Pillow, mss or WinRT Python package is available here. Resource check: RTX 3050 Laptop GPU with 4 GiB VRAM and about 19.7 GiB physical RAM. `qwen3-vl:4b-instruct` is a candidate for a user-approved local download and fixed-corpus comparison; its model file is about 3.3 GB, so GPU headroom may be tight and partial CPU offload/latency must be measured. Downloading alone does not add Wingent screen capture, scoped consent or visual action verification. User intent to grant broad control does not itself solve pixel interpretation or justify invisible capture of private displays; define scope and local retention before enabling it. This restricted session enumerated zero visible windows, so interactive display behavior cannot be validated here.
 
 - [ ] Assess local vision-provider availability, latency, resource cost and download requirements.
 - [ ] Establish explicit screenshot scope, redaction/retention policy and capture provenance.
@@ -252,11 +254,11 @@ No open decision grants blanket authority. Continue with safe, local and isolate
 
 Recorded implementation checkpoint: `999671c` — general operator groundwork and live evaluation gaps. Earlier checkpoints: `98b95bf` (runtime), `75e2109` (audit), `48acd05` (launcher baseline). These identify source history, not bundled binaries.
 
-Current EXE path: `src-tauri/target/release/app.exe`; packaged health marker `operator-v10` for the current foreground-observation slice.
+Current EXE path: `src-tauri/target/release/app.exe`; packaged health marker `operator-v11` for app discovery and Phase 3A measurement.
 Recorded source/packaged sidecar SHA-256:
 `1C5FEEB063136A65086F362CE507A794DE9367AA554EDFF7EBAEE05A0A412C0E`.
 
-The current backend suite passed 162 tests and the Rust contract test passed; the previous UI check passed 14 tests. The local model selected search → the observed Joji 777 result → Play in a simulated browser. This slice rebuilt the sidecar and EXE; source and packaged sidecar hashes match. The native shell requires `operator-v10` before using port 8000. A controlled sleeping-process cancellation fixture passed, but full descendant cleanup and packaged cancellation remain unverified. Chrome and Edge page-level control still crashed in this restricted session. A direct EXE launch here previously exited without a reachable backend. The EXE desktop lifecycle, live Windows control, scoped keyboard delivery and real YouTube playback remain unverified. Do not claim a working browser operator or full desktop lifecycle.
+The current backend suite passed 171 tests and the Rust contract test passed; the previous UI check passed 14 tests. The local model selected search → the observed Joji 777 result → Play in a simulated browser. This slice rebuilt the sidecar and EXE; source and packaged sidecar hashes match. The native shell requires `operator-v11` before using port 8000. The four-case app reasoning corpus passed only 1/4 in each prompt variant; app launch was not achieved by the local model in that fixture, even though the tool contracts and a read-only Notepad/VS Code discovery check passed. A controlled sleeping-process cancellation fixture passed, but full descendant cleanup and packaged cancellation remain unverified. Chrome and Edge page-level control still crashed in this restricted session. A direct EXE launch here previously exited without a reachable backend. The EXE desktop lifecycle, live Windows control, scoped keyboard delivery and real YouTube playback remain unverified. Do not claim a working browser operator or full desktop lifecycle.
 
 Current sidecar SHA-256: `80E25C483CE0D147ACA2F7879037357324FAC91C3941B1BC165CDC59B55239AD`.
 Current EXE SHA-256: `7ED34C25BF92AE55B315CF99844332853EB2974AC494446651A32D511E180007`.
@@ -289,5 +291,6 @@ At each slice, distinguish four outcomes: model selected sensible actions; tools
 | 2026-10-03 | Added task-bound process cancellation hook with exact-PID fallback and bounded post-action Win32 observation; rebuilt operator-v8 | 159 backend and 1 Rust test pass; sidecar/EXE builds pass and sidecar hashes match. Owned sleeping child stopped in a controlled cancellation test. Detached children, packaged cancellation, real UI effects, vision and live browser playback are not verified. Phases 3–5 remain in progress. |
 | 2026-10-03 | Added exact-action-approved navigation key input bound to a fresh observed window; rebuilt operator-v9 | 161 backend and 1 Rust test pass; sidecar/EXE builds pass and sidecar hashes match. Changed/stale window fixture rejects dispatch. Live keyboard delivery, vision and browser playback remain unverified; Phase 4 remains in progress. |
 | 2026-10-03 | Added read-only foreground-window identity to visible-window/control observations and warned operator not to infer pixels; rebuilt operator-v10 | 162 backend and 1 Rust test pass; sidecar/EXE builds pass and sidecar hashes match. Unknown foreground is explicit; restricted session sees zero visible windows. Installed Ollama model is text-only; screen-pixel understanding remains unavailable. |
+| 2026-10-03 | Added bounded installed-app discovery, exact-path approved launch, same-app duplicate guard and frozen Phase 3A app corpus; rebuilt operator-v11 | 171 backend and 1 Rust test pass; sidecar/EXE builds pass and hashes match. Local model passed only 1/4 app cases in either guidance variant, so Phase 3A remains open. Native Notepad and VS Code were found read-only; real interactive launch/control and screen vision remain unverified. |
 
 For each future slice record: authorization, phase/checklist items, hypothesis, changes, tests, live failures, packaged version, actual checkpoint, remaining risks and next action.

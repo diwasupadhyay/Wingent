@@ -73,7 +73,7 @@ class ToolRegistry:
         )
         self.register(
             'open_application',
-            'Open a known Windows application such as Chrome, Edge, Notepad, or Explorer.',
+            'Compatibility launcher for Chrome, Edge, Notepad or Explorer only. For any other installed app, use application_search then application_open.',
             ToolPermission.SAFE,
             {
                 'type': 'object',
