@@ -118,7 +118,7 @@ def test_flexible_media_goal_searches_observed_result_then_checks_playback():
     state = TaskState(goal='Open Chrome and play any Joji song on YouTube', criteria=['Joji song playing'])
     events = asyncio.run(_collect_run(registry, state, Provider()))
     assert browser.calls == [('search', 'Joji song'), ('follow', 0), ('play',)]
-    assert state.model_calls == 4
+    assert state.model_calls == 3
     assert events[-1][0] == 'final' and events[-1][1]['verified'] is False
     assert 'HTML media time advanced' in events[-1][1]['text']
 
@@ -139,6 +139,97 @@ def test_search_only_finish_cannot_claim_playback():
     assert events[-1][0] == 'final'
     assert 'remains unfinished' in events[-1][1]['text']
     assert state.model_calls == 2
+
+
+def test_observed_selected_media_can_trigger_play_without_model_call():
+    registry = ToolRegistry()
+    registry.register('browser_play_media', 'Play observed media', ToolPermission.SAFE, {},
+                      lambda _: {'ok': True}, input_model=Arguments)
+    state = TaskState(goal='Watch any relevant music video', criteria=['video playing'])
+    state.records.append(ActionRecord(
+        action=Action(tool='browser_follow_link', arguments={'index': 0}, label='follow'),
+        outcome=Outcome(status='accepted', summary='Observed selected page', data={
+            'page_observed': True, 'title': 'Relevant video',
+            'media': [{'paused': True, 'current_time': 0}]}), dispatched=True))
+    state.model_calls = state.limits.model_calls
+    class NoProvider:
+        async def structured(self, *args):
+            raise AssertionError('An observed paused media postcondition needs no model call.')
+    decision = asyncio.run(OperatorAdapter(registry, state, NoProvider()).decide(state.context()))
+    assert decision.kind == 'act' and decision.action.tool == 'browser_play_media'
+    assert decision.action.arguments == {}
+
+
+def test_negative_playback_request_does_not_trigger_play():
+    registry = ToolRegistry()
+    registry.register('browser_play_media', 'Play observed media', ToolPermission.SAFE, {},
+                      lambda _: {'ok': True}, input_model=Arguments)
+    state = TaskState(goal='Find a video but do not play it', criteria=['video found'])
+    state.records.append(ActionRecord(
+        action=Action(tool='browser_follow_link', arguments={'index': 0}, label='follow'),
+        outcome=Outcome(status='accepted', summary='Observed selected page', data={
+            'page_observed': True, 'title': 'Video', 'media': [{'paused': True}]}), dispatched=True))
+    class Provider:
+        async def structured(self, *args):
+            return '{"tool":"finish","message":"Found the video without playing it."}'
+    decision = asyncio.run(OperatorAdapter(registry, state, BudgetedProvider(Provider(), state)).decide(state.context()))
+    assert decision.kind == 'finish'
+
+
+def test_specific_media_goal_waits_for_model_to_confirm_selected_target():
+    registry = ToolRegistry()
+    registry.register('browser_play_media', 'Play observed media', ToolPermission.SAFE, {},
+                      lambda _: {'ok': True}, input_model=Arguments)
+    state = TaskState(goal='Play the song 777 by Joji', criteria=['777 playing'])
+    state.records.append(ActionRecord(
+        action=Action(tool='browser_follow_link', arguments={'index': 0}, label='follow'),
+        outcome=Outcome(status='accepted', summary='Observed page', data={
+            'page_observed': True, 'title': 'Joji - Glimpse of Us',
+            'media': [{'paused': True}]}), dispatched=True))
+    class Provider:
+        async def structured(self, *args):
+            return '{"tool":"finish","message":"This is the wrong video."}'
+    decision = asyncio.run(OperatorAdapter(registry, state, BudgetedProvider(Provider(), state)).decide(state.context()))
+    assert decision.kind != 'act' or decision.action.tool != 'browser_play_media'
+
+
+def test_empty_clarification_after_action_stops_with_partial_result_instead_of_error():
+    registry = ToolRegistry()
+    registry.register('observe_marker', 'Observe marker', ToolPermission.SAFE, {},
+                      lambda _: {'ok': True, 'marker': 'seen'}, input_model=Arguments)
+    class Provider:
+        async def structured(self, prompt, system, schema):
+            if json.loads(prompt)['untrusted_action_results']:
+                return '{"tool":"ask","message":""}'
+            return '{"tool":"observe_marker"}'
+    state = TaskState(goal='Observe a marker and report what happened', criteria=['marker observed'])
+    events = asyncio.run(_collect_run(registry, state, Provider()))
+    assert [record.action.tool for record in state.records] == ['observe_marker']
+    assert state.model_calls == 3
+    assert events[-1][0] == 'final'
+    assert events[-1][1]['verified'] is False
+    assert 'remaining goal is unverified' in events[-1][1]['text']
+
+
+def test_interactive_media_goal_does_not_waste_action_on_plain_browser_launch():
+    registry = ToolRegistry()
+    launched = []
+    class AppInput(Arguments):
+        application: str
+    registry.register('open_application', 'Launch an application', ToolPermission.SAFE, {},
+                      lambda p: launched.append(p) or {'ok': True}, input_model=AppInput)
+    registry.register('browser_search', 'Search in the agent-owned browser', ToolPermission.SAFE, {},
+                      lambda p: {'ok': True}, input_model=BrowserQuery)
+    class Provider:
+        async def structured(self, prompt, system, schema):
+            if json.loads(prompt).get('rejected_browser_launch'):
+                return '{"tool":"browser_search","arguments":{"query":"Joji songs","site":"youtube"}}'
+            return '{"tool":"open_application","arguments":{"application":"chrome"}}'
+    state = TaskState(goal='Open Chrome and play any Joji song on YouTube', criteria=['music playing'])
+    decision = asyncio.run(OperatorAdapter(registry, state, BudgetedProvider(Provider(), state)).decide(state.context()))
+    assert decision.kind == 'act' and decision.action.tool == 'browser_search'
+    assert decision.action.arguments['query'] == 'Joji songs'
+    assert state.model_calls == 2 and not launched
 
 
 async def _collect_run(registry, state, provider):

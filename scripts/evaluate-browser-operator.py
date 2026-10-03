@@ -94,6 +94,10 @@ async def main(variant='777'):
     assert any(action[0] == 'search' for action in browser.actions)
     assert any(action[0] == 'follow' and (variant == 'any' or action[1] == 1) for action in browser.actions)
     assert any(action[0] == 'play' for action in browser.actions)
+    assert any(record.action.tool == 'browser_play_media' and
+               record.outcome.data.get('playback_progressed') is True for record in state.records)
+    assert events[-1][0] == 'final' and 'Host observation: HTML media time advanced' in events[-1][1]['text']
+    assert 'Stopped because' not in events[-1][1]['text']
 
 
 if __name__ == '__main__':

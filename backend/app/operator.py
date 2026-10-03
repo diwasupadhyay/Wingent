@@ -54,7 +54,8 @@ asking which one; then observe the destination and verify the requested effect.
 After a browser search returns links, choose a relevant observed link; do not reopen the
 current results URL. Start media only after a page observation contains a media element.
 For a purely informational question use answer. Never use answer to pretend a computer task ran.
-Select one exact registered tool name or ask/finish/answer. Include a concise message.
+Select one exact registered tool name or ask/finish/answer. Ask and answer MUST
+include a nonempty message (the question or answer). An action may use a short message.
 For an action, include typed arguments in the same response using the installed input
 fields. This saves a model call. If the fields are uncertain, use {} and the host will
 ask for the selected tool's arguments separately. Never invent targets to save a call.
@@ -67,6 +68,16 @@ Do not create a report from incomplete file pages. source_coverage lists missing
 An observation may be refreshed once with a concrete refresh_reason, or after an action
 changes the state. Do not alternate observations endlessly while waiting for progress.
 """
+
+
+def _playback_requested(goal: str) -> bool:
+    if re.search(r"\b(?:do not|don't|dont|never|without)\s+(?:\w+\s+){0,2}(?:play|watch)\b", goal, re.I):
+        return False
+    return bool(re.search(r'\b(?:play|watch)\b', goal, re.I))
+
+
+def _flexible_media_goal(goal: str) -> bool:
+    return _playback_requested(goal) and bool(re.search(r'\b(?:any|random|whatever|something similar)\b', goal, re.I))
 
 
 class OperatorAdapter(LaunchAdapter):
@@ -93,9 +104,6 @@ class OperatorAdapter(LaunchAdapter):
             self.final_message = 'Which application would you like me to open?'
             self.resumable_question = True
             return Decision(kind='ask', message=self.final_message)
-        if self.state.records and self.state.model_calls >= self.state.limits.model_calls:
-            self.final_message = 'Reasoning budget reached. Review the recorded results; remaining goal steps are unverified.'
-            return Decision(kind='finish', message=self.final_message)
         if self.state.records:
             last = self.state.records[-1]
             if (last.action.tool.startswith('browser_') and
@@ -104,12 +112,27 @@ class OperatorAdapter(LaunchAdapter):
                                       'I cannot select a result or verify playback in that window. '
                                       'No further browser action was attempted.')
                 return Decision(kind='finish', message=self.final_message)
+            # The model selected an observed result. If that page contains
+            # paused media and playback is the user's explicit goal, dispatch
+            # the existing safe Play tool through the normal registry/review
+            # boundary instead of spending another model turn on this step.
+            media = last.outcome.data.get('media')
+            if (_flexible_media_goal(self.state.goal) and last.action.tool == 'browser_follow_link' and
+                    last.outcome.status == 'accepted' and last.outcome.data.get('page_observed') is True and
+                    isinstance(media, list) and
+                    any(isinstance(item, dict) and item.get('paused') is True for item in media) and
+                    self.registry.get_tool('browser_play_media') is not None):
+                return Decision(kind='act', action=action_from_pair('browser_play_media', {}),
+                                message='Observed paused media on the selected page; checking playback.')
             if (last.action.tool == 'application_search' and last.outcome.status == 'accepted' and
                     last.outcome.data.get('applications') == []):
                 self.final_message = ('No matching native application was found in App Paths, Start menu '
                                       'shortcuts, PATH or standard install roots. No application was launched. '
                                       'Search coverage is incomplete.')
                 return Decision(kind='finish', message=self.final_message)
+        if self.state.records and self.state.model_calls >= self.state.limits.model_calls:
+            self.final_message = 'Reasoning budget reached. Review the recorded results; remaining goal steps are unverified.'
+            return Decision(kind='finish', message=self.final_message)
         catalogue = []
         for tool_info in self.registry.manifest():
             schema = tool_info['input_schema']
@@ -162,6 +185,10 @@ class OperatorAdapter(LaunchAdapter):
             system += ('\nThe current browser page has observed links but no media. '
                        'For a goal involving linked content, choose browser_follow_link with '
                        'an index whose text matches the requested target. Do not call browser_play_media yet.')
+        if browser_page and browser_page.get('media') and _playback_requested(self.state.goal):
+            system += ('\nThe current observed browser page has an HTML media element. '
+                       'If its observed title matches the requested content, choose browser_play_media now; '
+                       'opening Chrome again or following an unrelated link does not verify playback.')
         system += '\nUse the original goal as a checklist. Select finish if every requested part has a successful result. Otherwise choose the NEXT incomplete part. Never start the checklist over.'
         for choice_attempt in range(2):
             for attempt in range(2):
@@ -175,10 +202,15 @@ class OperatorAdapter(LaunchAdapter):
                     break
                 except ValueError:
                     if attempt:
+                        if self.state.records:
+                            self.final_message = ('The local model returned an unusable next decision after earlier actions. '
+                                                  'Those recorded effects may have happened, but the remaining goal is unverified.')
+                            return Decision(kind='finish', message=self.final_message)
                         raise
-                    system += '\nPrevious response invalid. Select one exact registered tool name or ask/finish/answer.'
+                    system += ('\nPrevious decision invalid. Use one exact registered tool name or ask/finish/answer. '
+                               'Ask and answer require a nonempty message; do not ask an empty question.')
             if proposal.tool in {'ask', 'finish', 'answer'}:
-                playback_requested = bool(re.search(r'\bplay\b', self.state.goal, re.IGNORECASE))
+                playback_requested = _playback_requested(self.state.goal)
                 browser_work_started = any(record.action.tool.startswith('browser_') and
                                            record.outcome.status == 'accepted' for record in self.state.records)
                 playback_observed = any(record.action.tool == 'browser_play_media' and
@@ -231,6 +263,18 @@ class OperatorAdapter(LaunchAdapter):
                         if attempt:
                             raise
                         argument_system += '\nPrevious arguments failed validation. Return the exact input schema.'
+            if (tool.name == 'open_application' and args.get('application') in {'chrome', 'edge'} and
+                    _playback_requested(self.state.goal) and
+                    self.registry.get_tool('browser_search') is not None):
+                if choice_attempt == 0 and self.state.limits.model_calls - self.state.model_calls >= 2:
+                    prompt = json.dumps({**json.loads(prompt), 'rejected_browser_launch':
+                                         'Opening a browser alone cannot observe or play the requested media.'})
+                    system += ('\nThat browser launch was NOT dispatched. Use an observable browser tool '
+                               'for this media task; browser_search opens the agent-owned browser itself.')
+                    continue
+                self.final_message = ('A browser launch alone cannot complete or verify the requested media task. '
+                                      'No browser launch was dispatched.')
+                return Decision(kind='finish', message=self.final_message)
             if tool.name == 'application_search':
                 generic_terms = {'app', 'application', 'open', 'launch', 'start', 'run',
                                  'find', 'search', 'installed', 'native', 'name', 'program',
