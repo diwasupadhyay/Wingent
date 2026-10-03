@@ -193,6 +193,64 @@ def test_unnamed_app_goal_asks_without_guessing_or_model_call():
     assert 'Which application' in decision.message
 
 
+def test_clarification_answer_can_supply_missing_app_name():
+    from app.application_tools import SearchApplications
+    registry = ToolRegistry()
+    registry.register('application_search', 'Search apps', ToolPermission.SAFE, {},
+                      lambda p: {'ok': True}, input_model=SearchApplications)
+    state = TaskState(goal='Open an app for me.', criteria=['app opened'])
+    state.pending_question = 'Which application?'
+    state.resume('NoteSpace')
+    class Provider:
+        async def structured(self, prompt, system, schema):
+            return '{"query":"NoteSpace"}' if json.loads(prompt).get('selected_tool') else '{"tool":"application_search"}'
+    decision = asyncio.run(OperatorAdapter(registry, state, BudgetedProvider(Provider(), state)).decide(state.context()))
+    assert decision.kind == 'act' and decision.action.arguments == {'query': 'NoteSpace'}
+
+
+def test_incomplete_file_blocks_output_then_replans_to_missing_page():
+    from app.file_tools import register
+    registry = ToolRegistry()
+    register(registry)
+    state = TaskState(goal='Read C:/source.txt and create C:/report.md', criteria=['report'])
+    state.records.append(ActionRecord(
+        action=Action(tool='read_text', arguments={'path': 'C:/source.txt', 'offset': 0}, label='read'),
+        outcome=Outcome(status='accepted', summary='Read a page', data={
+            'path': 'C:/source.txt', 'text': 'partial', 'offset': 0, 'next_offset': 2048,
+            'truncated': True, 'source_version': 'v1'}), dispatched=True))
+    class Provider:
+        async def structured(self, prompt, system, schema):
+            context = json.loads(prompt)
+            if context.get('selected_tool') == 'create_text':
+                return '{"path":"C:/report.md","text":"Premature report"}'
+            if context.get('selected_tool') == 'read_text':
+                return '{"path":"C:/source.txt","offset":2048}'
+            return '{"tool":"read_text"}' if context.get('incomplete_sources') else '{"tool":"create_text"}'
+    decision = asyncio.run(OperatorAdapter(registry, state, BudgetedProvider(Provider(), state)).decide(state.context()))
+    assert decision.kind == 'act' and decision.action.tool == 'read_text'
+    assert decision.action.arguments['offset'] == 2048
+
+
+def test_clarification_path_used_for_output_and_plan_is_not_evidence(tmp_path):
+    from app.file_tools import register
+    registry = ToolRegistry()
+    register(registry)
+    state = TaskState(goal='Create a new text file containing hello.', criteria=['file correct'])
+    state.pending_question = 'Where should I save it?'
+    path = str(tmp_path / 'hello.txt')
+    state.resume(path)
+    class Provider:
+        async def structured(self, prompt, system, schema):
+            if json.loads(prompt).get('selected_tool'):
+                return json.dumps({'path': path, 'text': 'hello'})
+            return json.dumps({'tool': 'create_text', 'plan': {
+                'outcomes': ['Create file'], 'output_targets': [path], 'remaining_work': ['Write file']}})
+    decision = asyncio.run(OperatorAdapter(registry, state, BudgetedProvider(Provider(), state)).decide(state.context()))
+    assert decision.kind == 'act' and decision.action.arguments['path'] == path
+    assert state.working_plan.output_targets == [path]
+    assert state.evidence == []
+
+
 def test_invented_local_path_is_rejected_before_dispatch():
     registry = ToolRegistry()
     called = []

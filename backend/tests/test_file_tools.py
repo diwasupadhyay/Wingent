@@ -65,3 +65,16 @@ def test_missing_read_is_known_no_effect(tmp_path):
     register(registry)
     result = approved(registry, 'read_text', {'path': str(tmp_path / 'missing.txt')})
     assert not result['ok'] and result['effect'] == 'no_effect'
+
+
+def test_page_version_changes_when_source_is_replaced(tmp_path):
+    registry = ToolRegistry()
+    register(registry)
+    source = tmp_path / 'source.txt'
+    source.write_text('a' * 3000, encoding='utf-8')
+    first = approved(registry, 'read_text', {'path': str(source)})
+    assert first['offset'] == 0 and first['next_offset'] == 2048 and first['truncated']
+    source.write_text('different content', encoding='utf-8')
+    second = approved(registry, 'read_text', {'path': str(source)})
+    assert second['source_version'] != first['source_version']
+    assert second['size_bytes'] == len('different content')

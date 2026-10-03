@@ -56,8 +56,14 @@ def read_text(params):
         raise ValueError('Target must be a regular local file.')
     # Byte offsets make bounded pagination predictable; reject binary/invalid UTF-8.
     with path.open('rb') as source:
+        before = os.fstat(source.fileno())
         source.seek(params['offset'])
         data = source.read(PAGE_BYTES + 1)
+        after = os.fstat(source.fileno())
+    def identity(stat):
+        return [stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns]
+    if identity(before) != identity(after):
+        return {'ok': False, 'effect': 'no_effect', 'error': 'File changed during reading; observe it again.'}
     clipped = data[:PAGE_BYTES]
     if b'\x00' in clipped:
         raise ValueError('Binary content is not supported by read_text.')
@@ -73,6 +79,8 @@ def read_text(params):
     if data and not page:
         raise ValueError('Page size is too small for this UTF-8 character.')
     return {'ok': True, 'path': str(path), 'text': content,
+            'offset': params['offset'], 'size_bytes': after.st_size,
+            'source_version': hashlib.sha256(str(identity(after)).encode()).hexdigest(),
             'next_offset': params['offset'] + len(page), 'truncated': len(data) > len(page)}
 
 

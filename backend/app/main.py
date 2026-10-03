@@ -28,6 +28,7 @@ from app.desktop_tools import register as register_desktop
 from app.process_tools import register as register_process
 from app.application_tools import register as register_applications
 from app.screen_tools import register as register_screen
+from app.version import RUNTIME_VERSION
 
 app = FastAPI(title='Wingent', version='0.1.0')
 app.add_middleware(
@@ -62,7 +63,7 @@ def sse_event(event: str, payload: dict[str, object]) -> str:
 
 @app.get('/health')
 def health() -> dict[str, str]:
-    return {'status': 'ok', 'service': 'wingent', 'runtime': 'operator-v12'}
+    return {'status': 'ok', 'service': 'wingent', 'runtime': RUNTIME_VERSION}
 
 
 class ApprovalResponse(BaseModel):

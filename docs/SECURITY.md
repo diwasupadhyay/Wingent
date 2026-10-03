@@ -20,6 +20,8 @@ Updated: 2026-10-03. Current implementation and future requirements are distingu
 - Review mode also gates otherwise safe launches.
 - Accepted, known-no-effect and unknown outcomes remain distinct. Unknown dispatch outcomes stop further actions rather than encouraging replay.
 - A model finish message cannot grant verified status; the runtime requires fresh trusted evidence for all criteria.
+- Task planning notes are untrusted model interpretations. Record references must exist, but a reference is not proof that its content supports the model's claim. Historical result retrieval is scoped to the current task's copied registry and performs no new external access; approvals and dispatch remain subject to the existing runtime.
+- UTF-8 report inputs must have contiguous observed pages from the same file version. This blocks missing-page outputs, not semantic errors or hostile file replacement. One explained observation refresh is permitted; accepted consequential actions are not replayed.
 - File operations require exact-action approval. Listing is nonrecursive; text reads use host-controlled 2048-byte UTF-8 pages; new files use exclusive creation and read-back.
 - File tools reject linked/junction paths, remote/device paths, alternate streams and ambiguous reserved names.
 - Natural tasks validate the next action at execution time. Whole-plan preflight applies only to the fixed launch compatibility path, not all dynamic tasks.

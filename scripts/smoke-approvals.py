@@ -1,6 +1,6 @@
 """Packaged smoke test: deny a URL launch, approve opening the repository folder once.
 
-Requires the operator-v4 backend. Never prints approval tokens.
+Requires the current backend contract. Never prints approval tokens.
 """
 
 import asyncio
@@ -8,6 +8,7 @@ import json
 from pathlib import Path
 
 import httpx
+from app.version import RUNTIME_VERSION
 
 
 async def scenario(client, prompt, approve):
@@ -46,7 +47,7 @@ async def scenario(client, prompt, approve):
 async def main():
     async with httpx.AsyncClient(base_url='http://127.0.0.1:8000', timeout=75) as client:
         health = (await client.get('/health')).json()
-        assert health.get('runtime') == 'operator-v4', 'Refusing to test an outdated backend'
+        assert health.get('runtime') == RUNTIME_VERSION, 'Refusing to test an outdated backend'
         await scenario(client, 'open https://example.com', False)
         await scenario(client, f'open "{Path(__file__).resolve().parent.parent}"', True)
 

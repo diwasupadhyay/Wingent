@@ -4,6 +4,7 @@ import json
 import time
 from enum import Enum
 from uuid import uuid4
+from typing import Annotated
 
 from pydantic import BaseModel, ConfigDict, Field, JsonValue, model_validator
 
@@ -93,6 +94,26 @@ class BudgetExceeded(RuntimeError):
     pass
 
 
+PlanText = Annotated[str, Field(min_length=1, max_length=300)]
+
+
+class WorkingPlan(StrictModel):
+    """Model interpretation, never permissions or evidence of completion."""
+    outcomes: list[PlanText] = Field(default_factory=list, max_length=8)
+    constraints: list[PlanText] = Field(default_factory=list, max_length=8)
+    output_targets: list[PlanText] = Field(default_factory=list, max_length=8)
+    remaining_work: list[PlanText] = Field(default_factory=list, max_length=8)
+    questions: list[PlanText] = Field(default_factory=list, max_length=3)
+    based_on_records: list[int] = Field(default_factory=list, max_length=64)
+
+    @model_validator(mode='after')
+    def bounded_notes(self):
+        if sum(len(text) for field in ('outcomes', 'constraints', 'output_targets', 'remaining_work', 'questions')
+               for text in getattr(self, field)) > 2400:
+            raise ValueError('Keep planning notes under 2400 characters in total.')
+        return self
+
+
 class TaskState(StrictModel):
     id: str = Field(default_factory=lambda: uuid4().hex)
     goal: str = Field(min_length=1, max_length=4096)
@@ -109,6 +130,22 @@ class TaskState(StrictModel):
     pending_question: str | None = None
     clarifications: list[dict[str, str]] = Field(default_factory=list, max_length=3)
     evidence: list[Evidence] = Field(default_factory=list)
+    working_plan: WorkingPlan | None = None
+    plan_revision: int = 0
+
+    def update_plan(self, plan: WorkingPlan):
+        if any(index < 1 or index > len(self.records) for index in plan.based_on_records):
+            raise ValueError('Plan references an action result that does not exist.')
+        if self.working_plan:
+            # Preserve earlier requested outcomes/constraints even if a later model
+            # response forgets them. Clarifications and the original goal stay visible.
+            for field in ('outcomes', 'constraints', 'output_targets'):
+                values = list(dict.fromkeys([*getattr(self.working_plan, field), *getattr(plan, field)]))
+                if len(values) > 8:
+                    raise ValueError('Plan expanded beyond eight entries; reuse the existing outcomes.')
+                setattr(plan, field, values)
+        self.working_plan = WorkingPlan.model_validate(plan.model_dump())
+        self.plan_revision += 1
 
     def resume(self, answer: str):
         if not self.pending_question or not answer.strip():

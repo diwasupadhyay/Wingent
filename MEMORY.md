@@ -4,7 +4,7 @@ Updated: 2026-10-03. This is resume context, not a second phase tracker.
 
 ## Latest user instruction
 
-Fix the Joji 777 search-only failure while progressing the general agent; do not call Phases 3–5 complete without live exit gates. Preserve honest verification and exact-action approval.
+Progress the general agent's autonomy and reasoning through completed, tested implementation slices. Preserve honest verification, rebuild the EXE and keep Git rollback checkpoints.
 
 ## Direction
 
@@ -18,6 +18,7 @@ Authoritative tracker: [docs/AGENT_IMPLEMENTATION_PLAN.md](docs/AGENT_IMPLEMENTA
 - Phase 3: registry-driven next-tool reasoning, typed arguments, outcome feedback, general approved file primitives and opt-in trusted skill entry points exist.
 - Phase 3 remains incomplete. Phase 3A's bounded measurement and installed-model comparison are complete: `qwen3-vl:4b-instruct` passed 3/4 in each of two runs but failed different cases; `llama3.2:3b` passed 2/4 after a host clarification guard. This does not meet the varied/held-out reliability gate. See docs/evaluations/PHASE3A_BASELINE.md. A model-only completion assessor had hallucinated success and was removed.
 - Fixed 2048-byte read pages replaced model-selected page sizes after a one-byte-read failure.
+- Phase 3B working-context contracts are complete for the current task/file surface: bounded model notes preserve requested outcomes/constraints/targets and remaining work; a full host action index exposes provenance and `task_read_result` retrieves historical bodies without redispatch. Source reports require contiguous pages of the same observed version. Alternating observation cycles require a bounded refresh reason or an intervening action. Clarification answers now ground missing names/paths. These contracts do not establish broad model competence or independent completion.
 - Initial Win32 child-control input and scoped navigation keys return bounded post-action observations; visible-window and control observations include foreground-at-capture identity. Exact-action-approved native process execution has a task cancellation hook and exact-PID fallback; detached descendants remain uncertain. Explicitly approved `screen_inspect` now captures a fresh foreground window in memory for local Ollama vision, refusing known password controls, stale identity and remote URLs. Its description is untrusted; real capture is unverified. General UI accessibility and arbitrary keyboard/mouse remain unavailable. The narrow browser DOM adapter remains experimental.
 - Native application discovery covers App Paths, matching Start menu shortcuts, PATH and bounded install roots; opening requires a fresh task-owned discovery ID, host-bound exact-path approval and identity recheck. Same executable launch is deduplicated within a task. Notepad and VS Code were found read-only, but live GUI launch/control was not verified.
 - An experimental agent-owned Chrome DOM/media adapter was added after a reported YouTube playback failure. Chrome and Edge browser-level CDP works, but enabling a page-level session exits with `0x80000003` here; disabling GPU did not help. Normal Chrome fallback showed no new visible window here. Playback remains unverified. The model initially reopened the Joji 777 search URL and tried Play too early; host guards now reject those no-progress actions. It then selected search → observed 777 link → Play in a simulated browser. Browser-control failure stops early instead of wasting model calls.
@@ -28,9 +29,11 @@ Authoritative tracker: [docs/AGENT_IMPLEMENTATION_PLAN.md](docs/AGENT_IMPLEMENTA
 
 ## Recorded evidence
 
-Current slice: 178 backend tests pass; previous 14 UI and 1 Rust contract test passed. The installed `qwen3-vl:4b-instruct` described a synthetic red image through local Ollama; live screen capture is unverified because this restricted session enumerates zero visible windows. Phase 3A comparison results are above. A controlled sleeping-process cancellation fixture passed; scoped keyboard and foreground identity have only fixture coverage. Two isolated file variants and a simulated-browser Joji 777 sequence passed previously, but actual Chrome/Edge page control crashed and playback was not verified. Packaged denial/replay passed previously; approved Explorer launch had an unknown outcome here.
+Earlier evidence: operator-v12 passed 178 backend tests; the UI suite previously passed 14 tests. `qwen3-vl:4b-instruct` described a synthetic red image through local Ollama; live screen capture is unverified because this restricted session enumerates zero visible windows. Phase 3A comparison results are above. A controlled sleeping-process cancellation fixture passed; scoped keyboard and foreground identity have only fixture coverage. A simulated-browser Joji sequence passed, but actual Chrome/Edge page control crashed and playback was not verified. Packaged denial/replay passed previously; approved Explorer launch had an unknown outcome here.
 
-Current source backend marker: operator-v12. EXE: src-tauri/target/release/app.exe. Check packaged hash and process identity before calling a running binary current.
+Latest 3B checks: 187 backend tests and one Rust test passed; frontend/sidecar/EXE builds passed and sidecar hashes match. Real model short-file and two-page report fixtures passed; the two-page run took 124.22 seconds and 11 calls. Only one planning-note revision was emitted, so notes alone are not reliable progress evidence. Packaged evaluation evidence belongs in the phase plan.
+
+Current source backend marker: operator-v13. EXE: src-tauri/target/release/app.exe. Check packaged hash and process identity before calling a running binary current.
 
 ## Next when authorized
 

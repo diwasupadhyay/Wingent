@@ -19,7 +19,7 @@ Stack: Tauri v2, React/TypeScript/Vite, Python FastAPI/SSE, replaceable local LL
 ## Current implementation
 
 - Natural requests: main.py → operator.py → AgentRuntime → typed tool registry.
-- Operator selects a tool from the registry, generates typed arguments, consumes actual results and decides again.
+- Operator selects a tool from the registry, generates typed arguments, consumes actual results and decides again. Phase 3B adds bounded model notes, a complete task action index, historical-result retrieval, file-page/version coverage and bounded observation refresh. Clarification-supplied names/paths now participate in target grounding.
 - Exact simple launch requests retain a model-free compatibility path.
 - Registry contracts include permissions, preconditions, timeouts, retry semantics and observation/verification hooks.
 - Approval requests are expiring, single-use and bound to task, tool revision and canonical arguments. Model output cannot approve actions.
@@ -28,7 +28,7 @@ Stack: Tauri v2, React/TypeScript/Vite, Python FastAPI/SSE, replaceable local LL
 - Skills: explicitly enabled trusted Python entry points at startup. No model-controlled imports/installations or arbitrary host-plugin loading in the frozen EXE.
 - UI supports SSE progress, actions, approval/denial, cancellation, clarification answers and unverified results.
 - Packaged Windows app owns its FastAPI sidecar, stays in the tray and uses Ctrl+Space.
-- Native shell and overlay now require backend marker `operator-v12`; they refuse a stale/other listener on port 8000 instead of sending tasks to it. The user must quit the old process and restart the new EXE; Wingent does not kill an unknown port occupant.
+- Native shell and overlay now require backend marker `operator-v13`; they refuse a stale/other listener on port 8000 instead of sending tasks to it. The user must quit the old process and restart the new EXE; Wingent does not kill an unknown port occupant.
 
 An initial Win32 child-control adapter offers bounded observation, foreground-at-capture identity and approved, fresh-target click/text plus single navigation-key dispatch with post-action observations. An approved native process adapter can discover executables and run exact arguments with bounded output/time; task cancellation attempts to stop its owned process, but detached descendants remain uncertain. It is not a sandbox. `screen_inspect` now offers an explicitly approved, in-memory foreground-window capture sent only to a local Ollama vision model; it rejects known password controls, stale/changed identity and non-loopback endpoints. Its description is untrusted, and actual window capture remains unverified here. General Windows UI Automation and arbitrary keyboard/mouse are not implemented. The narrow browser DOM/media slice is experimental. Genuine model clarifications can resume the original task from a short-lived in-memory state without replaying completed actions; state is not durable.
 
@@ -38,16 +38,18 @@ App discovery searches App Paths, matching Start menu shortcuts, PATH and bounde
 
 Phases 0–2 are complete for their bounded recorded contracts. **Phase 3 remains in progress.**
 
-Current slice: 178 backend tests pass. Previous UI/build checks and one Rust contract test passed; rebuild status is recorded in the phase plan. Phase 3A's initial measurement and installed-model comparison are complete, but `qwen3-vl:4b-instruct` passed only 3/4 in each of two app-corpus runs, failing a different case on repeat. `llama3.2:3b` passed 2/4 after host clarification. See `docs/evaluations/PHASE3A_BASELINE.md`. The new vision model described a synthetic red image through the local API, but this restricted session enumerates zero visible windows; actual capture and control remain unverified. A controlled sleeping-process cancellation fixture passed; detached descendants are not proven safe. Two isolated file variants passed once each previously. A simulated-browser Joji 777 sequence passed previously, but actual Chrome/Edge page control crashed with `0x80000003`; real playback is not verified. This does not meet the held-out/repeated reliability gate. Packaged approval denial/replay passed previously; approved Explorer launch returned unknown here. The GUI EXE also exited before its backend was reachable when launched hidden here; desktop lifecycle needs an interactive check. A model-only completion assessor had previously hallucinated success and was removed.
+Earlier evidence: operator-v12 passed 178 backend tests; the UI suite previously passed 14 tests. Phase 3A's initial comparison is complete, but `qwen3-vl:4b-instruct` passed only 3/4 in each of two app-corpus runs, failing different cases. See `docs/evaluations/PHASE3A_BASELINE.md`. The vision model described a synthetic red image, but real screen capture/control remains unverified. A controlled sleeping-process cancellation fixture passed; detached descendants remain uncertain. A simulated-browser Joji sequence passed, but actual Chrome/Edge page control crashed with `0x80000003`; real playback is unverified. Packaged approval denial/replay passed previously; approved Explorer launch returned unknown. GUI lifecycle needs an interactive check. A model-only completion assessor had hallucinated success and was removed.
 
 Do not treat read-back equality, a model finish message or launch acceptance as whole-goal verification. The model is not proven to be the sole source of failure.
 
-Release path: src-tauri/target/release/app.exe. Backend health marker in source: operator-v12. Check packaged hashes and current process state before treating a running binary as current.
+Phase 3B's bounded working-context contracts are complete. The current regression run passed 187 tests plus one Rust test; frontend/sidecar/EXE builds passed and packaged sidecar hashes match. The real model completed the short fruit task and a two-page report with correct counts; the latter took 124.22 seconds/11 calls and only one plan revision. Notes remain fallible and do not verify progress. See the plan for packaged evaluation and remaining Phase 3C/3D gates.
+
+Release path: src-tauri/target/release/app.exe. Backend health marker in source: operator-v13. Check packaged hashes and current process state before treating a running binary as current.
 
 ## Next work
 
 1. Inspect the worktree and relevant code without discarding user changes.
-2. Follow Phase 3B and remaining reliability gates: repeated varied tasks, goal/progress state, context retention and evidence-grounded stopping.
+2. Follow Phase 3C/3D and remaining reliability gates: repeated varied tasks, independent evidence, capability discovery and resilient continuity. Preserve the 3B context/retrieval/completeness contracts.
 3. State an owning code path, falsifiable hypothesis and cheapest disconfirming test before changes.
 4. Test each substantive edit narrowly, then evaluate with real tools/model in isolated fixtures.
 5. The user installed `qwen3-vl:4b-instruct`; its small-corpus gain is inconsistent. Do not assume a visual model fixes planning or desktop access.

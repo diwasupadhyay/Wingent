@@ -7,6 +7,7 @@ Use --endpoint URL to test the rebuilt packaged API instead of source.
 import argparse
 import asyncio
 import json
+import time
 from dataclasses import dataclass
 from pathlib import Path
 from tempfile import TemporaryDirectory
@@ -19,6 +20,7 @@ from app.llm import OllamaClient
 from app.operator import run_operator
 from app.task_state import TaskState, Limits
 from app.tools import ToolRegistry
+from app.version import RUNTIME_VERSION
 
 
 @dataclass(frozen=True)
@@ -36,10 +38,14 @@ CASES = {
                   'accurately lists the two fruit counts', ('oranges', '12', 'pears', '7')),
     'supplies': Case('supplies', 'stock.txt', 'Pencils: 4\nMarkers: 9\n', 'summary.txt',
                      'summarizes the observed stock counts', ('pencils', '4', 'markers', '9')),
+    'paged': Case('paged', 'regional.txt', 'North: 17\n' + ('No additional regional count in this line.\n' * 52) + 'South: 23\n',
+                  'regions.md', 'lists the North and South counts from the complete file', ('north', '17', 'south', '23')),
 }
 
 
 def permitted(pending, root, output_name):
+    if pending['tool'] == 'task_read_result':
+        return  # Reads only this task's existing records; no new filesystem access.
     assert pending['tool'] in {'list_directory', 'read_text', 'create_text'}, 'Non-file action proposed'
     target = Path(pending['arguments']['path']).resolve()
     assert target == root or root in target.parents, 'Action escaped isolated test directory'
@@ -48,6 +54,7 @@ def permitted(pending, root, output_name):
 
 
 async def main(endpoint=None, variant='fruit'):
+    started = time.monotonic()
     case = CASES[variant]
     with TemporaryDirectory(prefix='wingent-operator-') as directory:
         root = Path(directory).resolve()
@@ -59,7 +66,7 @@ async def main(endpoint=None, variant='fruit'):
         calls = []
         if endpoint:
             async with httpx.AsyncClient(base_url=endpoint, timeout=180) as client:
-                assert (await client.get('/health')).json()['runtime'] == 'operator-v4'
+                assert (await client.get('/health')).json()['runtime'] == RUNTIME_VERSION
                 event = ''
                 async with client.stream('POST', '/api/command', json={'prompt': goal, 'review_actions': True}) as response:
                     response.raise_for_status()
@@ -93,10 +100,16 @@ async def main(endpoint=None, variant='fruit'):
                     terminal = event, data
         print('Tools:', ', '.join(calls), flush=True)
         assert terminal and terminal[0] == 'final', terminal
-        assert calls[:3] == ['list_directory', 'read_text', 'create_text'], (calls, terminal)
+        file_calls = [name for name in calls if name != 'task_read_result']
+        expected = ['list_directory', 'read_text', 'read_text', 'create_text'] if variant == 'paged' else ['list_directory', 'read_text', 'create_text']
+        assert file_calls == expected, (calls, terminal)
         text = (root / case.output_name).read_text(encoding='utf-8').casefold()
         assert all(value in text for value in case.expected), text
         assert terminal[1]['verified'] is False, 'Do not elevate artifact checks to whole-goal verification'
+        assert all(item['complete'] for item in terminal[1]['progress']['source_coverage']), terminal
+        print('Seconds:', round(time.monotonic() - started, 2), flush=True)
+        if not endpoint:
+            print('Model calls:', state.model_calls, 'Plan revisions:', state.plan_revision, flush=True)
         print(f'PASS {case.name}: real model discovered, read, and created a content-checked report; no overwrite.', flush=True)
 
 

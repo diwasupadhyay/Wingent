@@ -15,7 +15,7 @@ Intended loop: goal → understand → plan → observe → select capability �
 | src/App.tsx | Command input, SSE states, actions, approvals, cancellation, clarification answer and unverified output | Resume is only for explicit questions; no durable conversation |
 | src-tauri/src/lib.rs | Overlay/tray/shortcut, packaged sidecar ownership, Ollama controls, required backend-runtime check | Browser/lifecycle hardening remains; incompatible port occupant is refused, not killed |
 | main.py / task_store.py | Local command API, registry setup, provider selection and bounded in-memory clarification continuation | State is lost on restart or interrupted resume |
-| operator.py | Discover registered tools, select next tool, generate typed arguments, retain distinct results and bound repeat correction | Live planning/stopping is not proven across varied tasks |
+| operator.py / working_context.py | Select tools, retain model planning notes and a host action index, retrieve omitted task results, check file coverage and bound repeated observations | Live planning/stopping is not proven across varied tasks; model notes can be stale |
 | runtime.py / task_state.py | Generic state machine, budgets, outcomes, fresh evidence gate and clarification history | Arbitrary natural-language goals lack independent verifiers |
 | tools.py / capabilities.py | Typed tool contracts, permissions, metadata, guidance | Built-in launchers retain narrow compatibility behavior |
 | approvals.py | Expiring task/action/revision-bound single-use approvals | Not a security boundary against a compromised local session |
@@ -64,7 +64,11 @@ No app-specific milestone may change the core runtime. Domain knowledge can live
 
 ## Working context and completion
 
-Current context is bounded and retained through a short-lived in-memory clarification. Completed action records are preserved, and the model sees recent distinct results plus clarification answers. State is single-use, expires after 15 minutes, has a 16-task capacity and is lost on process restart; in-flight resume disconnects are not reconciled. Persistent personal memory is separate and optional.
+Current context preserves the original goal, clarification answers, optional model notes (outcomes, constraints, output targets, questions and remaining work), and a host index of all task records with IDs/statuses/content hashes. Recent distinct result bodies share a 12,000-character budget; clipped/older bodies can be retrieved in chunks through `task_read_result` without repeating external actions. This tool belongs to a copied per-task registry, so concurrent tasks cannot access one another's records. Retrieval is historical data, never a fresh observation. Planning notes are limited to 2400 characters, reference only existing record IDs, and cannot grant authority or verified completion. Prior outcomes/constraints remain visible when later notes omit them; mistaken interpretations still require model/user correction.
+
+For UTF-8 source files, the host checks contiguous page coverage of the latest observed file identity/size/modification version before allowing report creation. Page gaps and version changes expose the missing offset; old pages cannot fill a new version. This is not proof against adversarial replacement or semantic report errors. Observation refresh is bounded to one explained retry unless an intervening accepted state-changing action supplies a reason to observe again.
+
+Context survives a short-lived in-memory clarification. State is single-use, expires after 15 minutes, has a 16-task capacity and is lost on process restart; in-flight resume disconnects are not reconciled. Clarification answers now participate in target grounding, so supplied names/paths can be used on continuation. Persistent personal memory is separate and optional.
 
 A planner proposes criteria; it cannot certify its own execution. Planned verification must distinguish semantic goal correctness, tool postconditions, artifact validity and mere action acceptance. Unverifiable goals need transparent partial/unverified reporting and bounded stopping, not indefinite execution.
 

@@ -118,6 +118,8 @@ class AgentRuntime:
                     return
                 action = decision.action
                 assert action is not None
+                if decision.message:
+                    yield self.status(TaskStatus.PLANNING, decision.message)
                 if len(state.records) >= state.limits.actions:
                     raise BudgetExceeded('Task action budget exhausted.')
                 # Accepted actions are never automatically dispatched again.

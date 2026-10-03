@@ -2,7 +2,7 @@
 
 Updated: 2026-10-03 (Asia/Calcutta)
 Current instruction: **Scoped implementation is authorized. The user requested lean checks and will manually test the desktop app. Do not claim phase completion without its real-world exit gate.**
-Current implementation phase: **Phase 3A's bounded comparison is complete; Phase 3's reliability gate remains in progress. Phases 4–6 have bounded adapters in progress, not validated full-computer control.**
+Current implementation phase: **Phase 3A's bounded comparison and Phase 3B's working-context contracts are complete for the tested task/file surface. Phase 3's varied-task reliability gate remains in progress. Phases 4–6 have bounded adapters in progress.**
 
 ## 1. Product direction
 
@@ -37,12 +37,12 @@ The current user request authorizes scoped implementation and lean verification.
 | --- | --- | --- |
 | Desktop shell | Minimal overlay, Ctrl+Space, tray, taskbar exclusion, packaged backend ownership | Daily-use/lifecycle hardening remains |
 | Agent runtime | Observe/decide/validate/execute/verify, budgets, cancellation, bounded recovery | Generic runtime correctness is not real-world task competence |
-| Natural-task operator | Registry-based next-tool selection, separate typed argument generation, actual result feedback; frozen Phase 3A app corpus | Repetition, incomplete interpretation and unreliable stopping in live evaluation; current model passed only 1/4 app cases in each prompt variant |
+| Natural-task operator | Registry-based tool selection, typed arguments, bounded outcome/constraint/remaining-work notes, complete action index and task-local result retrieval | Repeated/held-out competence remains unproven; previous new-model app corpus passed 3/4 with inconsistent launch behavior |
 | Tools and approvals | Typed schemas, permission classes, exact-action expiring approvals, replay protection | Host policy and target-identity hardening remain; metadata is not a sandbox |
 | Files | Approved nonrecursive listing, 2048-byte UTF-8 pages, exclusive new text files with read-back | No overwrite/delete/move tools, broad search or robust mutation sandbox |
 | Extensions | Explicit startup loading of trusted installed Python skill entry points | No model-enabled installation; arbitrary host plugins in frozen EXE are unsupported |
 | Verification | Host evidence gate; file content read-back | No general independent goal verifier; model finish stays unverified |
-| Working context | Bounded request-local goal/results/observations; short-lived in-memory clarification resume | No durable task checkpoints or personal memory; interrupted resumes may be lost |
+| Working context | Original goal and clarification history, model notes, all-record provenance index, bounded recent bodies with explicit clipping, retrieval of older results, file page/version coverage | No durable checkpoints; model notes remain fallible, historical results are not fresh observations |
 | Computer operation | Discovery of native apps from App Paths, Start menu shortcuts, PATH and bounded install roots; approved exact-path launch, experimental browser DOM, read-only foreground-window identity, bounded Win32 control input and navigation keys with post-action observation, and approved native process execution | No UWP coverage, general UI Automation, browser canvas control, guaranteed descendant cleanup, screenshot understanding or arbitrary keyboard/mouse control |
 
 ## 4. Phase tracker
@@ -54,7 +54,7 @@ Completed means the recorded phase's bounded exit criteria were met, not that th
 | 0 | Audit and rollback baseline | Verified complete historically | Baseline, environment, reusable code and gaps recorded |
 | 1 | Application-independent runtime | Verified complete for runtime contracts | Controlled tests establish observation-driven transitions, budgets and evidence gate |
 | 2 | Typed capability and approval contracts | Verified complete for current contracts | Validation and exact-action approval/denial/replay protections demonstrated |
-| 3 | Reliable general reasoning, working context and discovery | In progress; bounded 3A app comparison recorded | Held-out live tasks progress, recover and stop honestly without fixed workflows |
+| 3 | Reliable general reasoning, working context and discovery | 3A comparison and 3B bounded working-context implementation complete; 3C/3D and overall reliability open | Held-out live tasks progress, recover and stop honestly without fixed workflows |
 | 4 | Structured computer observation and action | In progress; file, experimental browser and first approved Win32 control adapters present, but live control not yet verified | Correct targets, meaningful observations and verified effects across independent adapters |
 | 5 | Controlled process/code execution and environment discovery | In progress; executable discovery and approved bounded native execution added | Scoped approved execution, bounded output and controlled process-tree lifecycle |
 | 6 | Visual observation and input fallback | In progress; approved foreground-window capture and local model description, no visual action | Fresh visual targets, scoped input and observed postconditions under failure injection |
@@ -117,12 +117,14 @@ Already present:
 
 3B — Goal and progress representation:
 
-- [ ] Represent requested outcomes, constraints, unresolved questions and output targets explicitly.
-- [ ] Preserve essential facts and action history when context is compacted; expose truncation and provenance.
-- [ ] Track remaining work without treating a model-generated checklist as verified truth.
-- [ ] Detect no-progress cycles and repeated observations; require a changed reason/state before continuing.
-- [ ] Replan remaining work rather than restarting accepted actions.
-- [ ] Verify observation completeness before using data to produce outputs.
+- [x] Represent requested outcomes, constraints, unresolved questions and output targets as bounded model notes alongside the original goal. Notes are optional model interpretations and never verification or permissions.
+- [x] Preserve the full bounded action index with record IDs, statuses and content hashes; explicitly clip recent bodies under a shared budget and retrieve older results with task-local `task_read_result`, without redispatch.
+- [x] Retain remaining-work notes and their source record IDs across replanning/clarification; refuse invented record references. Notes can become stale and do not satisfy the independent verification gate.
+- [x] Detect immediate and alternating repeated observations; permit one explicitly motivated refresh, or a new observation after an accepted state-changing action. Consequential effects are not replayed.
+- [x] Feed retained goal, prior outcomes, clarification answers and results into replanning. Accepted-action guards remain active; clarification-supplied names and paths are now usable.
+- [x] Check contiguous file pages of the same observed version before writing a report. Changed versions and missing offsets block premature output; clipped context can be retrieved. This gate covers current UTF-8 file inputs, not arbitrary browser or visual completeness.
+
+3B evidence: contract tests cover history eviction/retrieval, task isolation, source-page gaps/version changes, clarification/resume and alternating cycles. The real local model completed the short fruit fixture and a two-page regional report fixture. The latter needed 11 model calls and 124.22 seconds; only one plan revision was emitted, so notes alone are not a reliable progress assessor. The same paged task passed through the frozen HTTP backend with the full tool catalogue in 172.49 seconds. This is near the 180-second task limit; latency and broad competence remain open. See [3B evidence](evaluations/PHASE3B_CONTEXT.md). Independently verified goal correctness remains a 3C/7 gate.
 
 3C — Evidence-grounded stopping and recovery:
 
@@ -224,11 +226,11 @@ These are release-direction gates; the current small live fixtures do not satisf
 
 | Current evidence layer | Last recorded result (2026-10-03) |
 | --- | --- |
-| Backend contracts/regressions | Current suite pending final count for operator-v12; focused screen/model tests passed |
+| Backend contracts/regressions | 187 passed |
 | UI tests | 14 passed |
 | Sidecar/frontend/native release build | Passed; new sidecar and EXE hashes below |
 | Packaged approval/denial/replay | Denial and replay passed; approved Explorer launch returned unknown in this restricted session, so that smoke scenario did not pass |
-| Real model, isolated file workflow | Fruit and supplies fixtures passed once each in source and again through frozen sidecar; both remain unverified whole-goal outcomes |
+| Real model, isolated file workflow | Current short fruit and two-page regional fixtures passed in source; two-page fixture also passed via operator-v13 frozen HTTP backend/full catalogue in 172.49 seconds. Whole-goal verification remains false |
 | Real model, simulated browser task | Search → observed Joji result → play selected in order; not a real browser/playback test |
 | General desktop/browser/terminal/vision | Win32, bounded process and approved screen-description adapters exist; screen capture/browser remain unverified in an interactive desktop |
 
@@ -254,18 +256,20 @@ No open decision grants blanket authority. Continue with safe, local and isolate
 
 Recorded implementation checkpoint: `999671c` — general operator groundwork and live evaluation gaps. Earlier checkpoints: `98b95bf` (runtime), `75e2109` (audit), `48acd05` (launcher baseline). These identify source history, not bundled binaries.
 
-Current EXE path: `src-tauri/target/release/app.exe`; source and native shell require health marker `operator-v12`.
+Current EXE path: `src-tauri/target/release/app.exe`; source and native shell require health marker `operator-v13`.
 
-The current backend suite passed 178 tests. Phase 3A's bounded model comparison is complete: the newly installed `qwen3-vl:4b-instruct` passed 3/4 in two corpus runs but failed a different case on repetition; `llama3.2:3b` passed 2/4 with host clarification. A synthetic in-memory image was interpreted correctly by the local vision model. Actual screen capture, desktop action, browser playback, packaged startup and the broader Phase 3 reliability gate remain unverified in this restricted session, which enumerates zero visible windows. The prior sleeping-process cancellation fixture passed, but descendant cleanup remains uncertain. Do not claim a working general desktop operator.
+The current backend suite passed 187 tests, and the Rust contract test passed. Phase 3B working-context contracts and real source-model short/paged file fixtures passed; broader independent task verification remains open. Prior Phase 3A app comparisons were inconsistent (3/4 in each new-model run, different failures). Actual screen capture, desktop action, browser playback, GUI startup and the broader Phase 3 reliability gate remain unverified in this restricted session. The prior sleeping-process cancellation fixture passed, but descendant cleanup remains uncertain. Do not claim a working general desktop operator.
 
-The `operator-v12` sidecar and no-bundle EXE built successfully; the source and release-folder sidecar hashes match (`26283131CD7FEEDD863FA2EEA9B2B7B71681E2FF3ABDCD8253841F9E70471D92`). The release EXE SHA-256 is `7ADB5E5C3D0E33F0C170E06E91A0D7C99294FC359AFAC964AB4CDF26ABB003B2`. The one Rust contract test and frontend build passed.
+The `operator-v13` sidecar and no-bundle EXE built successfully; the source and release-folder sidecar hashes match (`63A1F99D2693F7A8D5D5D9123D072726BF9B7E6C90B0FE99E23E2DE8C31D1520`). The release EXE SHA-256 is `CF587227162C3AF2128211BEEA897A309815C2208825D2C52E3CCB99DCA9C17F`. The frontend build passed.
+
+The frozen backend served the current health marker and passed the paged report evaluation through HTTP with the full registered catalogue. The initial test-process cleanup was denied by the restricted shell; after checking its exact PID/path, elevated cleanup stopped only the launched test tree and freed port 8000. This backend check does not validate the GUI lifecycle.
 
 ## 10. Next execution slices
 
 1. Establish the exact running build/backend identity and reproduce the reported Joji failure in an interactive Windows session. Record the request, selected tools, browser process/window, page observations and final outcome. Do not infer the cause solely from an old trace or a passing unit test.
 2. Isolate why managed Chrome/Edge control exits in this environment. Check launch flags, profile ownership, browser logs and a disposable local page; compare with a normal interactive session. If CDP remains unreliable, design a replaceable structured browser adapter rather than a phrase-specific workaround. Do not attach to the personal browser profile without a separate scope decision.
 3. Make the browser task work end to end on the disposable page, then on a real video result where network and consent allow: discover a real link, navigate, observe the page, attempt play, verify time progression and recover/stop honestly. Vary wording and targets so the test demonstrates agent behavior, not a Joji-specific command.
-4. Expand the isolated live corpus toward 20 varied tasks and 10 held-out variants across available capability families. Record latency, calls, artifacts, failures and terminal outcomes. Add explicit remaining-work/observation-completeness state and capability-owned postcondition checks based on measured failure classes.
+4. Expand the isolated live corpus toward 20 varied tasks and 10 held-out variants across available capability families. Record latency, calls, artifacts, failures and terminal outcomes. Use the completed 3B context/completeness contracts while adding independent capability-owned postconditions and improving the near-budget packaged latency.
 5. Harden task continuation across dropped streams/restarts and unknown effects. Then extend structured Windows/accessibility observation and action, controlled processes, and visual fallback under their phase-specific safety gates. Rebuild and test the sidecar and EXE after each authorized code slice; never mark a phase complete from source tests alone.
 
 At each slice, distinguish four outcomes: model selected sensible actions; tools actually executed; the computer visibly changed as intended; and the user's whole goal was independently verified. A failure at any layer stays a failure or an explicitly partial result, not a success claim.
@@ -290,5 +294,6 @@ At each slice, distinguish four outcomes: model selected sensible actions; tools
 | 2026-10-03 | Added read-only foreground-window identity to visible-window/control observations and warned operator not to infer pixels; rebuilt operator-v10 | 162 backend and 1 Rust test pass; sidecar/EXE builds pass and sidecar hashes match. Unknown foreground is explicit; restricted session sees zero visible windows. Installed Ollama model is text-only; screen-pixel understanding remains unavailable. |
 | 2026-10-03 | Added bounded installed-app discovery, exact-path approved launch, same-app duplicate guard and frozen Phase 3A app corpus; rebuilt operator-v11 | 171 backend and 1 Rust test pass; sidecar/EXE builds pass and hashes match. Local model passed only 1/4 app cases in either guidance variant, so Phase 3A remains open. Native Notepad and VS Code were found read-only; real interactive launch/control and screen vision remain unverified. |
 | 2026-10-03 | Installed-model comparison, host clarification for unnamed apps, default local vision model, approved bounded `screen_inspect`, and operator-v12 rebuild | 178 backend and 1 Rust test pass; frontend/sidecar/EXE builds pass and sidecar hashes match. Phase 3A bounded comparison complete; broader Phase 3 and live Phase 6 gates remain open. Synthetic image interpreted; actual capture/control unverified because no visible windows exist in this restricted session. |
+| 2026-10-03 | Completed bounded Phase 3B working-context contracts: planning notes, result provenance/retrieval, page/version coverage, alternating-cycle guard and clarification grounding; rebuilt operator-v13 | 187 backend and 1 Rust test pass; frontend/sidecar/EXE builds pass and hashes match. Short/paged source tasks passed; paged frozen-backend task passed in 172.49 seconds. Broad reliability, speed, GUI/screen/browser control and independent completion remain open. |
 
 For each future slice record: authorization, phase/checklist items, hypothesis, changes, tests, live failures, packaged version, actual checkpoint, remaining risks and next action.
