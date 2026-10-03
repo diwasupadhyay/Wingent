@@ -24,14 +24,15 @@ _SYSTEM_INSTRUCTION = (
 class OllamaClient:
     def __init__(self, base_url: str | None = None, model: str | None = None) -> None:
         self.base_url = (base_url or os.getenv('OLLAMA_BASE_URL', 'http://127.0.0.1:11434')).rstrip('/')
-        self.model = model or os.getenv('OLLAMA_MODEL', 'llama3.2:3b')
+        self.model = model or os.getenv('OLLAMA_MODEL', 'qwen3-vl:4b-instruct')
 
     async def is_available(self) -> bool:
         try:
             async with httpx.AsyncClient(timeout=5.0) as client:
                 response = await client.get(f'{self.base_url}/api/tags')
-                return response.status_code == 200
-        except httpx.HTTPError:
+                return (response.status_code == 200 and any(
+                    item.get('name') == self.model for item in response.json().get('models', [])))
+        except (httpx.HTTPError, ValueError, TypeError):
             return False
 
     async def structured(self, prompt: str, system: str, schema: dict) -> str:

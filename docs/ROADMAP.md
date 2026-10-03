@@ -11,10 +11,10 @@ The sole detailed tracker is [AGENT_IMPLEMENTATION_PLAN.md](AGENT_IMPLEMENTATION
 | 0 | Audit and rollback baseline | Historically complete |
 | 1 | Application-independent runtime | Complete for recorded runtime contracts |
 | 2 | Typed capabilities and bound approvals | Complete for current contracts |
-| 3 | Reliable reasoning, working context and skill discovery | In progress; frozen four-case app corpus passes 1/4 with current model in either prompt variant; alternative model comparison pending |
+| 3 | Reliable reasoning, working context and skill discovery | In progress; initial 3A comparison completed: new local model passed 3/4 versus prior 2/4 after shared clarification guard, but launch failed on a repeat |
 | 4 | Structured computer observation/action | Native app discovery/approved launch, experimental Chrome, Win32 controls and files exist; live cross-app control/playback not verified |
 | 5 | Controlled process/code execution | In progress; discovery and approved native execution added, cancellation/recovery not complete |
-| 6 | Vision and input fallback | Planned |
+| 6 | Vision and input fallback | In progress; approved foreground-window image-to-local-model description added, live interactive capture and visual actions unverified |
 | 7 | Cross-capability reliability and release readiness | Planned |
 
 Next: expand the live corpus and held-out cases, measure repeat/stop behavior, improve explicit remaining-work and evidence-grounded verification, and harden continuation across disconnects. In-memory clarification resume is implemented. An alternative-model pull was attempted but blocked by outbound network access; no comparison was possible.

@@ -67,6 +67,15 @@ class OperatorAdapter(LaunchAdapter):
         return facts
 
     async def decide(self, context):
+        goal_terms = set(re.findall(r'[a-z0-9]{3,}', self.state.goal.casefold()))
+        generic_app_terms = {'app', 'application', 'program', 'open', 'launch', 'start',
+                             'run', 'for', 'the', 'any', 'please', 'installed', 'some', 'with'}
+        if (not self.state.records and goal_terms.intersection({'app', 'application', 'program'}) and
+                goal_terms.intersection({'open', 'launch', 'start', 'run'}) and
+                not goal_terms - generic_app_terms):
+            self.final_message = 'Which application would you like me to open?'
+            self.resumable_question = True
+            return Decision(kind='ask', message=self.final_message)
         if self.state.records and self.state.model_calls >= self.state.limits.model_calls:
             self.final_message = 'Reasoning budget reached. Review the recorded results; remaining goal steps are unverified.'
             return Decision(kind='finish', message=self.final_message)
@@ -176,7 +185,8 @@ class OperatorAdapter(LaunchAdapter):
                     argument_system += '\nPrevious arguments failed validation. Return the exact input schema.'
             if tool.name == 'application_search':
                 generic_terms = {'app', 'application', 'open', 'launch', 'start', 'run',
-                                 'find', 'search', 'installed', 'native', 'name', 'program'}
+                                 'find', 'search', 'installed', 'native', 'name', 'program',
+                                 'for', 'any', 'please', 'some', 'with'}
                 query_terms = set(re.findall(r'[a-z0-9]{3,}', args['query'].casefold())) - generic_terms
                 goal_terms = set(re.findall(r'[a-z0-9]{3,}', self.state.goal.casefold()))
                 if not query_terms or not query_terms.issubset(goal_terms):

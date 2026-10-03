@@ -14,7 +14,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 const COLLAPSED_HEIGHT: f64 = 92.0;
 const EXPANDED_HEIGHT: f64 = 300.0;
-const REQUIRED_BACKEND_RUNTIME: &str = "operator-v11";
+const REQUIRED_BACKEND_RUNTIME: &str = "operator-v12";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum BackendHealth {
@@ -325,8 +325,8 @@ mod tests {
 
   #[test]
   fn refuses_stale_or_unrelated_loopback_backend() {
-    let current = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"service\":\"wingent\",\"runtime\":\"operator-v11\"}";
-    let stale = current.replace("operator-v11", "operator-v10");
+    let current = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"service\":\"wingent\",\"runtime\":\"operator-v12\"}";
+    let stale = current.replace("operator-v12", "operator-v11");
     let unrelated = current.replace("wingent", "another-service");
     assert!(matches!(classify_backend_response(current), BackendHealth::Ready));
     assert!(matches!(classify_backend_response(&stale), BackendHealth::Incompatible));

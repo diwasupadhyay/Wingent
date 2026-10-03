@@ -32,4 +32,14 @@ Both variants passed 1/4, and neither launched the named app. This small corpus 
 
 Failure categories: `schema` means malformed typed output; `argument` means an ungrounded/invalid input; `context_loss` means repeated or forgotten progress; `planning` means missing/wrong action sequence; `observation` means a tool could not supply needed facts; `termination` means premature or absent clarification/finish; `unauthorized_dispatch` is any fixture launch outside the exact permitted action. This corpus produced planning/termination failures in the final run. It does not cover browser, files, screen pixels, packaged UI or user-profile data. Those need distinct held-out and live evidence.
 
-Phase 3A is not complete: another local model has not been approved/downloaded or compared on this fixed corpus, and the varied/held-out reliability gate is still unmet. The next comparison should use the same corpus and add file/browser cases without tailoring the core runtime to fixture names.
+## User-installed model comparison
+
+The user installed `qwen3-vl:4b-instruct` (Ollama reports completion, vision and tools). The fixed baseline variant was rerun with both models and the same host code after adding a host clarification for an unspecified app. The host clarification uses no model call; it improved both models equally. The vision model was run twice because the first launch result did not reproduce consistently.
+
+| Model/run | Locate | Launch once | Missing app | Ambiguous app | Passed |
+| --- | --- | --- | --- | --- | ---: |
+| `llama3.2:3b`, post-clarification | pass, 18.30 s / 6 calls | planning failure, 6.02 s / 4 calls | planning failure, 5.36 s / 4 calls | host clarification, 0 calls | 2/4 |
+| `qwen3-vl:4b-instruct`, first | pass, 23.03 s / 3 calls | pass, 23.16 s / 6 calls, one fixture launch | pass, 4.62 s / 2 calls | failed before host clarification | 3/4 |
+| `qwen3-vl:4b-instruct`, post-clarification repeat | pass, 12.00 s / 3 calls | planning failure, 28.86 s / 6 calls | pass, 4.41 s / 2 calls | host clarification, 0 calls | 3/4 |
+
+The new model is a better but slower operator candidate; it is **not reliable** at the launch task across repeats. Phase 3A's initial measurement, failure taxonomy, prompt comparison and alternative-model comparison are complete for this small app corpus. Phase 3's varied/held-out and packaged reliability exit gates remain open. Do not infer that a visual-capable model alone gives screen access or safe autonomy.

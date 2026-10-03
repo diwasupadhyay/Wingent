@@ -27,6 +27,7 @@ from app.window_observer import register as register_windows
 from app.desktop_tools import register as register_desktop
 from app.process_tools import register as register_process
 from app.application_tools import register as register_applications
+from app.screen_tools import register as register_screen
 
 app = FastAPI(title='Wingent', version='0.1.0')
 app.add_middleware(
@@ -46,7 +47,8 @@ app.add_middleware(
 registry = ToolRegistry()
 register_files(registry)
 register_windows(registry)
-register_desktop(registry)
+desktop_session = register_desktop(registry)
+register_screen(registry, desktop_session)
 register_process(registry)
 register_applications(registry)
 register_browser(registry)
@@ -60,7 +62,7 @@ def sse_event(event: str, payload: dict[str, object]) -> str:
 
 @app.get('/health')
 def health() -> dict[str, str]:
-    return {'status': 'ok', 'service': 'wingent', 'runtime': 'operator-v11'}
+    return {'status': 'ok', 'service': 'wingent', 'runtime': 'operator-v12'}
 
 
 class ApprovalResponse(BaseModel):
@@ -122,7 +124,7 @@ async def command(request: Request, command_request: CommandRequest) -> Streamin
         if not available:
             yield sse_event(
                 'error',
-                {'message': 'Ollama is not available. Start the local model server or install a compatible model.'},
+                {'message': 'Ollama or the selected local model is unavailable. Start Ollama or install/configure the model.'},
             )
             return
 

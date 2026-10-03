@@ -2,7 +2,7 @@
 
 Updated: 2026-10-03 (Asia/Calcutta)
 Current instruction: **Scoped implementation is authorized. The user requested lean checks and will manually test the desktop app. Do not claim phase completion without its real-world exit gate.**
-Current implementation phase: **Phase 3 remains in progress; Phases 4 and 5 have bounded adapters in progress. Phase 6 visual understanding is not implemented.**
+Current implementation phase: **Phase 3A's bounded comparison is complete; Phase 3's reliability gate remains in progress. Phases 4–6 have bounded adapters in progress, not validated full-computer control.**
 
 ## 1. Product direction
 
@@ -54,10 +54,10 @@ Completed means the recorded phase's bounded exit criteria were met, not that th
 | 0 | Audit and rollback baseline | Verified complete historically | Baseline, environment, reusable code and gaps recorded |
 | 1 | Application-independent runtime | Verified complete for runtime contracts | Controlled tests establish observation-driven transitions, budgets and evidence gate |
 | 2 | Typed capability and approval contracts | Verified complete for current contracts | Validation and exact-action approval/denial/replay protections demonstrated |
-| 3 | Reliable general reasoning, working context and discovery | In progress | Held-out live tasks progress, recover and stop honestly without fixed workflows |
+| 3 | Reliable general reasoning, working context and discovery | In progress; bounded 3A app comparison recorded | Held-out live tasks progress, recover and stop honestly without fixed workflows |
 | 4 | Structured computer observation and action | In progress; file, experimental browser and first approved Win32 control adapters present, but live control not yet verified | Correct targets, meaningful observations and verified effects across independent adapters |
 | 5 | Controlled process/code execution and environment discovery | In progress; executable discovery and approved bounded native execution added | Scoped approved execution, bounded output and controlled process-tree lifecycle |
-| 6 | Visual observation and input fallback | Planned | Fresh visual targets, scoped input and observed postconditions under failure injection |
+| 6 | Visual observation and input fallback | In progress; approved foreground-window capture and local model description, no visual action | Fresh visual targets, scoped input and observed postconditions under failure injection |
 | 7 | Cross-capability reliability and release readiness | Planned | Reproducible mixed-task and safety evidence from the packaged application |
 
 Order: stabilize Phase 3 before broadening autonomous effects. Phase 4 read-only feasibility work may be an explicitly approved parallel slice, not permission to skip the reasoning gate. Testing, security and packaging apply throughout; they are not postponed until Phase 7.
@@ -113,7 +113,7 @@ Already present:
 - [x] Freeze an initial repeatable app baseline corpus and record model/configuration, latency, calls, outcomes and failure reasons. Scope is four isolated app cases, not the full capability surface; see [Phase 3A baseline](evaluations/PHASE3A_BASELINE.md).
 - [x] Define separate schema, argument, context-loss, planning, observation and termination failure classes in the harness; final app run produced planning and termination failures.
 - [x] Compare default and focused tool guidance against the same four cases. Both passed 1/4; no measured improvement. Broader/held-out comparison remains open.
-- [ ] Compare another local model only after download approval and resource assessment. A larger model is not an assumed solution.
+- [x] Compare the user-installed `qwen3-vl:4b-instruct` against `llama3.2:3b` on the same initial corpus. The new model passed 3/4 versus 2/4 in a post-clarification run but missed launch on a repeat; see [Phase 3A baseline](evaluations/PHASE3A_BASELINE.md). This closes the initial 3A measurement checklist, **not** the Phase 3 reliability gate. Hardware utilization was not benchmarked.
 
 3B — Goal and progress representation:
 
@@ -185,10 +185,10 @@ Exit gate: controlled fixtures demonstrate execution, failure, timeout, cancella
 
 ### Phase 6 — Vision and general input fallback
 
-The currently installed `llama3.2:3b` reports completion/tools but no vision capability. No local vision model, screenshot-to-model pathway, Pillow, mss or WinRT Python package is available here. Resource check: RTX 3050 Laptop GPU with 4 GiB VRAM and about 19.7 GiB physical RAM. `qwen3-vl:4b-instruct` is a candidate for a user-approved local download and fixed-corpus comparison; its model file is about 3.3 GB, so GPU headroom may be tight and partial CPU offload/latency must be measured. Downloading alone does not add Wingent screen capture, scoped consent or visual action verification. User intent to grant broad control does not itself solve pixel interpretation or justify invisible capture of private displays; define scope and local retention before enabling it. This restricted session enumerated zero visible windows, so interactive display behavior cannot be validated here.
+The user installed `qwen3-vl:4b-instruct`; Ollama reports completion, vision and tools. Wingent now defaults to it for local reasoning, while `OLLAMA_MODEL` remains an override. On a synthetic in-memory red image the local vision API answered “red.” Resource check: RTX 3050 Laptop GPU with 4 GiB VRAM and about 19.7 GiB physical RAM; latency ranged from about 4 to 29 seconds across the small app corpus. `screen_inspect` is an initial approved observation adapter: it takes a recent `desktop_observe` window identity, requires the window to remain foreground, refuses known Win32 password controls and non-loopback Ollama endpoints, captures a bounded window region into memory, and sends PNG bytes only to local Ollama. Wingent does not save or return the screenshot; the model's description is untrusted and unverified. No browser/canvas password-field redaction, coordinate input, independent pixel postconditions or live interactive Windows capture is validated. This restricted session enumerates zero visible windows.
 
-- [ ] Assess local vision-provider availability, latency, resource cost and download requirements.
-- [ ] Establish explicit screenshot scope, redaction/retention policy and capture provenance.
+- [x] Assess installed local vision-provider availability, synthetic-image response, latency and local resource cost. No further download was performed here.
+- [ ] Establish complete screenshot scope/redaction/retention policy and capture provenance; initial per-window approval/in-memory/no-disk/known-password guard exists, but browser/canvas secrets are not reliably detected.
 - [ ] Prefer structured targets; use fresh screenshots only when those mechanisms are insufficient.
 - [ ] Bind coordinate/input actions to current window/display identity and recheck focus.
 - [ ] Observe each meaningful effect; detect stale screens, layout changes and obstructing dialogs.
@@ -222,15 +222,15 @@ These are release-direction gates; the current small live fixtures do not satisf
 - Preserve failed cases. Do not weaken assertions, raise budgets silently, hardcode answers or use broad automatic approvals to obtain a pass.
 - Mocked contracts, real adapter checks, live-model reasoning and packaged tests are separate evidence layers.
 
-| Current evidence layer | Last recorded result (2026-10-02) |
+| Current evidence layer | Last recorded result (2026-10-03) |
 | --- | --- |
-| Backend contracts/regressions | 145 passed |
+| Backend contracts/regressions | Current suite pending final count for operator-v12; focused screen/model tests passed |
 | UI tests | 14 passed |
 | Sidecar/frontend/native release build | Passed; new sidecar and EXE hashes below |
 | Packaged approval/denial/replay | Denial and replay passed; approved Explorer launch returned unknown in this restricted session, so that smoke scenario did not pass |
 | Real model, isolated file workflow | Fruit and supplies fixtures passed once each in source and again through frozen sidecar; both remain unverified whole-goal outcomes |
 | Real model, simulated browser task | Search → observed Joji result → play selected in order; not a real browser/playback test |
-| General desktop/browser/terminal/vision | Win32 and bounded process adapters implemented but not live-evaluated; browser experimental; vision not implemented |
+| General desktop/browser/terminal/vision | Win32, bounded process and approved screen-description adapters exist; screen capture/browser remain unverified in an interactive desktop |
 
 ## 7. Known failures and lessons
 
@@ -242,26 +242,23 @@ These results do not isolate model capacity as the sole cause. Goal representati
 
 ## 8. Decisions awaiting the user
 
-- Alternative local model: qwen3.5:4b (~3.4 GB) was selected for comparison, but the pull failed because outbound TCP to the Ollama registry is blocked on this machine. No second model was installed or compared.
+- Alternative local model: the user installed `qwen3-vl:4b-instruct`, and the initial same-corpus comparison is recorded. Repeated and held-out tests are still required before claiming reliable autonomy.
 - Browser profile/session ownership: separate managed profile proposed; personal-session attachment not approved.
 - Personal folders, repositories and output locations for realistic testing: scope must be explicitly selected.
-- Screenshot/clipboard access and retention: policy/consent still to be defined.
+- Screenshot/clipboard access and retention: a per-capture, foreground-window-only local vision slice exists. Broader capture, redaction, retention guarantees and visual input authority remain undecided.
 - Plugin installation, terminal privileges and software/system changes: approve exact scope when needed.
 
-No open decision grants blanket authority. Continue with safe, local and isolated fixtures while the network/model comparison remains unavailable.
+No open decision grants blanket authority. Continue with safe, local and isolated fixtures; the newly installed model enables bounded comparison, not general desktop access.
 
 ## 9. Build, history and rollback record
 
 Recorded implementation checkpoint: `999671c` — general operator groundwork and live evaluation gaps. Earlier checkpoints: `98b95bf` (runtime), `75e2109` (audit), `48acd05` (launcher baseline). These identify source history, not bundled binaries.
 
-Current EXE path: `src-tauri/target/release/app.exe`; packaged health marker `operator-v11` for app discovery and Phase 3A measurement.
-Recorded source/packaged sidecar SHA-256:
-`1C5FEEB063136A65086F362CE507A794DE9367AA554EDFF7EBAEE05A0A412C0E`.
+Current EXE path: `src-tauri/target/release/app.exe`; source and native shell require health marker `operator-v12`.
 
-The current backend suite passed 171 tests and the Rust contract test passed; the previous UI check passed 14 tests. The local model selected search → the observed Joji 777 result → Play in a simulated browser. This slice rebuilt the sidecar and EXE; source and packaged sidecar hashes match. The native shell requires `operator-v11` before using port 8000. The four-case app reasoning corpus passed only 1/4 in each prompt variant; app launch was not achieved by the local model in that fixture, even though the tool contracts and a read-only Notepad/VS Code discovery check passed. A controlled sleeping-process cancellation fixture passed, but full descendant cleanup and packaged cancellation remain unverified. Chrome and Edge page-level control still crashed in this restricted session. A direct EXE launch here previously exited without a reachable backend. The EXE desktop lifecycle, live Windows control, scoped keyboard delivery and real YouTube playback remain unverified. Do not claim a working browser operator or full desktop lifecycle.
+The current backend suite passed 178 tests. Phase 3A's bounded model comparison is complete: the newly installed `qwen3-vl:4b-instruct` passed 3/4 in two corpus runs but failed a different case on repetition; `llama3.2:3b` passed 2/4 with host clarification. A synthetic in-memory image was interpreted correctly by the local vision model. Actual screen capture, desktop action, browser playback, packaged startup and the broader Phase 3 reliability gate remain unverified in this restricted session, which enumerates zero visible windows. The prior sleeping-process cancellation fixture passed, but descendant cleanup remains uncertain. Do not claim a working general desktop operator.
 
-Current sidecar SHA-256: `80E25C483CE0D147ACA2F7879037357324FAC91C3941B1BC165CDC59B55239AD`.
-Current EXE SHA-256: `7ED34C25BF92AE55B315CF99844332853EB2974AC494446651A32D511E180007`.
+The `operator-v12` sidecar and no-bundle EXE built successfully; the source and release-folder sidecar hashes match (`26283131CD7FEEDD863FA2EEA9B2B7B71681E2FF3ABDCD8253841F9E70471D92`). The release EXE SHA-256 is `7ADB5E5C3D0E33F0C170E06E91A0D7C99294FC359AFAC964AB4CDF26ABB003B2`. The one Rust contract test and frontend build passed.
 
 ## 10. Next execution slices
 
@@ -292,5 +289,6 @@ At each slice, distinguish four outcomes: model selected sensible actions; tools
 | 2026-10-03 | Added exact-action-approved navigation key input bound to a fresh observed window; rebuilt operator-v9 | 161 backend and 1 Rust test pass; sidecar/EXE builds pass and sidecar hashes match. Changed/stale window fixture rejects dispatch. Live keyboard delivery, vision and browser playback remain unverified; Phase 4 remains in progress. |
 | 2026-10-03 | Added read-only foreground-window identity to visible-window/control observations and warned operator not to infer pixels; rebuilt operator-v10 | 162 backend and 1 Rust test pass; sidecar/EXE builds pass and sidecar hashes match. Unknown foreground is explicit; restricted session sees zero visible windows. Installed Ollama model is text-only; screen-pixel understanding remains unavailable. |
 | 2026-10-03 | Added bounded installed-app discovery, exact-path approved launch, same-app duplicate guard and frozen Phase 3A app corpus; rebuilt operator-v11 | 171 backend and 1 Rust test pass; sidecar/EXE builds pass and hashes match. Local model passed only 1/4 app cases in either guidance variant, so Phase 3A remains open. Native Notepad and VS Code were found read-only; real interactive launch/control and screen vision remain unverified. |
+| 2026-10-03 | Installed-model comparison, host clarification for unnamed apps, default local vision model, approved bounded `screen_inspect`, and operator-v12 rebuild | 178 backend and 1 Rust test pass; frontend/sidecar/EXE builds pass and sidecar hashes match. Phase 3A bounded comparison complete; broader Phase 3 and live Phase 6 gates remain open. Synthetic image interpreted; actual capture/control unverified because no visible windows exist in this restricted session. |
 
 For each future slice record: authorization, phase/checklist items, hypothesis, changes, tests, live failures, packaged version, actual checkpoint, remaining risks and next action.

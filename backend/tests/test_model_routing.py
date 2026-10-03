@@ -7,6 +7,26 @@ from app.llm import OllamaClient
 from app.model_routing import select_model
 
 
+def test_new_local_default_is_configurable(monkeypatch):
+    monkeypatch.delenv('OLLAMA_MODEL', raising=False)
+    monkeypatch.delenv('OLLAMA_COMPLEX_MODEL', raising=False)
+    assert select_model('Find an installed app') == 'qwen3-vl:4b-instruct'
+
+
+def test_model_availability_requires_selected_model(monkeypatch):
+    import asyncio
+    import httpx
+    class Client:
+        async def __aenter__(self):
+            return self
+        async def __aexit__(self, *args):
+            pass
+        async def get(self, url):
+            return httpx.Response(200, json={'models': [{'name': 'llama3.2:3b'}]})
+    monkeypatch.setattr('app.llm.httpx.AsyncClient', lambda **kwargs: Client())
+    assert asyncio.run(OllamaClient(model='qwen3-vl:4b-instruct').is_available()) is False
+
+
 def test_fast_model_remains_default(monkeypatch):
     monkeypatch.setenv('OLLAMA_MODEL', 'small:latest')
     monkeypatch.setenv('OLLAMA_COMPLEX_MODEL', 'large:latest')

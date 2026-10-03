@@ -182,6 +182,17 @@ def test_app_search_query_must_come_from_named_goal():
     assert decision.action.arguments['query'] == 'NoteSpace'
 
 
+def test_unnamed_app_goal_asks_without_guessing_or_model_call():
+    registry = ToolRegistry()
+    state = TaskState(goal='Open an app for me.', criteria=['app opened'])
+    class NoProvider:
+        async def structured(self, *args):
+            raise AssertionError('The target app is genuinely missing.')
+    decision = asyncio.run(OperatorAdapter(registry, state, NoProvider()).decide(state.context()))
+    assert decision.kind == 'ask'
+    assert 'Which application' in decision.message
+
+
 def test_invented_local_path_is_rejected_before_dispatch():
     registry = ToolRegistry()
     called = []

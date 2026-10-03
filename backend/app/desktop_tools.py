@@ -126,16 +126,23 @@ class DesktopSession:
             raise ValueError('Password controls require direct user interaction.')
         return new
 
-    def _target_window(self, window_id, observation_id):
+    def _target_window(self, window_id, observation_id, max_age=10):
         prior = self.last
         if not prior or prior['id'] != observation_id or prior['window']['hwnd'] != window_id:
             raise ValueError('Target is not from the latest desktop observation.')
-        if self.clock() - prior['at'] > 10:
+        if self.clock() - prior['at'] > max_age:
             raise ValueError('Desktop observation is stale; observe again.')
         current = next((w for w in self.windows() if w['hwnd'] == window_id), None)
         if not current or any(current[k] != prior['window'][k] for k in ('pid', 'executable', 'title')):
             raise ValueError('Window identity changed; observe again.')
         return current
+
+    def window_identity(self, window_id, observation_id, max_age=10):
+        with self.lock:
+            current = self._target_window(window_id, observation_id, max_age=max_age).copy()
+            current['password_controls_present'] = any(
+                control['password'] for control in self.last['controls'].values())
+            return current
 
     def press_key(self, window_id, observation_id, key):
         with self.lock:
