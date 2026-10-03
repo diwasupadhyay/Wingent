@@ -12,13 +12,19 @@ def test_continuation_is_single_use_and_expires():
     store = TaskStore(ttl_seconds=900)
     original = state('Inspect target')
     store.put(original)
+    assert store.peek(original.id) is original
+    assert store.peek(original.id) is original
     assert store.take(original.id) is original
     with pytest.raises(KeyError):
         store.take(original.id)
+    with pytest.raises(KeyError):
+        store.peek(original.id)
     expired = TaskStore(ttl_seconds=0)
     expired.put(original)
     with pytest.raises(KeyError):
         expired.take(original.id)
+    with pytest.raises(KeyError):
+        expired.peek(original.id)
 
 
 def test_capacity_evicts_oldest_pending_continuation():

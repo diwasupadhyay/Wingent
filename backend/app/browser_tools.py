@@ -292,6 +292,7 @@ class BrowserSession:
                               media['current_time'] > before['media'][0]['current_time'])
             return {'ok': progressed, 'effect': 'accepted' if progressed else 'no_effect',
                     'url': after['url'], 'title': after['title'], 'media': media,
+                    'playback_progressed': progressed, 'page_observed': True,
                     'reason': '' if progressed else (attempt or {}).get('reason', 'Playback did not advance.')}
 
 

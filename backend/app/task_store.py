@@ -28,3 +28,11 @@ class TaskStore:
             if item is None or item[0] <= time.monotonic():
                 raise KeyError('This clarification expired or was already used. Start a new task.')
             return item[1]
+
+    def peek(self, task_id: str) -> TaskState:
+        """Read a pending continuation without consuming it."""
+        with self._lock:
+            item = self._items.get(task_id)
+            if item is None or item[0] <= time.monotonic():
+                raise KeyError('This clarification expired or was already used. Start a new task.')
+            return item[1]

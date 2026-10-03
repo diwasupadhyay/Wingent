@@ -44,8 +44,105 @@ def test_discovers_then_uses_result_without_fixed_plan():
         return [e async for e in run_operator(registry, state, BudgetedProvider(Provider(), state), connected)]
     events = asyncio.run(run())
     assert calls == [{'value': 'observed-42'}]
-    assert state.model_calls == 5
+    assert state.model_calls == 4  # Empty-input discovery needs no separate argument generation.
     assert events[-1][1]['verified'] is False
+
+
+def test_one_model_call_can_choose_and_fill_tool_arguments():
+    registry = ToolRegistry()
+    registry.register('inspect_resource', 'Inspect a named resource', ToolPermission.SAFE, {},
+                      lambda p: {'ok': True, 'value': p['value']}, input_model=Input)
+    calls = []
+    class Provider:
+        async def structured(self, prompt, system, schema):
+            calls.append((json.loads(prompt), system))
+            return '{"tool":"inspect_resource","arguments":{"value":"alpha"},"objective":"Inspect alpha"}'
+    state = TaskState(goal='Inspect alpha', criteria=['alpha inspected'])
+    decision = asyncio.run(OperatorAdapter(registry, state, BudgetedProvider(Provider(), state)).decide(state.context()))
+    assert decision.kind == 'act' and decision.action.arguments == {'value': 'alpha'}
+    assert decision.message == 'Inspect alpha'
+    assert state.model_calls == 1 and len(calls) == 1
+    assert calls[0][0]['original_goal'] == 'Inspect alpha'
+    assert 'Tool guidance: []' in calls[0][1]
+
+
+def test_invalid_combined_arguments_use_typed_repair():
+    registry = ToolRegistry()
+    registry.register('inspect_resource', 'Inspect a named resource', ToolPermission.SAFE, {},
+                      lambda p: {'ok': True}, input_model=Input)
+    calls = []
+    class Provider:
+        async def structured(self, prompt, system, schema):
+            calls.append(json.loads(prompt))
+            return '{"value":"alpha"}' if calls[-1].get('selected_tool') else '{"tool":"inspect_resource","arguments":{"bad":"alpha"}}'
+    state = TaskState(goal='Inspect alpha', criteria=['alpha inspected'])
+    decision = asyncio.run(OperatorAdapter(registry, state, BudgetedProvider(Provider(), state)).decide(state.context()))
+    assert decision.kind == 'act' and decision.action.arguments == {'value': 'alpha'}
+    assert state.model_calls == 2
+
+
+def test_flexible_media_goal_searches_observed_result_then_checks_playback():
+    from app.browser_tools import register as register_browser
+    class Browser:
+        def __init__(self):
+            self.calls = []
+        def search(self, query, site='youtube'):
+            self.calls.append(('search', query))
+            return {'ok': True, 'url': 'https://www.youtube.com/results?search_query=joji',
+                    'links': [{'index': 0, 'text': 'Joji - Song A',
+                               'url': 'https://www.youtube.com/watch?v=observed'}],
+                    'media': [], 'page_observed': True}
+        def follow(self, index):
+            self.calls.append(('follow', index))
+            return {'ok': True, 'url': 'https://www.youtube.com/watch?v=observed',
+                    'title': 'Joji - Song A', 'links': [],
+                    'media': [{'paused': True, 'current_time': 0}], 'page_observed': True}
+        def play_media(self):
+            self.calls.append(('play',))
+            return {'ok': True, 'url': 'https://www.youtube.com/watch?v=observed',
+                    'title': 'Joji - Song A', 'media': {'paused': False, 'current_time': 2.1},
+                    'page_observed': True, 'playback_progressed': True}
+    browser = Browser()
+    registry = ToolRegistry()
+    register_browser(registry, browser)
+    class Provider:
+        async def structured(self, prompt, system, schema):
+            results = json.loads(prompt)['untrusted_action_results']
+            if not results:
+                return '{"tool":"browser_search","arguments":{"query":"Joji song","site":"youtube"}}'
+            if results[-1]['tool'] == 'browser_search':
+                return '{"tool":"browser_follow_link","arguments":{"index":0}}'
+            if results[-1]['tool'] == 'browser_follow_link':
+                return '{"tool":"browser_play_media","arguments":{}}'
+            return '{"tool":"finish","message":"Observed the video playing."}'
+    state = TaskState(goal='Open Chrome and play any Joji song on YouTube', criteria=['Joji song playing'])
+    events = asyncio.run(_collect_run(registry, state, Provider()))
+    assert browser.calls == [('search', 'Joji song'), ('follow', 0), ('play',)]
+    assert state.model_calls == 4
+    assert events[-1][0] == 'final' and events[-1][1]['verified'] is False
+    assert 'HTML media time advanced' in events[-1][1]['text']
+
+
+def test_search_only_finish_cannot_claim_playback():
+    registry = ToolRegistry()
+    state = TaskState(goal='Play any song by an artist on a video site', criteria=['music playing'])
+    state.records.append(ActionRecord(
+        action=Action(tool='browser_search', arguments={'query': 'artist song'}, label='search'),
+        outcome=Outcome(status='accepted', summary='Observed results', data={
+            'page_observed': True, 'url': 'https://example.com/results',
+            'links': [{'index': 0, 'text': 'Artist - Song', 'url': 'https://example.com/video'}],
+            'media': []}), dispatched=True))
+    class Provider:
+        async def structured(self, prompt, system, schema):
+            return '{"tool":"finish","message":"Done"}'
+    events = asyncio.run(_collect_run(registry, state, Provider()))
+    assert events[-1][0] == 'final'
+    assert 'remains unfinished' in events[-1][1]['text']
+    assert state.model_calls == 2
+
+
+async def _collect_run(registry, state, provider):
+    return [event async for event in run_operator(registry, state, BudgetedProvider(provider, state), connected)]
 
 
 def test_replans_after_known_no_effect_and_keeps_original_goal():

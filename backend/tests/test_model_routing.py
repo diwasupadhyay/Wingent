@@ -27,6 +27,47 @@ def test_model_availability_requires_selected_model(monkeypatch):
     assert asyncio.run(OllamaClient(model='qwen3-vl:4b-instruct').is_available()) is False
 
 
+def test_transient_startup_timeout_is_retried_without_model_download(monkeypatch):
+    calls = []
+    def handle(request):
+        calls.append(request.url.path)
+        if len(calls) == 1:
+            raise httpx.ReadTimeout('starting')
+        return httpx.Response(200, json={'models': [{'name': 'qwen3-vl:4b-instruct'}]})
+    real_client = httpx.AsyncClient
+    def client(**kwargs):
+        assert kwargs['trust_env'] is False
+        return real_client(transport=httpx.MockTransport(handle), **kwargs)
+    monkeypatch.setattr('app.llm.httpx.AsyncClient', client)
+    model = OllamaClient(model='qwen3-vl:4b-instruct')
+    assert asyncio.run(model.is_available()) is True
+    assert calls == ['/api/tags', '/api/tags']
+
+
+def test_missing_model_reports_selected_and_installed_names_without_retry(monkeypatch):
+    calls = []
+    def handle(request):
+        calls.append(request.url.path)
+        return httpx.Response(200, json={'models': [{'name': 'available:latest'}]})
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr('app.llm.httpx.AsyncClient', lambda **kwargs: real_client(transport=httpx.MockTransport(handle), **kwargs))
+    model = OllamaClient(model='missing:4b')
+    assert asyncio.run(model.is_available()) is False
+    assert model.last_availability['code'] == 'ollama_model_missing'
+    assert 'missing:4b' in model.last_availability['message'] and 'available:latest' in model.last_availability['message']
+    assert len(calls) == 1
+
+
+def test_untagged_model_matches_latest_and_malformed_server_is_explicit(monkeypatch):
+    replies = [{'models': [{'name': 'local:latest'}]}, {'models': None}]
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr('app.llm.httpx.AsyncClient', lambda **kwargs: real_client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200, json=replies.pop(0))), **kwargs))
+    model = OllamaClient(model='local')
+    assert asyncio.run(model.is_available()) is True
+    assert asyncio.run(model.availability())['code'] == 'ollama_invalid_response'
+
+
 def test_fast_model_remains_default(monkeypatch):
     monkeypatch.setenv('OLLAMA_MODEL', 'small:latest')
     monkeypatch.setenv('OLLAMA_COMPLEX_MODEL', 'large:latest')

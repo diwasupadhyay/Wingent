@@ -87,17 +87,28 @@ def capabilities():
         {'name': c.name, 'available': c.available, 'guidance': c.guidance} for c in registry.capabilities.values()]}
 
 
+@app.get('/api/model-status')
+async def model_status():
+    return await OllamaClient(model=select_model('')).availability()
+
+
 @app.post('/api/command')
 async def command(request: Request, command_request: CommandRequest) -> StreamingResponse:
     prompt = command_request.prompt.strip()
     resuming = command_request.resume_task_id is not None
     if resuming:
-        available = await OllamaClient(
+        try:
+            pending_state = task_store.peek(command_request.resume_task_id)
+        except KeyError as exc:
+            raise HTTPException(status_code=409, detail=str(exc)) from exc
+        resume_model = OllamaClient(
             base_url=os.getenv('OLLAMA_BASE_URL', 'http://127.0.0.1:11434'),
-            model=select_model(prompt),
-        ).is_available()
+            model=select_model(pending_state.goal),
+        )
+        available = await resume_model.is_available()
         if not available:
-            raise HTTPException(status_code=503, detail='Ollama is unavailable. The task remains resumable.')
+            message = (resume_model.last_availability or {}).get('message', 'Ollama is unavailable.')
+            raise HTTPException(status_code=503, detail=message + ' The task remains resumable.')
         try:
             state = task_store.take(command_request.resume_task_id)
             state.resume(prompt)
@@ -123,9 +134,11 @@ async def command(request: Request, command_request: CommandRequest) -> Streamin
             return
         available = await while_connected(llm.is_available(), request.is_disconnected)
         if not available:
+            diagnostic = llm.provider.last_availability or {
+                'code': 'ollama_unavailable', 'message': f'Ollama model "{llm.provider.model}" is unavailable. Start Ollama and retry.'}
             yield sse_event(
                 'error',
-                {'message': 'Ollama or the selected local model is unavailable. Start Ollama or install/configure the model.'},
+                {'message': diagnostic['message'], 'code': diagnostic['code']},
             )
             return
 

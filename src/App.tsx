@@ -3,7 +3,8 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 
 type Stage = 'idle' | 'planning' | 'observing' | 'verifying' | 'recovering' | 'awaiting_input' | 'unverified' | 'tool_running' | 'streaming' | 'done' | 'error';
-type OllamaState = 'checking' | 'running' | 'stopped' | 'starting';
+type OllamaState = 'checking' | 'running' | 'stopped' | 'starting' | 'missing' | 'unresponsive';
+type ModelStatus = { ready: boolean; code: string; message: string; model: string };
 type StepState = 'pending' | 'running' | 'accepted' | 'failed' | 'not_run' | 'unknown';
 type ActionStep = { label: string; state: StepState };
 type Approval = { approval_id: string; token: string; task_id: string; tool: string; arguments: Record<string, unknown>; expires_in: number };
@@ -28,6 +29,8 @@ export default function App() {
   const [lastPrompt, setLastPrompt] = useState('');
   const [resumeTaskId, setResumeTaskId] = useState<string | null>(null);
   const [ollama, setOllama] = useState<OllamaState>('checking');
+  const [ollamaMessage, setOllamaMessage] = useState('Checking Ollama');
+  const ollamaCheckRef = useRef<Promise<ModelStatus | null> | null>(null);
   const [backendReady, setBackendReady] = useState<BackendState | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -36,20 +39,39 @@ export default function App() {
     : 'Wingent service is unavailable. Restart Wingent if this persists.';
   const expanded = loading || Boolean(content) || Boolean(error) || (backendReady !== null && backendReady !== 'ready');
 
-  const checkOllama = useCallback(async () => {
-    if (!isTauri()) return setOllama('stopped');
-    try {
-      setOllama(await invoke<boolean>('ollama_status') ? 'running' : 'stopped');
-    } catch {
-      setOllama('stopped');
-    }
+  const checkOllama = useCallback((): Promise<ModelStatus | null> => {
+    if (ollamaCheckRef.current) return ollamaCheckRef.current;
+    const request = (async () => {
+      const controller = new AbortController();
+      const timeout = window.setTimeout(() => controller.abort(), 6500);
+      try {
+        const response = await fetch(`${API_BASE_URL}/api/model-status`, { signal: controller.signal });
+        if (!response.ok) throw new Error('Model status unavailable');
+        const info: ModelStatus = await response.json();
+        setOllamaMessage(info.message);
+        setOllama((current) => current === 'starting' && !info.ready ? current : info.ready ? 'running'
+          : info.code === 'ollama_model_missing' ? 'missing' : info.code === 'ollama_unreachable' ? 'stopped' : 'unresponsive');
+        return info;
+      } catch {
+        setOllamaMessage('Could not check the local model. Retry when the Wingent service is ready.');
+        setOllama((current) => current === 'starting' ? current : 'unresponsive');
+        return null;
+      } finally {
+        window.clearTimeout(timeout);
+        ollamaCheckRef.current = null;
+      }
+    })();
+    ollamaCheckRef.current = request;
+    return request;
   }, []);
 
   useEffect(() => {
+    if (!isTauri()) { setOllama('stopped'); return; }
+    if (backendReady !== 'ready') return;
     void checkOllama();
-    const timer = window.setInterval(() => void checkOllama(), 5000);
+    const timer = window.setInterval(() => void checkOllama(), 8000);
     return () => window.clearInterval(timer);
-  }, [checkOllama]);
+  }, [checkOllama, backendReady]);
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -119,15 +141,26 @@ export default function App() {
 
   const startOllama = async () => {
     if (!isTauri() || ollama === 'starting') return;
+    if (ollama === 'missing') {
+      const info = await checkOllama();
+      if (info?.ready) return;
+      setError(info?.message ?? ollamaMessage);
+      setStatus('error');
+      setProgress('Model unavailable');
+      return;
+    }
     setOllama('starting');
     try {
       await invoke('start_ollama');
-      for (let attempt = 0; attempt < 12; attempt += 1) {
+      let info: ModelStatus | null = null;
+      for (let attempt = 0; attempt < 3; attempt += 1) {
         await new Promise((resolve) => window.setTimeout(resolve, 500));
-        if (await invoke<boolean>('ollama_status')) return setOllama('running');
+        info = await checkOllama();
+        if (info?.ready) return setOllama('running');
+        if (info?.code === 'ollama_model_missing') break;
       }
-      setOllama('stopped');
-      setError('Ollama started but did not become ready. Open Ollama to inspect the error.');
+      setOllama(info?.code === 'ollama_model_missing' ? 'missing' : 'unresponsive');
+      setError(info?.message ?? 'Ollama started but did not become ready. Open Ollama to inspect the error.');
       setStatus('error');
       setProgress('Ollama unavailable');
     } catch (cause) {
@@ -179,7 +212,14 @@ export default function App() {
         setResumeTaskId(null);
         throw new Error('That question expired or was already answered. Start a new task.');
       }
-      if (!response.ok || !response.body) throw new Error('Wingent service is offline. Start the local backend and try again.');
+      if (!response.ok || !response.body) {
+        let message = 'Wingent service is offline. Start the local backend and try again.';
+        try {
+          const problem = await response.json();
+          if (typeof problem.detail === 'string') message = problem.detail;
+        } catch { /* A disconnected service may not return JSON. */ }
+        throw new Error(message);
+      }
       if (continuingTask) setResumeTaskId(null);
 
       const reader = response.body.getReader();
@@ -271,7 +311,9 @@ export default function App() {
     }
   };
 
-  const ollamaLabel = ollama === 'running' ? 'Ollama ready' : ollama === 'starting' ? 'Starting Ollama' : 'Start Ollama';
+  const ollamaLabel = ollama === 'running' ? 'Ollama ready' : ollama === 'starting' ? 'Starting Ollama'
+    : ollama === 'missing' ? 'Check model' : ollama === 'unresponsive' ? 'Retry Ollama'
+    : ollama === 'checking' ? 'Checking Ollama' : 'Start Ollama';
 
   return (
     <main className={`overlay ${expanded ? 'overlay-expanded' : ''}`}>
@@ -306,10 +348,10 @@ export default function App() {
             onClick={() => ollama !== 'running' && void startOllama()}
             disabled={!isTauri() || ollama === 'checking' || ollama === 'starting' || ollama === 'running'}
             aria-label={ollamaLabel}
-            title={ollamaLabel}
+            title={ollamaMessage}
           >
             <span className='status-dot' />
-            {ollama !== 'running' && <span>{ollama === 'starting' ? 'Starting' : 'Start Ollama'}</span>}
+            {ollama !== 'running' && <span>{ollamaLabel}</span>}
           </button>
           <button type='button' className='run-button' onClick={() => void submit()} disabled={loading || !prompt.trim()} aria-label='Run command'>
             {loading ? <span className='spinner' /> : <span aria-hidden='true'>↑</span>}

@@ -28,7 +28,7 @@ Stack: Tauri v2, React/TypeScript/Vite, Python FastAPI/SSE, replaceable local LL
 - Skills: explicitly enabled trusted Python entry points at startup. No model-controlled imports/installations or arbitrary host-plugin loading in the frozen EXE.
 - UI supports SSE progress, actions, approval/denial, cancellation, clarification answers and unverified results.
 - Packaged Windows app owns its FastAPI sidecar, stays in the tray and uses Ctrl+Space.
-- Native shell and overlay now require backend marker `operator-v13`; they refuse a stale/other listener on port 8000 instead of sending tasks to it. The user must quit the old process and restart the new EXE; Wingent does not kill an unknown port occupant.
+- Native shell and overlay now require backend marker `operator-v15`; they refuse a stale/other listener on port 8000 instead of sending tasks to it. The user must quit the old process and restart the new EXE; Wingent does not kill an unknown port occupant. The overlay checks actual Ollama/model readiness and reports missing, stopped or unresponsive states.
 
 An initial Win32 child-control adapter offers bounded observation, foreground-at-capture identity and approved, fresh-target click/text plus single navigation-key dispatch with post-action observations. An approved native process adapter can discover executables and run exact arguments with bounded output/time; task cancellation attempts to stop its owned process, but detached descendants remain uncertain. It is not a sandbox. `screen_inspect` now offers an explicitly approved, in-memory foreground-window capture sent only to a local Ollama vision model; it rejects known password controls, stale/changed identity and non-loopback endpoints. Its description is untrusted, and actual window capture remains unverified here. General Windows UI Automation and arbitrary keyboard/mouse are not implemented. The narrow browser DOM/media slice is experimental. Genuine model clarifications can resume the original task from a short-lived in-memory state without replaying completed actions; state is not durable.
 
@@ -42,9 +42,9 @@ Earlier evidence: operator-v12 passed 178 backend tests; the UI suite previously
 
 Do not treat read-back equality, a model finish message or launch acceptance as whole-goal verification. The model is not proven to be the sole source of failure.
 
-Phase 3B's bounded working-context contracts are complete. The current regression run passed 187 tests plus one Rust test; frontend/sidecar/EXE builds passed and packaged sidecar hashes match. The real model completed the short fruit task and a two-page report with correct counts; the latter took 124.22 seconds/11 calls and only one plan revision. Notes remain fallible and do not verify progress. See the plan for packaged evaluation and remaining Phase 3C/3D gates.
+Phase 3B's bounded working-context contracts are complete. The latest speed/readiness slice passed 195 backend, 15 UI and one Rust test. The installed model completed a fake-browser Joji task by searching, choosing an observed result and requesting Play in 5 calls/20.33 seconds; no actual Chrome page or media was tested. Earlier real-model file fixtures passed; the two-page task took 124.22 seconds/11 calls in source. Notes remain fallible and do not verify progress. See the plan for packaged evaluation and remaining Phase 3C/3D gates.
 
-Release path: src-tauri/target/release/app.exe. Backend health marker in source: operator-v13. Check packaged hashes and current process state before treating a running binary as current.
+Release path: src-tauri/target/release/app.exe. Backend health marker in source: operator-v15. Check packaged hashes and current process state before treating a running binary as current.
 
 ## Next work
 

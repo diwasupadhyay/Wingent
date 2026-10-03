@@ -261,3 +261,13 @@ def test_offline_model_does_not_consume_pending_clarification(monkeypatch):
     assert response.status_code == 503
     assert task_store.take(state.id) is state
     assert state.clarifications == []
+
+
+def test_model_status_reports_model_problem_to_indicator(monkeypatch):
+    async def status(_self, retry=False):
+        return {'ready': False, 'code': 'ollama_timeout', 'model': 'local:4b', 'message': 'Ollama is still starting.'}
+    monkeypatch.setattr('app.main.OllamaClient.availability', status)
+    response = client.get('/api/model-status')
+    assert response.status_code == 200
+    assert response.json()['ready'] is False
+    assert response.json()['code'] == 'ollama_timeout'

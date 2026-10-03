@@ -226,13 +226,15 @@ These are release-direction gates; the current small live fixtures do not satisf
 
 | Current evidence layer | Last recorded result (2026-10-03) |
 | --- | --- |
-| Backend contracts/regressions | 187 passed |
-| UI tests | 14 passed |
-| Sidecar/frontend/native release build | Passed; new sidecar and EXE hashes below |
+| Backend contracts/regressions | 195 passed for operator-v15 source |
+| UI tests | 15 passed |
+| Sidecar/frontend/native release build | v15 sidecar and frontend build passed; final EXE rebuild pending because prior Wingent process locks the release-folder sidecar |
 | Packaged approval/denial/replay | Denial and replay passed; approved Explorer launch returned unknown in this restricted session, so that smoke scenario did not pass |
 | Real model, isolated file workflow | Current short fruit and two-page regional fixtures passed in source; two-page fixture also passed via operator-v13 frozen HTTP backend/full catalogue in 172.49 seconds. Whole-goal verification remains false |
 | Real model, simulated browser task | Search → observed Joji result → play selected in order; not a real browser/playback test |
 | General desktop/browser/terminal/vision | Win32, bounded process and approved screen-description adapters exist; screen capture/browser remain unverified in an interactive desktop |
+
+Current live-model measurements: an isolated fake-browser flexible Joji goal selected search, an observed result, then Play in 5 calls/20.33 seconds. Its reported media progress is fixture data, not real Chrome playback. An isolated file-report goal passed read-back in 4 calls/54.81 seconds. Neither run meets the varied, repeated, real-desktop exit gate.
 
 ## 7. Known failures and lessons
 
@@ -256,11 +258,11 @@ No open decision grants blanket authority. Continue with safe, local and isolate
 
 Recorded implementation checkpoint: `999671c` — general operator groundwork and live evaluation gaps. Earlier checkpoints: `98b95bf` (runtime), `75e2109` (audit), `48acd05` (launcher baseline). These identify source history, not bundled binaries.
 
-Current EXE path: `src-tauri/target/release/app.exe`; source and native shell require health marker `operator-v13`.
+Current EXE path: `src-tauri/target/release/app.exe`; source and native shell require health marker `operator-v15`. The EXE currently on disk is stale until its rebuild succeeds.
 
-The current backend suite passed 187 tests, and the Rust contract test passed. Phase 3B working-context contracts and real source-model short/paged file fixtures passed; broader independent task verification remains open. Prior Phase 3A app comparisons were inconsistent (3/4 in each new-model run, different failures). Actual screen capture, desktop action, browser playback, GUI startup and the broader Phase 3 reliability gate remain unverified in this restricted session. The prior sleeping-process cancellation fixture passed, but descendant cleanup remains uncertain. Do not claim a working general desktop operator.
+The current backend suite passed 195 tests, UI suite 15 tests, and the Rust contract test passed. The new slice folds typed action arguments into tool selection where valid, loads detailed capability guidance on demand, gives actionable Ollama readiness errors, and prevents search-only media tasks from being reported as complete. Broader independent task verification remains open. Prior Phase 3A app comparisons were inconsistent (3/4 in each new-model run, different failures). Actual screen capture, desktop action, browser playback, GUI startup and the broader Phase 3 reliability gate remain unverified in this restricted session. The prior sleeping-process cancellation fixture passed, but descendant cleanup remains uncertain. Do not claim a working general desktop operator.
 
-The `operator-v13` sidecar and no-bundle EXE built successfully; the source and release-folder sidecar hashes match (`63A1F99D2693F7A8D5D5D9123D072726BF9B7E6C90B0FE99E23E2DE8C31D1520`). The release EXE SHA-256 is `CF587227162C3AF2128211BEEA897A309815C2208825D2C52E3CCB99DCA9C17F`. The frontend build passed.
+Previous `operator-v13` release hashes: sidecar `63A1F99D2693F7A8D5D5D9123D072726BF9B7E6C90B0FE99E23E2DE8C31D1520`, EXE `CF587227162C3AF2128211BEEA897A309815C2208825D2C52E3CCB99DCA9C17F`. The v15 frozen sidecar and frontend compiled, but Tauri's release build could not replace its existing release-folder sidecar while the previous Wingent process was running. These old hashes must not be presented as v15 evidence.
 
 The frozen backend served the current health marker and passed the paged report evaluation through HTTP with the full registered catalogue. The initial test-process cleanup was denied by the restricted shell; after checking its exact PID/path, elevated cleanup stopped only the launched test tree and freed port 8000. This backend check does not validate the GUI lifecycle.
 

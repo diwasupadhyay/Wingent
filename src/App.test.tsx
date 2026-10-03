@@ -1,6 +1,7 @@
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, vi } from 'vitest';
 import App from './App';
+import { invoke } from '@tauri-apps/api/core';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(async (command: string) =>
   command === 'backend_status' ? 'incompatible' : false) }));
@@ -25,6 +26,19 @@ function runCommand() {
 }
 
 describe('App', () => {
+  it('does not show ready for a running server with a missing model', async () => {
+    vi.stubGlobal('__TAURI_INTERNALS__', {});
+    vi.mocked(invoke).mockResolvedValueOnce('ready');
+    const message = 'Ollama is running, but model "configured:4b" is not installed.';
+    vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({
+      ready: false, code: 'ollama_model_missing', model: 'configured:4b', message,
+    }) })));
+    render(<App />);
+    await waitFor(() => expect(screen.getByLabelText('Check model')).toBeTruthy());
+    expect(screen.queryByLabelText('Ollama ready')).toBeNull();
+    fireEvent.click(screen.getByLabelText('Check model'));
+    await waitFor(() => expect(screen.getByText(message)).toBeTruthy());
+  });
   it('refuses to submit to an outdated backend in the desktop app', async () => {
     vi.stubGlobal('__TAURI_INTERNALS__', {});
     const send = vi.fn();

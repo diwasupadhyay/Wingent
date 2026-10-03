@@ -27,9 +27,9 @@ Intended loop: goal → understand → plan → observe → select capability �
 | browser_tools.py | Experimental isolated Chrome profile, page/link/media observation and bounded navigation/play attempt | Live CDP control did not complete in this restricted session; no playback claim |
 | window_observer.py | Read-only visible top-level window/process/title and foreground-at-capture observations, plus launch visibility check | Does not establish page state, pixel content or sustained focus |
 | plugins.py | Explicit trusted startup entry-point loading | No model-driven loading or arbitrary frozen host-plugin support |
-| llm.py / model_routing.py | Local provider abstraction and configured model selection; `qwen3-vl:4b-instruct` now default | Better small-corpus results, but repeated launch and held-out reliability gates still fail |
+| llm.py / model_routing.py | Local provider and configured model selection; actual selected-model availability, one transient readiness retry and specific failure codes | Better small-corpus results, but repeated launch and held-out reliability gates still fail |
 
-Natural requests use the operator and generic runtime. Exact supported launch shortcuts use the launch adapter; executor.py, planner.py and capability_planner.py retain compatibility/evaluation responsibilities. They do not define the desired general-agent architecture.
+Natural requests use the operator and generic runtime. The operator proposes the next tool and arguments together, validates them against the registered schema, and requests separate typed arguments only if needed. After each result it decides again. It loads detailed capability guidance after that capability becomes active, keeping unrelated instructions out of the first local-model context. Exact supported launch shortcuts use the launch adapter; executor.py, planner.py and capability_planner.py retain compatibility/evaluation responsibilities. They do not define the desired general-agent architecture.
 
 API tasks currently use 180 seconds, 12 model calls including argument generation/repair, 16 actions, 24 decisions and 2 recoveries. Base TaskState defaults remain 120 seconds / 6 model calls; the API overrides them. Per-operation and per-tool limits also apply. Document limits accurately; do not raise them to hide loops.
 

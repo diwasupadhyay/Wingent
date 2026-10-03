@@ -31,9 +31,9 @@ Authoritative tracker: [docs/AGENT_IMPLEMENTATION_PLAN.md](docs/AGENT_IMPLEMENTA
 
 Earlier evidence: operator-v12 passed 178 backend tests; the UI suite previously passed 14 tests. `qwen3-vl:4b-instruct` described a synthetic red image through local Ollama; live screen capture is unverified because this restricted session enumerates zero visible windows. Phase 3A comparison results are above. A controlled sleeping-process cancellation fixture passed; scoped keyboard and foreground identity have only fixture coverage. A simulated-browser Joji sequence passed, but actual Chrome/Edge page control crashed and playback was not verified. Packaged denial/replay passed previously; approved Explorer launch had an unknown outcome here.
 
-Latest 3B checks: 187 backend tests and one Rust test passed; frontend/sidecar/EXE builds passed and sidecar hashes match. Real model short-file and two-page report fixtures passed; the two-page run took 124.22 seconds and 11 calls. Only one planning-note revision was emitted, so notes alone are not reliable progress evidence. Packaged evaluation evidence belongs in the phase plan.
+Latest speed/readiness slice: 195 backend tests and 15 UI tests passed; one Rust contract test passed. Tool selection and typed arguments can be returned together, with a guarded fallback. Host logic refuses to claim a media goal after search alone without observed playback progress. With the installed model, an isolated fake-browser Joji task selected search, an observed result and Play in 5 calls/20.33 seconds. This does not verify real Chrome or playback. Model readiness now checks Ollama's model catalogue, retries a transient timeout once and reports a specific diagnostic; a pending clarification is not consumed when Ollama is offline. Previous two-page report took 124.22 seconds/11 calls in source and 172.49 seconds through the frozen API.
 
-Current source backend marker: operator-v13. EXE: src-tauri/target/release/app.exe. Check packaged hash and process identity before calling a running binary current.
+Current source backend marker: operator-v15. EXE: src-tauri/target/release/app.exe. Check packaged hash and process identity before calling a running binary current.
 
 ## Next when authorized
 
