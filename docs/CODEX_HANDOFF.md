@@ -44,7 +44,7 @@ Do not treat read-back equality, a model finish message or launch acceptance as 
 
 Phase 3B's bounded working-context contracts are complete. The latest speed/readiness slice passed 195 backend, 15 UI and one Rust test. The installed model completed a fake-browser Joji task by searching, choosing an observed result and requesting Play in 5 calls/20.33 seconds; no actual Chrome page or media was tested. Earlier real-model file fixtures passed; the two-page task took 124.22 seconds/11 calls in source. Notes remain fallible and do not verify progress. See the plan for packaged evaluation and remaining Phase 3C/3D gates.
 
-Release path: src-tauri/target/release/app.exe. Backend health marker in source: operator-v15. Check packaged hashes and current process state before treating a running binary as current.
+Release path: src-tauri/target/release/app.exe. Backend health marker in source and packaged sidecar: operator-v15. The source/release sidecar SHA-256 hashes match (`F02707456C18C8210905DECAD9D803C0CDCB3BAADB42F54CE9FE7FAB7BD164AC`); EXE SHA-256: `63E79ACD806995109C48AADB8C2D24D99E26F2DF5A3C8B9215B47A37027ADD7F`. Check running process identity before treating an open app as current. GUI startup and real playback remain unverified here.
 
 ## Next work
 

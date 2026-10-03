@@ -33,7 +33,7 @@ Earlier evidence: operator-v12 passed 178 backend tests; the UI suite previously
 
 Latest speed/readiness slice: 195 backend tests and 15 UI tests passed; one Rust contract test passed. Tool selection and typed arguments can be returned together, with a guarded fallback. Host logic refuses to claim a media goal after search alone without observed playback progress. With the installed model, an isolated fake-browser Joji task selected search, an observed result and Play in 5 calls/20.33 seconds. This does not verify real Chrome or playback. Model readiness now checks Ollama's model catalogue, retries a transient timeout once and reports a specific diagnostic; a pending clarification is not consumed when Ollama is offline. Previous two-page report took 124.22 seconds/11 calls in source and 172.49 seconds through the frozen API.
 
-Current source backend marker: operator-v15. EXE: src-tauri/target/release/app.exe. Check packaged hash and process identity before calling a running binary current.
+Current source and normal release backend marker: operator-v15. EXE: src-tauri/target/release/app.exe. Source/release sidecar SHA-256 match: `F02707456C18C8210905DECAD9D803C0CDCB3BAADB42F54CE9FE7FAB7BD164AC`. EXE SHA-256: `63E79ACD806995109C48AADB8C2D24D99E26F2DF5A3C8B9215B47A37027ADD7F`. Check running process identity before treating an open app as current.
 
 ## Next when authorized
 
