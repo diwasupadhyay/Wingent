@@ -103,6 +103,28 @@ def _flexible_media_goal(goal: str) -> bool:
     return _playback_requested(goal) and bool(re.search(r'\b(?:any|random|whatever|something similar)\b', goal, re.I))
 
 
+def _ground_window_grant(arguments, records, goal):
+    """Fill omitted grant fields only from a single freshly observed launched window."""
+    result = dict(arguments)
+    result.setdefault('purpose', goal[:300])
+    if 'window_id' in result:
+        return result
+    latest = next(((index, record) for index, record in reversed(list(enumerate(records)))
+                   if record.action.tool == 'observe_windows' and record.outcome.status == 'accepted'), None)
+    launch = next(((index, record) for index, record in reversed(list(enumerate(records)))
+                   if record.action.tool in {'open_application', 'application_open'} and
+                   record.outcome.status == 'accepted' and isinstance(record.outcome.data.get('pid'), int)), None)
+    if not latest or not launch or launch[0] > latest[0]:
+        return result
+    matches = [window for window in latest[1].outcome.data.get('windows', [])
+               if window.get('pid') == launch[1].outcome.data['pid']]
+    if len(matches) == 1:
+        result['window_id'] = matches[0]['window_id']
+        result.setdefault('window_title', matches[0]['title'])
+        result.setdefault('process', matches[0]['process'])
+    return result
+
+
 class OperatorAdapter(LaunchAdapter):
     def __init__(self, registry, state, provider, review_actions=False):
         super().__init__([], with_task_memory(registry, state), state, provider, review_actions)
@@ -286,7 +308,9 @@ class OperatorAdapter(LaunchAdapter):
                 return Decision(kind='ask' if proposal.tool == 'ask' else 'finish', message=proposal.message[:1000])
             tool = self.registry.get_tool(proposal.tool)
             try:
-                args = tool.input_model.model_validate(proposal.arguments).model_dump(exclude_none=True)
+                proposed_args = (_ground_window_grant(proposal.arguments, self.state.records, self.state.goal)
+                                 if tool.name == 'computer_begin' else proposal.arguments)
+                args = tool.input_model.model_validate(proposed_args).model_dump(exclude_none=True)
             except ValueError:
                 arguments_prompt = json.loads(prompt)
                 arguments_prompt['selected_tool'] = proposal.tool

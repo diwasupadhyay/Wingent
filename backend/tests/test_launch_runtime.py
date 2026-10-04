@@ -20,7 +20,7 @@ def test_endpoint_reports_unverified_not_complete(monkeypatch):
     assert '"task_id"' in response.text
     assert '"stage": "observing"' in response.text
     assert '"stage": "verifying"' in response.text
-    assert TestClient(app).get('/health').json()['runtime'] == 'operator-v20'
+    assert TestClient(app).get('/health').json()['runtime'] == 'operator-v21'
 
 
 def test_oversized_goal_rejected_before_streaming():

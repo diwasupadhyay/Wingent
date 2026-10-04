@@ -11,6 +11,11 @@ class AgentBrain:
         self.provider, self.registry, self.state = provider, registry, state
 
     async def structured(self, prompt, system, schema):
+        # A selected non-computer tool's argument repair needs its schema and
+        # recorded facts, not another expensive analysis of the same image.
+        selected_tool = json.loads(prompt).get('selected_tool')
+        if selected_tool and not selected_tool.startswith('computer_'):
+            return await self.provider.structured(prompt, system, schema)
         computer = getattr(self.registry, 'computer_session', None)
         frame = computer.visual_context(self.state.id) if computer else None
         if frame:

@@ -140,6 +140,22 @@ def test_brain_attaches_pixels_without_putting_them_in_history(granted):
     assert 'untrusted' in calls[0][1]
 
 
+def test_noncomputer_argument_repair_skips_repeated_vision_call(granted):
+    session, _, _ = granted
+    calls = []
+    class Provider:
+        async def structured(self, prompt, system, schema):
+            calls.append('text')
+            return '{}'
+        async def structured_images(self, prompt, system, schema, images):
+            calls.append('image')
+            return '{}'
+    brain = AgentBrain(Provider(), SimpleNamespace(computer_session=session), SimpleNamespace(id='owner'))
+    asyncio.run(brain.structured('{"selected_tool":"read_text"}', 'repair', {}))
+    asyncio.run(brain.structured('{"selected_tool":"computer_action"}', 'repair', {}))
+    assert calls == ['text', 'image']
+
+
 def test_control_requires_explicit_grant_and_sensitive_action_approval():
     registry = ToolRegistry()
     register(registry, ComputerSession(Desktop()))

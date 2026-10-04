@@ -86,6 +86,48 @@ def test_computer_grant_rejects_unobserved_window_id():
     assert len(calls) == 2 and 'NOT attempted' in calls[1]
 
 
+def test_unique_launched_window_fills_grant_without_extra_model_call():
+    from app.computer_tools import BeginControl
+    registry = ToolRegistry()
+    registry.tools.clear()
+    registry.register('observe_windows', 'See windows', ToolPermission.SAFE, {},
+                      lambda _: {'ok': True}, input_model=Arguments)
+    registry.register('computer_begin', 'Grant observed window', ToolPermission.CONFIRMATION_REQUIRED, {},
+                      lambda _: {'ok': True}, input_model=BeginControl)
+    registry.computer_session = SimpleNamespace(visual_context=lambda owner: None)
+    state = TaskState(goal='Type a quote in the app', criteria=['Quote visible'])
+    state.records.extend([
+        ActionRecord(action=Action(tool='open_application', arguments={'application': 'notepad'}, label='Open'),
+                     outcome=Outcome(status='accepted', summary='Launched', data={'pid': 42}), dispatched=True),
+        ActionRecord(action=Action(tool='observe_windows', arguments={}, label='See windows'),
+                     outcome=Outcome(status='accepted', summary='Observed', data={'windows': [
+                         {'window_id': 7, 'pid': 42, 'title': 'Untitled', 'process': 'notepad.exe'},
+                         {'window_id': 8, 'pid': 99, 'title': 'Other', 'process': 'other.exe'}]}), dispatched=True),
+    ])
+    calls = []
+    class Provider:
+        async def structured(self, prompt, system, schema):
+            calls.append(prompt)
+            return '{"tool":"computer_begin"}'
+    decision = asyncio.run(OperatorAdapter(registry, state, BudgetedProvider(Provider(), state)).decide(state.context()))
+    assert decision.kind == 'act'
+    assert decision.action.arguments == {'window_id': 7, 'purpose': state.goal,
+                                         'window_title': 'Untitled', 'process': 'notepad.exe'}
+    assert len(calls) == 1
+
+
+def test_ambiguous_launched_windows_are_not_chosen_by_host():
+    from app.operator import _ground_window_grant
+    records = [
+        ActionRecord(action=Action(tool='application_open', arguments={}, label='Open'),
+                     outcome=Outcome(status='accepted', summary='Launched', data={'pid': 42}), dispatched=True),
+        ActionRecord(action=Action(tool='observe_windows', arguments={}, label='Observe'),
+                     outcome=Outcome(status='accepted', summary='Windows', data={'windows': [
+                         {'window_id': 7, 'pid': 42}, {'window_id': 8, 'pid': 42}]}), dispatched=True),
+    ]
+    assert _ground_window_grant({}, records, 'Use app') == {'purpose': 'Use app'}
+
+
 def test_final_result_includes_last_failed_action_reason():
     registry = ToolRegistry()
     state = TaskState(goal='Use the window', criteria=['Window changed'])
