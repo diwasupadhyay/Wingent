@@ -4,10 +4,16 @@ import App from './App';
 import { invoke } from '@tauri-apps/api/core';
 
 vi.mock('@tauri-apps/api/core', () => ({ invoke: vi.fn(async (command: string) =>
-  command === 'backend_status' ? 'incompatible' : false) }));
+  command === 'backend_status' ? 'incompatible' :
+    command === 'backend_base_url' ? 'http://127.0.0.1:54321' : false) }));
 vi.mock('@tauri-apps/api/event', () => ({ listen: vi.fn(async () => () => {}) }));
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.mocked(invoke).mockImplementation(async (command: string) =>
+    command === 'backend_status' ? 'incompatible' :
+      command === 'backend_base_url' ? 'http://127.0.0.1:54321' : false);
+});
 
 function mockEvents(events: string) {
   let readCount = 0;
@@ -28,7 +34,9 @@ function runCommand() {
 describe('App', () => {
   it('does not show ready for a running server with a missing model', async () => {
     vi.stubGlobal('__TAURI_INTERNALS__', {});
-    vi.mocked(invoke).mockResolvedValueOnce('ready');
+    vi.mocked(invoke).mockImplementation(async (command: string) =>
+      command === 'backend_status' ? 'ready' :
+        command === 'backend_base_url' ? 'http://127.0.0.1:54321' : false);
     const message = 'Ollama is running, but model "configured:4b" is not installed.';
     vi.stubGlobal('fetch', vi.fn(async () => ({ ok: true, json: async () => ({
       ready: false, code: 'ollama_model_missing', model: 'configured:4b', message,
@@ -44,8 +52,27 @@ describe('App', () => {
     const send = vi.fn();
     vi.stubGlobal('fetch', send);
     runCommand();
-    await waitFor(() => expect(screen.getByText(/older or unrelated backend is using port 8000/i)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/wrong backend instance/i)).toBeTruthy());
     expect(send).not.toHaveBeenCalled();
+  });
+  it('sends desktop commands to the backend port owned by this EXE', async () => {
+    vi.stubGlobal('__TAURI_INTERNALS__', {});
+    vi.mocked(invoke).mockImplementation(async (command: string) =>
+      command === 'backend_status' ? 'ready' :
+        command === 'backend_base_url' ? 'http://127.0.0.1:54321' : false);
+    const send = vi.fn(async (url: string) => {
+      if (url.endsWith('/api/model-status')) return { ok: true, json: async () => ({
+        ready: true, code: 'ready', message: 'Model ready', model: 'local',
+      }) };
+      const bytes = new TextEncoder().encode('event: final\ndata: {"text":"Done"}\n\n');
+      let readCount = 0;
+      return { ok: true, body: { getReader: () => ({ read: async () => readCount++ === 0
+        ? { done: false, value: bytes } : { done: true } }) } };
+    });
+    vi.stubGlobal('fetch', send);
+    runCommand();
+    await waitFor(() => expect(screen.getByText('Done')).toBeTruthy());
+    expect(send.mock.calls.some(([url]) => url === 'http://127.0.0.1:54321/api/command')).toBe(true);
   });
   it('sends review mode explicitly when enabled', async () => {
     mockEvents('event: final\ndata: {"text":"Ready"}\n\n');

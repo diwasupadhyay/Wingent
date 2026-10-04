@@ -34,8 +34,9 @@ export default function App() {
   const [backendReady, setBackendReady] = useState<BackendState | null>(null);
   const inputRef = useRef<HTMLInputElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const apiBaseUrlRef = useRef(API_BASE_URL);
   const backendProblem = backendReady === 'incompatible'
-    ? 'An older or unrelated backend is using port 8000. Quit the old Wingent process, then restart this EXE.'
+    ? 'Wingent connected to the wrong backend instance. Restart this EXE.'
     : 'Wingent service is unavailable. Restart Wingent if this persists.';
   const expanded = loading || Boolean(content) || Boolean(error) || (backendReady !== null && backendReady !== 'ready');
 
@@ -45,7 +46,7 @@ export default function App() {
       const controller = new AbortController();
       const timeout = window.setTimeout(() => controller.abort(), 6500);
       try {
-        const response = await fetch(`${API_BASE_URL}/api/model-status`, { signal: controller.signal });
+        const response = await fetch(`${apiBaseUrlRef.current}/api/model-status`, { signal: controller.signal });
         if (!response.ok) throw new Error('Model status unavailable');
         const info: ModelStatus = await response.json();
         setOllamaMessage(info.message);
@@ -77,6 +78,7 @@ export default function App() {
     if (!isTauri()) return;
     const checkBackend = async () => {
       try {
+        apiBaseUrlRef.current = await invoke<string>('backend_base_url');
         setBackendReady(await invoke<BackendState>('backend_status'));
       } catch {
         setBackendReady('unavailable');
@@ -132,7 +134,7 @@ export default function App() {
           await invoke('hide_overlay');
         }
       }
-      const response = await fetch(`${API_BASE_URL}/api/approvals/${encodeURIComponent(current.approval_id)}`, {
+      const response = await fetch(`${apiBaseUrlRef.current}/api/approvals/${encodeURIComponent(current.approval_id)}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: current.token, approve }), signal: controller?.signal,
       });
@@ -201,15 +203,16 @@ export default function App() {
 
     try {
       if (isTauri()) {
+        apiBaseUrlRef.current = await invoke<string>('backend_base_url');
         const currentBackend = await invoke<BackendState>('backend_status');
         setBackendReady(currentBackend);
         if (currentBackend !== 'ready') {
           throw new Error(currentBackend === 'incompatible'
-            ? 'An older or unrelated backend is using port 8000. Quit it and restart this Wingent EXE.'
+            ? 'Wingent connected to the wrong backend instance. Restart this Wingent EXE.'
             : 'Wingent backend is not ready. Restart Wingent and try again.');
         }
       }
-      const response = await fetch(`${API_BASE_URL}/api/command`, {
+      const response = await fetch(`${apiBaseUrlRef.current}/api/command`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ prompt: trimmed, review_actions: reviewActions,

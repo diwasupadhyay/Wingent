@@ -1,9 +1,10 @@
 use std::io::{self, Read, Write};
-use std::net::{SocketAddr, TcpStream};
+use std::net::{SocketAddr, TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::Duration;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 #[cfg(windows)]
 use std::os::windows::process::CommandExt;
@@ -14,7 +15,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 const COLLAPSED_HEIGHT: f64 = 92.0;
 const EXPANDED_HEIGHT: f64 = 300.0;
-const REQUIRED_BACKEND_RUNTIME: &str = "operator-v21";
+const REQUIRED_BACKEND_RUNTIME: &str = "operator-v22";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum BackendHealth {
@@ -33,11 +34,15 @@ impl BackendHealth {
   }
 }
 
-struct BackendProcess(Mutex<Option<Child>>);
+struct BackendProcess {
+  child: Mutex<Option<Child>>,
+  port: u16,
+  instance_id: String,
+}
 
 impl BackendProcess {
   fn stop(&self) {
-    if let Ok(mut child_slot) = self.0.lock() {
+    if let Ok(mut child_slot) = self.child.lock() {
       if let Some(mut child) = child_slot.take() {
         if child.try_wait().ok().flatten().is_none() {
           #[cfg(windows)]
@@ -66,7 +71,7 @@ impl Drop for BackendProcess {
   }
 }
 
-fn classify_backend_response(response: &str) -> BackendHealth {
+fn classify_backend_response(response: &str, instance_id: &str) -> BackendHealth {
   if !response.starts_with("HTTP/1.1 200") {
     return BackendHealth::Incompatible;
   }
@@ -78,6 +83,7 @@ fn classify_backend_response(response: &str) -> BackendHealth {
   };
   if value.get("service").and_then(|item| item.as_str()) == Some("wingent")
     && value.get("runtime").and_then(|item| item.as_str()) == Some(REQUIRED_BACKEND_RUNTIME)
+    && value.get("instance_id").and_then(|item| item.as_str()) == Some(instance_id)
   {
     BackendHealth::Ready
   } else {
@@ -85,8 +91,8 @@ fn classify_backend_response(response: &str) -> BackendHealth {
   }
 }
 
-fn backend_health() -> BackendHealth {
-  let address = SocketAddr::from(([127, 0, 0, 1], 8000));
+fn backend_health(port: u16, instance_id: &str) -> BackendHealth {
+  let address = SocketAddr::from(([127, 0, 0, 1], port));
   let Ok(mut stream) = TcpStream::connect_timeout(&address, Duration::from_millis(300)) else {
     return BackendHealth::Unavailable;
   };
@@ -108,15 +114,21 @@ fn backend_health() -> BackendHealth {
     }
   }
   let response = String::from_utf8_lossy(&response);
-  classify_backend_response(&response)
+  classify_backend_response(&response, instance_id)
 }
 
 #[tauri::command]
-fn backend_status() -> &'static str {
-  backend_health().as_str()
+fn backend_status(app: AppHandle) -> &'static str {
+  let backend = app.state::<BackendProcess>();
+  backend_health(backend.port, &backend.instance_id).as_str()
 }
 
-fn start_backend_sidecar() -> Result<Child, String> {
+#[tauri::command]
+fn backend_base_url(app: AppHandle) -> String {
+  format!("http://127.0.0.1:{}", app.state::<BackendProcess>().port)
+}
+
+fn start_backend_sidecar(port: u16, instance_id: &str) -> Result<Child, String> {
   let mut candidates = Vec::new();
   if let Ok(current_exe) = std::env::current_exe() {
     if let Some(directory) = current_exe.parent() {
@@ -133,6 +145,8 @@ fn start_backend_sidecar() -> Result<Child, String> {
   for executable in candidates {
     let mut command = Command::new(executable);
     command
+      .env("WINGENT_BACKEND_PORT", port.to_string())
+      .env("WINGENT_INSTANCE_ID", instance_id)
       .stdin(Stdio::null())
       .stdout(Stdio::null())
       .stderr(Stdio::null());
@@ -245,7 +259,7 @@ fn handoff_computer_focus(app: AppHandle, window_id: u64) -> Result<(), String> 
     if IsWindow(target) == 0 {
       return Err("The observed window closed. Observe windows again.".into());
     }
-    if let Ok(child) = app.state::<BackendProcess>().0.lock() {
+    if let Ok(child) = app.state::<BackendProcess>().child.lock() {
       if let Some(child) = child.as_ref() {
         let _ = AllowSetForegroundWindow(child.id());
       }
@@ -274,6 +288,7 @@ pub fn run() {
     .plugin(tauri_plugin_global_shortcut::Builder::new().build())
     .invoke_handler(tauri::generate_handler![
       backend_status,
+      backend_base_url,
       ollama_status,
       start_ollama,
       hide_overlay,
@@ -282,21 +297,19 @@ pub fn run() {
       set_overlay_expanded
     ])
     .setup(|app| {
-      let backend_child = match backend_health() {
-        BackendHealth::Ready => None,
-        BackendHealth::Incompatible => {
-          log::error!("Another service or an outdated Wingent backend occupies 127.0.0.1:8000; refusing to use it.");
+      let listener = TcpListener::bind("127.0.0.1:0")?;
+      let port = listener.local_addr()?.port();
+      drop(listener);
+      let now = SystemTime::now().duration_since(UNIX_EPOCH)?.as_nanos();
+      let instance_id = format!("{}-{now}", std::process::id());
+      let backend_child = match start_backend_sidecar(port, &instance_id) {
+        Ok(child) => Some(child),
+        Err(error) => {
+          log::error!("{error}");
           None
         }
-        BackendHealth::Unavailable => match start_backend_sidecar() {
-          Ok(child) => Some(child),
-          Err(error) => {
-            log::error!("{error}");
-            None
-          }
-        },
       };
-      app.manage(BackendProcess(Mutex::new(backend_child)));
+      app.manage(BackendProcess { child: Mutex::new(backend_child), port, instance_id });
 
       if cfg!(debug_assertions) {
         app.handle().plugin(
@@ -366,11 +379,12 @@ mod tests {
 
   #[test]
   fn refuses_stale_or_unrelated_loopback_backend() {
-    let current = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"service\":\"wingent\",\"runtime\":\"operator-v21\"}";
-    let stale = current.replace("operator-v21", "operator-v20");
+    let current = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"service\":\"wingent\",\"runtime\":\"operator-v22\",\"instance_id\":\"owned\"}";
+    let stale = current.replace("operator-v22", "operator-v21");
     let unrelated = current.replace("wingent", "another-service");
-    assert!(matches!(classify_backend_response(current), BackendHealth::Ready));
-    assert!(matches!(classify_backend_response(&stale), BackendHealth::Incompatible));
-    assert!(matches!(classify_backend_response(&unrelated), BackendHealth::Incompatible));
+    assert!(matches!(classify_backend_response(current, "owned"), BackendHealth::Ready));
+    assert!(matches!(classify_backend_response(current, "orphan"), BackendHealth::Incompatible));
+    assert!(matches!(classify_backend_response(&stale, "owned"), BackendHealth::Incompatible));
+    assert!(matches!(classify_backend_response(&unrelated, "owned"), BackendHealth::Incompatible));
   }
 }

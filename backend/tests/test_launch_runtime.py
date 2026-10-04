@@ -20,7 +20,12 @@ def test_endpoint_reports_unverified_not_complete(monkeypatch):
     assert '"task_id"' in response.text
     assert '"stage": "observing"' in response.text
     assert '"stage": "verifying"' in response.text
-    assert TestClient(app).get('/health').json()['runtime'] == 'operator-v21'
+    assert TestClient(app).get('/health').json()['runtime'] == 'operator-v22'
+
+
+def test_health_identifies_only_its_own_backend_instance(monkeypatch):
+    monkeypatch.setenv('WINGENT_INSTANCE_ID', 'owned-test-instance')
+    assert TestClient(app).get('/health').json()['instance_id'] == 'owned-test-instance'
 
 
 def test_oversized_goal_rejected_before_streaming():
