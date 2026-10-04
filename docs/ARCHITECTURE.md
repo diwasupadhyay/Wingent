@@ -1,5 +1,11 @@
 # Wingent Architecture
 
+## General computer update (2026-10-04)
+
+`AgentBrain` receives goal/history/schemas and the latest approved window image in one local multimodal call. It proposes; the runtime validates, approves and dispatches. `ComputerSession` owns task/window grants and one-use frames; `windows_computer.py` supplies Win32 SendInput, bounded capture and UI Automation through fixed workers, with no application workflow logic. Post-action images feed the next decision.
+
+Structured APIs remain preferred. Unfamiliar apps can use accessibility or screenshot coordinates. Input acceptance is not goal success. Window grants are broad UI authority, not a complete semantic sandbox. Native cross-app input has live evidence; general autonomous reliability remains open. Older component limitations below describe the v16 baseline where superseded.
+
 Updated: 2026-10-03. This document separates current implementation from proposed design. Phase status and execution authorization belong to [AGENT_IMPLEMENTATION_PLAN.md](AGENT_IMPLEMENTATION_PLAN.md).
 
 ## Product and boundaries

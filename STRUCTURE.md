@@ -4,6 +4,11 @@ Updated: 2026-10-02. Current ownership map; proposed work is tracked in docs/AGE
 
 ## Runtime and capabilities
 
+- backend/app/brain.py — separate local reasoning boundary with the latest approved window image.
+- backend/app/computer_tools.py — task/window grants, fresh frames, generic input and sensitive-action checks.
+- backend/app/windows_computer.py — Win32 keyboard/mouse, screenshots and Windows UI Automation.
+- scripts/evaluate-computer.py / evaluate-native-computer.py — opt-in isolated reasoning and native-app checks.
+
 - backend/app/main.py — loopback API, registry startup and natural-task/shortcut routing.
 - backend/app/operator.py — production registry-driven next-tool selection, typed arguments and outcome context.
 - backend/app/runtime.py — generic observe/decide/validate/execute/verify loop and lifecycle.

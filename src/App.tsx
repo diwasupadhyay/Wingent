@@ -125,6 +125,7 @@ export default function App() {
     setApprovalBusy(true);
     setApprovalError(null);
     try {
+      if (approve && current.tool.startsWith('computer_') && isTauri()) await invoke('hide_overlay');
       const response = await fetch(`${API_BASE_URL}/api/approvals/${encodeURIComponent(current.approval_id)}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: current.token, approve }), signal: controller?.signal,
@@ -133,6 +134,7 @@ export default function App() {
       if (abortRef.current !== controller) return;
       setApproval((pending) => pending?.approval_id === current.approval_id ? null : pending);
     } catch (cause) {
+      if (isTauri()) void invoke('reveal_overlay');
       if (abortRef.current === controller) setApprovalError(cause instanceof Error ? cause.message : 'Approval could not be sent.');
     } finally {
       if (abortRef.current === controller) setApprovalBusy(false);
@@ -258,6 +260,7 @@ export default function App() {
             const state = data.state;
             if (typeof index === 'number' && state) setSteps((current) => current.map((step, i) => i === index ? { ...step, state } : step));
           } else if (name === 'confirmation_required' && data.approval_id && data.token && data.tool && data.arguments) {
+            if (isTauri()) void invoke('reveal_overlay');
             setApproval(data as Approval);
             setApprovalBusy(false);
             setApprovalError(null);
@@ -303,6 +306,7 @@ export default function App() {
       }
     } finally {
       if (abortRef.current === controller) {
+        if (isTauri()) void invoke('reveal_overlay');
         abortRef.current = null;
         setLoading(false);
         setApproval(null);

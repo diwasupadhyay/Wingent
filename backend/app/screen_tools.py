@@ -105,11 +105,9 @@ class ScreenSession:
         params = self.prepare(params)
         try:
             with self.client_factory(timeout=42, trust_env=False) as client:
-                tags = client.get(f'{self.base_url}/api/tags')
-                tags.raise_for_status()
-                models = tags.json().get('models', [])
-                available = any(item.get('name') == self.model and
-                                'vision' in item.get('capabilities', []) for item in models)
+                details = client.post(f'{self.base_url}/api/show', json={'model': self.model})
+                details.raise_for_status()
+                available = 'vision' in details.json().get('capabilities', [])
                 if not available:
                     return {'ok': False, 'effect': 'no_effect',
                             'reason': f'Local vision model {self.model} is unavailable.'}

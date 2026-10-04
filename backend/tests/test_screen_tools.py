@@ -41,6 +41,8 @@ class Client:
 
     def post(self, url, json):
         self.calls.append(('post', url, json))
+        if url.endswith('/api/show'):
+            return Response({'capabilities': ['vision']})
         return Response({'response': 'A blue button is visible.'})
 
 
@@ -95,7 +97,7 @@ def test_foreground_change_after_capture_never_sends_pixels():
     tool.capture = change_foreground
     with pytest.raises(ValueError, match='not foreground'):
         tool.inspect(window_id=12, observation_id=7, purpose='Identify controls')
-    assert not any(call[0] == 'post' for call in calls)
+    assert not any(call[1].endswith('/api/generate') for call in calls)
 
 
 def test_known_password_control_blocks_capture():

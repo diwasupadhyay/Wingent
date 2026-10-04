@@ -29,6 +29,7 @@ from app.process_tools import register as register_process
 from app.application_tools import register as register_applications
 from app.screen_tools import register as register_screen
 from app.version import RUNTIME_VERSION
+from app.computer_tools import register as register_computer
 
 app = FastAPI(title='Wingent', version='0.1.0')
 app.add_middleware(
@@ -50,6 +51,7 @@ register_files(registry)
 register_windows(registry)
 desktop_session = register_desktop(registry)
 register_screen(registry, desktop_session)
+register_computer(registry)
 register_process(registry)
 register_applications(registry)
 register_browser(registry)

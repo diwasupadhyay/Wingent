@@ -1,6 +1,14 @@
 # Wingent Handoff
 
-Updated: 2026-10-03.
+Updated: 2026-10-04.
+
+## Latest general-computer slice (v17)
+
+The LLM now receives approved window screenshots directly through `brain.py`. Generic `computer_begin`, `computer_observe`, `computer_action` and `computer_confirm_action` integrate UI Automation, mouse clicks, Unicode typing, scrolling and hotkeys with the existing runtime. Grants are task-scoped, frames are single-use, and input checks process/foreground/geometry. The overlay hides on approval and returns for confirmations/results. Images stay local.
+
+Native tests passed in an isolated GUI, Notepad and Calculator. Real-model tests exposed argument generation, untargeted typing and foreground-loss failures; guards were improved, but the autonomous reliability gate remains open. See [computer evidence](evaluations/COMPUTER_OPERATOR.md). Older limitations below describe v16 where superseded.
+
+Current build target: `operator-v17`, `src-tauri/target/release/app.exe`. The user authorizes stopping only old project-owned development processes blocking rebuilds and starting the new version. Do not stop unrelated listeners or user applications.
 
 ## Current instruction
 
@@ -16,7 +24,7 @@ Do not design around individual example applications or hardcode their workflows
 
 Stack: Tauri v2, React/TypeScript/Vite, Python FastAPI/SSE, replaceable local LLM provider with Ollama. Installed models include `qwen3-vl:4b-instruct` (current default) and `llama3.2:3b`.
 
-## Current implementation
+## Baseline through v16 (latest additions above)
 
 - Natural requests: main.py → operator.py → AgentRuntime → typed tool registry.
 - Operator selects a tool from the registry, generates typed arguments, consumes actual results and decides again. Phase 3B adds bounded model notes, a complete task action index, historical-result retrieval, file-page/version coverage and bounded observation refresh. Clarification-supplied names/paths now participate in target grounding.

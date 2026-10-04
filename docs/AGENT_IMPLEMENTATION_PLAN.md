@@ -1,6 +1,14 @@
 # Wingent: General Computer Agent Implementation Plan
 
-Updated: 2026-10-03 (Asia/Calcutta)
+Updated: 2026-10-04 (Asia/Calcutta)
+
+## Latest slice: general computer environment
+
+`brain.py` now attaches approved window pixels directly to the LLM's next decision. `computer_tools.py` and `windows_computer.py` provide app-independent UI Automation, screenshot-grounded clicks, typing, scrolling and hotkeys. Files, terminal/process, browser and skills remain peer capabilities, not the product scope. This original implementation uses the screenshot/action/re-observation idea studied in Open-Interface without copying its source.
+
+Completed implementation slice: task/window grants, fresh one-use frames, process/focus/geometry checks, post-action images, cancellation, concurrent-input exclusion, local image transport and overlay handoff. Native isolated-GUI, Notepad and Calculator checks passed. Real-model runs exposed argument and focus-loss failures; the broader autonomous reliability gate remains open. See [computer evaluation](evaluations/COMPUTER_OPERATOR.md) for exact evidence and remaining limits.
+
+Current release: `operator-v17` built and started. Running health/model checks passed; 212 backend, 15 frontend and 1 Rust tests passed. Binary hashes and failed live repeats are recorded in the computer evaluation. Prior v16 evidence below is historical, not the current architecture or roadmap. Do not call all phases complete from narrow input tests or an EXE build.
 Current instruction: **Scoped implementation is authorized. The user requested lean checks and will manually test the desktop app. Do not claim phase completion without its real-world exit gate.**
 Current implementation phase: **Phase 3A's bounded comparison and Phase 3B's working-context contracts are complete for the tested task/file surface. Phase 3's varied-task reliability gate remains in progress. Phases 4–6 have bounded adapters in progress.**
 
@@ -55,9 +63,9 @@ Completed means the recorded phase's bounded exit criteria were met, not that th
 | 1 | Application-independent runtime | Verified complete for runtime contracts | Controlled tests establish observation-driven transitions, budgets and evidence gate |
 | 2 | Typed capability and approval contracts | Verified complete for current contracts | Validation and exact-action approval/denial/replay protections demonstrated |
 | 3 | Reliable general reasoning, working context and discovery | 3A comparison and 3B bounded working-context implementation complete; 3C/3D and overall reliability open | Held-out live tasks progress, recover and stop honestly without fixed workflows |
-| 4 | Structured computer observation and action | In progress; file, experimental browser and first approved Win32 control adapters present, but live control not yet verified | Correct targets, meaningful observations and verified effects across independent adapters |
+| 4 | Structured computer observation and action | General UIA/input slice implemented; native Notepad and Calculator checks passed; broader gate open | Correct targets, meaningful observations and verified effects across independent adapters |
 | 5 | Controlled process/code execution and environment discovery | In progress; executable discovery and approved bounded native execution added | Scoped approved execution, bounded output and controlled process-tree lifecycle |
-| 6 | Visual observation and input fallback | In progress; approved foreground-window capture and local model description, no visual action | Fresh visual targets, scoped input and observed postconditions under failure injection |
+| 6 | Visual observation and input fallback | Direct multimodal brain and scoped visual input implemented; live failures recorded and fixes tested | Fresh visual targets, scoped input and observed postconditions under failure injection |
 | 7 | Cross-capability reliability and release readiness | Planned | Reproducible mixed-task and safety evidence from the packaged application |
 
 Order: stabilize Phase 3 before broadening autonomous effects. Phase 4 read-only feasibility work may be an explicitly approved parallel slice, not permission to skip the reasoning gate. Testing, security and packaging apply throughout; they are not postponed until Phase 7.
@@ -267,6 +275,16 @@ The `operator-v16` frozen sidecar and no-bundle EXE built successfully. The sour
 The frozen backend served the current health marker and passed the paged report evaluation through HTTP with the full registered catalogue. The initial test-process cleanup was denied by the restricted shell; after checking its exact PID/path, elevated cleanup stopped only the launched test tree and freed port 8000. This backend check does not validate the GUI lifecycle.
 
 ## 10. Next execution slices
+
+The following general-agent priorities supersede the older browser-first list:
+
+1. Build/start the v17 EXE and verify its packaged backend identity and ordinary lifecycle.
+2. Improve goal-driven reasoning across unfamiliar isolated applications; measure decisions separately from actual effects and independent result checks.
+3. Add capability-owned completion evidence, bounded unknown-effect reconciliation and robust dialog/focus recovery without blindly replaying input.
+4. Expand mixed UI/file/process/browser evaluations, latency measurements and held-out tasks. Browser/media is one environment, not the roadmap.
+5. Harden durable continuation, UAC/UIPI limitations, occlusion, multi-monitor behavior and semantic approval boundaries.
+
+### Historical v16 browser investigation (not current execution order)
 
 1. Establish the exact running build/backend identity and reproduce the reported Joji failure in an interactive Windows session. Record the request, selected tools, browser process/window, page observations and final outcome. Do not infer the cause solely from an old trace or a passing unit test.
 2. Isolate why managed Chrome/Edge control exits in this environment. Check launch flags, profile ownership, browser logs and a disposable local page; compare with a normal interactive session. If CDP remains unreliable, design a replaceable structured browser adapter rather than a phrase-specific workaround. Do not attach to the personal browser profile without a separate scope decision.

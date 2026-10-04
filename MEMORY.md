@@ -1,5 +1,9 @@
 # Wingent Memory
 
+## Latest resume point (2026-10-04)
+
+General computer brain/control slice targets `operator-v17`. New owners: `brain.py`, `computer_tools.py`, `windows_computer.py`. Direct local vision input, scoped window grants, one-use frames, UIA/click/type/scroll/hotkeys, sensitive-input gates and overlay handoff are implemented. Native GUI/Notepad/Calculator checks passed. Model-driven runs still fail under foreground loss and imperfect action choices; do not claim all phases complete. Consult the current plan and `docs/evaluations/COMPUTER_OPERATOR.md` before following old browser-first notes. Rebuild/start the EXE and verify its marker; only project-owned old processes may be stopped.
+
 Updated: 2026-10-03. This is resume context, not a second phase tracker.
 
 ## Latest user instruction

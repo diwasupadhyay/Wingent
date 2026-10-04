@@ -1,6 +1,8 @@
 import json
 import os
 import asyncio
+import base64
+from urllib.parse import urlparse
 from typing import AsyncIterator, Protocol
 
 import httpx
@@ -12,6 +14,8 @@ class LLMProvider(Protocol):
     def stream(self, prompt: str) -> AsyncIterator[str]: ...
 
     async def structured(self, prompt: str, system: str, schema: dict) -> str: ...
+
+    async def structured_images(self, prompt: str, system: str, schema: dict, images: list[bytes]) -> str: ...
 
 
 _SYSTEM_INSTRUCTION = (
@@ -67,12 +71,26 @@ class OllamaClient:
         return self.last_availability
 
     async def structured(self, prompt: str, system: str, schema: dict) -> str:
+        return await self._generate(prompt, system, schema)
+
+    async def structured_images(self, prompt, system, schema, images):
+        parsed = urlparse(self.base_url)
+        if parsed.scheme != 'http' or parsed.hostname not in {'127.0.0.1', 'localhost', '::1'} or parsed.username or parsed.password:
+            raise ValueError('Computer screenshots require a local Ollama endpoint.')
+        if len(images) > 1 or any(len(image) > 6_000_000 for image in images):
+            raise ValueError('Computer image context exceeded its limit.')
+        return await self._generate(prompt, system, schema, images)
+
+    async def _generate(self, prompt, system, schema, images=None):
+        payload = {
+            'model': os.getenv('OLLAMA_VISION_MODEL', 'qwen3-vl:4b-instruct') if images else self.model,
+            'system': system, 'prompt': prompt, 'stream': False, 'format': schema,
+            'options': {'temperature': 0, 'num_predict': 1200, 'num_ctx': 8192},
+        }
+        if images:
+            payload['images'] = [base64.b64encode(image).decode('ascii') for image in images]
         async with httpx.AsyncClient(timeout=60.0, trust_env=False) as client:
-            response = await client.post(f'{self.base_url}/api/generate', json={
-                'model': self.model, 'system': system, 'prompt': prompt,
-                'stream': False, 'format': schema,
-                'options': {'temperature': 0, 'num_predict': 1200, 'num_ctx': 8192},
-            })
+            response = await client.post(f'{self.base_url}/api/generate', json=payload)
             response.raise_for_status()
             payload = response.json()
             if payload.get('error'):

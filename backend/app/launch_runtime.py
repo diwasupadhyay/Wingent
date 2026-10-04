@@ -24,6 +24,11 @@ class BudgetedProvider:
         async with asyncio.timeout(max(0, min(60, self.state.remaining_seconds()))):
             return await self.provider.structured(prompt, system, schema)
 
+    async def structured_images(self, prompt, system, schema, images):
+        self.state.consume_model_call()
+        async with asyncio.timeout(max(0, min(60, self.state.remaining_seconds()))):
+            return await self.provider.structured_images(prompt, system, schema, images)
+
     async def stream(self, prompt):
         self.state.consume_model_call()
         async with asyncio.timeout(max(0, self.state.remaining_seconds())):
@@ -33,6 +38,9 @@ class BudgetedProvider:
 
 def action_from_pair(name, params):
     target = params.get('url') or params.get('path') or params.get('application') or params.get('query') or name
+    if name in {'computer_action', 'computer_confirm_action'}:
+        kind = params.get('kind', 'input')
+        target = (f'{kind}: ' + '+'.join(params.get('keys') or [])) if kind == 'hotkey' else kind
     browser = f' in {params["browser"].title()}' if params.get('browser') else ''
     label = f'Search {params["engine"]}: {target}{browser}' if name == 'search_web' else f'{name}: {target}{browser}'
     return Action(tool=name, arguments=params, label=label)

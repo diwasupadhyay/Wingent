@@ -1,5 +1,13 @@
 # Wingent Security and Permission Boundaries
 
+## General computer control (v17)
+
+`computer_begin` grants broad ordinary UI interaction and local screenshot interpretation for one window/task. Grants bind HWND, PID and executable; one task owns input at a time. Window switches need another grant. Fresh frame IDs are single-use; age, focus, geometry and coarse visual-change checks reject stale input. Stop/Escape interrupts further input but cannot undo effects. Task end releases pixels and grants.
+
+Enter/Delete/Windows-key input, multiline typing, paste shortcuts and recognized sensitive UIA labels require `computer_confirm_action`. The model must also identify other consequential effects. These incomplete semantic checks are not a sandbox. Known password controls block capture, but custom authentication surfaces may not expose them. Secure desktop/elevation is unsupported. Capture can include occluding content: keep unrelated sensitive windows out of the approved surface.
+
+Production pixels stay in memory and go only to loopback Ollama. Screen/UIA content is untrusted data, not authority. The opt-in test harness alone may save its synthetic window screenshots in ignored `.build/`.
+
 Updated: 2026-10-03. Current implementation and future requirements are distinguished below. See the implementation plan for authorization and phase status.
 
 ## Non-negotiable rules

@@ -1,5 +1,7 @@
 # Wingent Roadmap
 
+Latest priority (2026-10-04): general computer operation, not browser-first development. The v17 slice adds direct screenshot-to-brain reasoning and task-scoped UIA/mouse/keyboard control; native Notepad and Calculator checks pass. Next gates are unfamiliar-app autonomous completion, independent postconditions, focus/dialog recovery and packaged mixed-task evaluation. The authoritative plan and `evaluations/COMPUTER_OPERATOR.md` supersede older browser-first priorities below.
+
 Updated: 2026-10-03. The latest request authorizes scoped implementation and evaluation.
 
 The product is a general-purpose personal computer agent. The user supplies a goal; Wingent discovers and combines capabilities to achieve it. Applications are adapters and test fixtures, not separate product phases.

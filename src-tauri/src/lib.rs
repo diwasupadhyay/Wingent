@@ -14,7 +14,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 const COLLAPSED_HEIGHT: f64 = 92.0;
 const EXPANDED_HEIGHT: f64 = 300.0;
-const REQUIRED_BACKEND_RUNTIME: &str = "operator-v16";
+const REQUIRED_BACKEND_RUNTIME: &str = "operator-v17";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum BackendHealth {
@@ -214,6 +214,11 @@ fn start_ollama() -> Result<(), String> {
 }
 
 #[tauri::command]
+fn reveal_overlay(app: AppHandle) {
+  show_overlay(&app);
+}
+
+#[tauri::command]
 fn hide_overlay(app: AppHandle) {
   if let Some(window) = app.get_webview_window("main") {
     let _ = window.hide();
@@ -238,6 +243,7 @@ pub fn run() {
       ollama_status,
       start_ollama,
       hide_overlay,
+      reveal_overlay,
       set_overlay_expanded
     ])
     .setup(|app| {
@@ -325,8 +331,8 @@ mod tests {
 
   #[test]
   fn refuses_stale_or_unrelated_loopback_backend() {
-    let current = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"service\":\"wingent\",\"runtime\":\"operator-v16\"}";
-    let stale = current.replace("operator-v16", "operator-v15");
+    let current = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"service\":\"wingent\",\"runtime\":\"operator-v17\"}";
+    let stale = current.replace("operator-v17", "operator-v16");
     let unrelated = current.replace("wingent", "another-service");
     assert!(matches!(classify_backend_response(current), BackendHealth::Ready));
     assert!(matches!(classify_backend_response(&stale), BackendHealth::Incompatible));
