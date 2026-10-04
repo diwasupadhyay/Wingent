@@ -125,7 +125,13 @@ export default function App() {
     setApprovalBusy(true);
     setApprovalError(null);
     try {
-      if (approve && current.tool.startsWith('computer_') && isTauri()) await invoke('hide_overlay');
+      if (approve && current.tool.startsWith('computer_') && isTauri()) {
+        if (current.tool === 'computer_begin' && typeof current.arguments.window_id === 'number') {
+          await invoke('handoff_computer_focus', { windowId: current.arguments.window_id });
+        } else {
+          await invoke('hide_overlay');
+        }
+      }
       const response = await fetch(`${API_BASE_URL}/api/approvals/${encodeURIComponent(current.approval_id)}`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ token: current.token, approve }), signal: controller?.signal,

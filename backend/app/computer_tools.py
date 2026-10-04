@@ -62,7 +62,8 @@ class ComputerSession:
         window = next((w for w in self.platform.list_visible_windows() if w['hwnd'] == params['window_id']), None)
         if not window:
             raise ValueError('Choose a currently visible window from observe_windows.')
-        if params.get('process') and params['process'] != window['executable']:
+        if params.get('process') and params['process'].casefold() not in {
+                window['process'].casefold(), window['executable'].casefold()}:
             raise ValueError('Application identity changed.')
         if params.get('window_title') and params['window_title'] != window['title']:
             raise ValueError('Window title changed; select it again.')

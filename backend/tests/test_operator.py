@@ -46,6 +46,59 @@ def test_focus_pause_preserves_task_for_resume_without_replaying_input():
     assert decision.kind == 'act' and decision.action.tool == 'computer_begin'
 
 
+def test_app_launch_hands_off_to_window_observation_without_model_call():
+    registry = ToolRegistry()
+    registry.register('observe_windows', 'See actual windows', ToolPermission.SAFE, {},
+                      lambda _: {'ok': True, 'windows': []}, input_model=Arguments)
+    state = TaskState(goal='Open an app and type', criteria=['Text visible'])
+    state.records.append(ActionRecord(action=Action(tool='open_application',
+        arguments={'application': 'notepad'}, label='Launch'),
+        outcome=Outcome(status='accepted', summary='Launched', data={'pid': 42}), dispatched=True))
+    class Provider:
+        async def structured(self, prompt, system, schema):
+            raise AssertionError('Window observation should not need a model call')
+    decision = asyncio.run(OperatorAdapter(registry, state, BudgetedProvider(Provider(), state)).decide(state.context()))
+    assert decision.kind == 'act' and decision.action.tool == 'observe_windows'
+    assert state.model_calls == 0
+
+
+def test_computer_grant_rejects_unobserved_window_id():
+    from app.computer_tools import BeginControl
+    registry = ToolRegistry()
+    registry.tools.clear()
+    registry.register('observe_windows', 'See windows', ToolPermission.SAFE, {},
+                      lambda _: {'ok': True}, input_model=Arguments)
+    registry.register('computer_begin', 'Grant observed window', ToolPermission.CONFIRMATION_REQUIRED, {},
+                      lambda _: {'ok': True}, input_model=BeginControl)
+    registry.computer_session = SimpleNamespace(visual_context=lambda owner: None)
+    state = TaskState(goal='Type in the open app', criteria=['Text visible'])
+    state.records.append(ActionRecord(action=Action(tool='observe_windows', arguments={}, label='Observe'),
+        outcome=Outcome(status='accepted', summary='Windows', data={'windows': [{'window_id': 7}]}), dispatched=True))
+    calls = []
+    class Provider:
+        async def structured(self, prompt, system, schema):
+            calls.append(system)
+            window_id = 999 if len(calls) == 1 else 7
+            return json.dumps({'tool': 'computer_begin', 'arguments': {
+                'window_id': window_id, 'purpose': 'Type in the open app'}})
+    decision = asyncio.run(OperatorAdapter(registry, state, BudgetedProvider(Provider(), state)).decide(state.context()))
+    assert decision.kind == 'act' and decision.action.arguments['window_id'] == 7
+    assert len(calls) == 2 and 'NOT attempted' in calls[1]
+
+
+def test_final_result_includes_last_failed_action_reason():
+    registry = ToolRegistry()
+    state = TaskState(goal='Use the window', criteria=['Window changed'])
+    state.records.append(ActionRecord(action=Action(tool='computer_begin', arguments={}, label='Grant'),
+        outcome=Outcome(status='no_effect', summary='Application identity changed.'), dispatched=False))
+    class Provider:
+        async def structured(self, prompt, system, schema):
+            return '{"tool":"finish","message":"Cannot continue."}'
+    events = asyncio.run(_collect_run(registry, state, Provider()))
+    assert events[-1][0] == 'final'
+    assert 'computer_begin: Application identity changed.' in events[-1][1]['text']
+
+
 def test_brain_replans_untargeted_typing_before_dispatch():
     from app.computer_tools import ComputerAction
     registry = ToolRegistry()

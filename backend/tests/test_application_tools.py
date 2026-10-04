@@ -4,6 +4,24 @@ from app.application_tools import ApplicationSession, register
 from app.tools import ToolPermission, ToolRegistry, execution_task_id
 
 
+def test_legacy_notepad_launch_uses_direct_process_and_reports_window(monkeypatch):
+    from app import tools, window_observer
+    calls = []
+    class Process:
+        pid = 4321
+        def poll(self):
+            return None
+    monkeypatch.setattr(tools.subprocess, 'Popen', lambda args, **kwargs:
+                        (calls.append((args, kwargs)), Process())[1])
+    monkeypatch.setattr(window_observer, 'list_visible_windows', lambda: [
+        {'pid': 4321, 'hwnd': 7, 'title': 'Untitled - Notepad', 'process': 'notepad.exe'}])
+    result = ToolRegistry._open_application({'application': 'notepad'})
+    assert calls[0][0] == ['notepad.exe']
+    assert calls[0][1]['shell'] is False
+    assert result['pid'] == 4321
+    assert result['visible_windows'][0]['window_id'] == 7
+
+
 def test_discovered_app_launch_is_task_bound_and_single_use(tmp_path):
     executable = tmp_path / 'Fixture.exe'
     executable.write_bytes(b'fixture')

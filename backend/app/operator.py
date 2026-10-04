@@ -158,6 +158,11 @@ class OperatorAdapter(LaunchAdapter):
         if self.state.records and self.state.model_calls >= self.state.limits.model_calls:
             self.final_message = 'Reasoning budget reached. Review the recorded results; remaining goal steps are unverified.'
             return Decision(kind='finish', message=self.final_message)
+        if (self.state.records and self.state.records[-1].action.tool in {'open_application', 'application_open'}
+                and self.state.records[-1].outcome.status == 'accepted'
+                and self.registry.get_tool('observe_windows') is not None):
+            return Decision(kind='act', action=action_from_pair('observe_windows', {}),
+                            message='Checking which application window actually appeared.')
         computer = getattr(self.registry, 'computer_session', None)
         visual = computer.visual_context(self.state.id) if computer else None
         active_capabilities = {tool.capability for record in self.state.records
@@ -299,6 +304,29 @@ class OperatorAdapter(LaunchAdapter):
                             raise
                         argument_system += '\nPrevious arguments failed validation. Return the exact input schema.'
             computer = getattr(self.registry, 'computer_session', None)
+            if computer and tool.name == 'computer_begin' and self.registry.get_tool('observe_windows'):
+                latest_windows = next((record for record in reversed(self.state.records)
+                                       if record.action.tool == 'observe_windows' and
+                                       record.outcome.status == 'accepted'), None)
+                observed_ids = {window.get('window_id') for window in
+                                (latest_windows.outcome.data.get('windows', []) if latest_windows else [])}
+                if args['window_id'] not in observed_ids:
+                    if choice_attempt == 0 and self.state.limits.model_calls - self.state.model_calls >= 2:
+                        system += ('\nThat computer grant was NOT attempted: its window_id is not in the latest '
+                                   'observe_windows result. Observe windows now, then select an actual matching window_id.')
+                        continue
+                    self.final_message = 'No matching observed application window is available for computer control.'
+                    return Decision(kind='finish', message=self.final_message)
+            prior_grant = any(record.action.tool == 'computer_begin' and
+                              record.outcome.status == 'accepted' for record in self.state.records)
+            if (computer and tool.name == 'computer_observe' and not prior_grant and
+                    computer.visual_context(self.state.id) is None):
+                if choice_attempt == 0 and self.state.limits.model_calls - self.state.model_calls >= 2:
+                    system += ('\ncomputer_observe needs an active computer_begin grant. It was NOT run. '
+                               'Use observe_windows, then computer_begin for an observed window.')
+                    continue
+                self.final_message = 'No active computer-control grant exists; observe a window and request a new grant.'
+                return Decision(kind='finish', message=self.final_message)
             if computer and tool.name in {'computer_action', 'computer_confirm_action'}:
                 frame = computer.visual_context(self.state.id)
                 target_problem = None
@@ -493,6 +521,13 @@ async def run_operator(registry, state, provider, disconnected, review_actions=F
             if event in {'final', 'clarification', 'error'}:
                 facts = observed_effects(state)
                 payload['observed_effects'] = facts
+                failures = [(index, record) for index, record in enumerate(state.records, 1)
+                            if record.outcome.status == 'no_effect']
+                if failures:
+                    index, record = failures[-1]
+                    reason = record.outcome.data.get('reason') or record.outcome.summary
+                    payload['text'] = (payload.get('text', '') + '\n\nLast failed action: '
+                                       f'{index}. {record.action.tool}: {str(reason)[:400]}')
                 if facts:
                     payload['text'] = payload.get('text', '') + '\n\nHost observations:\n' + '\n'.join(
                         f"{item['record_id']}. {item['detail']}" for item in facts)

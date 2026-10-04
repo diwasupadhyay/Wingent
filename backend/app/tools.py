@@ -1,6 +1,7 @@
 import subprocess
 import os
 import re
+import time
 import webbrowser
 from contextvars import ContextVar
 from dataclasses import dataclass, field
@@ -247,10 +248,26 @@ class ToolRegistry:
             target = 'explorer'
 
         if target in {'chrome', 'msedge'}:
-            subprocess.Popen([resolve_browser('chrome' if target == 'chrome' else 'edge')], shell=False)
+            executable = resolve_browser('chrome' if target == 'chrome' else 'edge')
         elif target in {'notepad', 'explorer'}:
-            subprocess.Popen(['cmd', '/c', 'start', '', target], shell=False)
+            executable = target + '.exe'
         else:
             raise ValueError(f'Unsupported application: {application}')
-
-        return {'ok': True, 'action': 'open_application', 'application': application}
+        process = subprocess.Popen([executable], shell=False, stdin=subprocess.DEVNULL,
+                                   stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        # An OS process handle is not a visible application. Give a newly started
+        # GUI a short chance to expose a window, then report exactly what was seen.
+        from app.window_observer import list_visible_windows
+        observed = []
+        for _ in range(12):
+            observed = [window for window in list_visible_windows()
+                        if window['pid'] == process.pid]
+            if observed or process.poll() is not None:
+                break
+            time.sleep(0.15)
+        return {'ok': True, 'effect': 'accepted', 'action': 'open_application',
+                'application': application, 'pid': process.pid,
+                'visible_windows': [{'window_id': window['hwnd'], 'title': window['title'],
+                                     'process': window['process']} for window in observed],
+                'observation': ('A matching visible window was observed.' if observed else
+                                'Process launch accepted; no matching visible window was observed yet.')}

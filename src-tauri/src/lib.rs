@@ -14,7 +14,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 const COLLAPSED_HEIGHT: f64 = 92.0;
 const EXPANDED_HEIGHT: f64 = 300.0;
-const REQUIRED_BACKEND_RUNTIME: &str = "operator-v19";
+const REQUIRED_BACKEND_RUNTIME: &str = "operator-v20";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum BackendHealth {
@@ -225,6 +225,40 @@ fn hide_overlay(app: AppHandle) {
   }
 }
 
+#[cfg(windows)]
+#[link(name = "user32")]
+unsafe extern "system" {
+  fn AllowSetForegroundWindow(process_id: u32) -> i32;
+  fn SetForegroundWindow(window: isize) -> i32;
+  fn GetForegroundWindow() -> isize;
+  fn IsWindow(window: isize) -> i32;
+}
+
+#[tauri::command]
+fn handoff_computer_focus(app: AppHandle, window_id: u64) -> Result<(), String> {
+  if window_id == 0 || window_id > isize::MAX as u64 {
+    return Err("Invalid observed window ID.".into());
+  }
+  #[cfg(windows)]
+  unsafe {
+    let target = window_id as isize;
+    if IsWindow(target) == 0 {
+      return Err("The observed window closed. Observe windows again.".into());
+    }
+    if let Ok(child) = app.state::<BackendProcess>().0.lock() {
+      if let Some(child) = child.as_ref() {
+        let _ = AllowSetForegroundWindow(child.id());
+      }
+    }
+    let _ = SetForegroundWindow(target);
+    if GetForegroundWindow() != target {
+      return Err("Windows denied focus. Select the target window and retry the task.".into());
+    }
+  }
+  hide_overlay(app);
+  Ok(())
+}
+
 #[tauri::command]
 fn set_overlay_expanded(app: AppHandle, expanded: bool) {
   if let Some(window) = app.get_webview_window("main") {
@@ -243,6 +277,7 @@ pub fn run() {
       ollama_status,
       start_ollama,
       hide_overlay,
+      handoff_computer_focus,
       reveal_overlay,
       set_overlay_expanded
     ])
@@ -331,8 +366,8 @@ mod tests {
 
   #[test]
   fn refuses_stale_or_unrelated_loopback_backend() {
-    let current = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"service\":\"wingent\",\"runtime\":\"operator-v19\"}";
-    let stale = current.replace("operator-v19", "operator-v18");
+    let current = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"service\":\"wingent\",\"runtime\":\"operator-v20\"}";
+    let stale = current.replace("operator-v20", "operator-v19");
     let unrelated = current.replace("wingent", "another-service");
     assert!(matches!(classify_backend_response(current), BackendHealth::Ready));
     assert!(matches!(classify_backend_response(&stale), BackendHealth::Incompatible));

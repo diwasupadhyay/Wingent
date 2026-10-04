@@ -105,6 +105,21 @@ def test_grant_is_task_scoped_and_revocable(granted):
     assert session.visual_context('owner') is None
 
 
+def test_begin_accepts_process_name_from_window_observation():
+    desktop = Desktop()
+    session = ComputerSession(desktop)
+    token = execution_task_id.set('owner')
+    try:
+        result = session.begin(window_id=1, purpose='Type in this window',
+                               window_title='Test', process='test.exe')
+        assert result['ok'] is True
+        with pytest.raises(ValueError, match='identity changed'):
+            session.prepare_begin({'window_id': 1, 'purpose': 'Type in this window',
+                                   'process': 'other.exe'})
+    finally:
+        execution_task_id.reset(token)
+
+
 def test_unobserved_accessibility_target_is_rejected(granted):
     session, desktop, frame = granted
     assert session.act(frame_id=frame['frame_id'], kind='invoke', target_id='invented')['effect'] == 'no_effect'
