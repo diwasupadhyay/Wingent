@@ -4,7 +4,7 @@ Updated: 2026-10-04 (Asia/Calcutta)
 
 ## Latest slice: general computer environment
 
-### Phase 4 bounded exit gate met in operator-v18
+### Phase 4 bounded exit gate met in operator-v18; control hardening in operator-v19
 
 The tested Windows-control core now spans an isolated unfamiliar GUI, Notepad and Calculator, with app-independent screenshot/UIA/input tools and independent fixture or file/display checks. The local model completed the isolated greeting task in 6 calls / 103.58 seconds; the app's own output matched the requested value. Wingent stopped without repeating Apply and correctly labeled the whole goal unverified because the production computer adapter cannot independently prove arbitrary GUI semantics. Two consecutive native Notepad and Calculator runs passed after paced typing. Focus/geometry/stale-frame failures block input, and Windows focus denial now pauses with a resumable task instead of consuming recovery attempts. This satisfies Phase 4's **bounded general Windows-control exit gate**. It does not certify every application, elevated windows, browser automation or the broader Phase 3/7 reliability gates. See [computer evaluation](evaluations/COMPUTER_OPERATOR.md).
 
@@ -12,7 +12,7 @@ The tested Windows-control core now spans an isolated unfamiliar GUI, Notepad an
 
 Completed implementation slice: task/window grants, fresh one-use frames, process/focus/geometry checks, post-action images, cancellation, concurrent-input exclusion, local image transport and overlay handoff. Native isolated-GUI, Notepad and Calculator checks passed. Real-model runs exposed argument and focus-loss failures; the broader autonomous reliability gate remains open. See [computer evaluation](evaluations/COMPUTER_OPERATOR.md) for exact evidence and remaining limits.
 
-Current release: `operator-v17` built and started. Running health/model checks passed; 212 backend, 15 frontend and 1 Rust tests passed. Binary hashes and failed live repeats are recorded in the computer evaluation. Prior v16 evidence below is historical, not the current architecture or roadmap. Do not call all phases complete from narrow input tests or an EXE build.
+Current build: `operator-v19`. Its 221 backend, 15 frontend and 1 Rust tests pass; source sidecar and release-sidecar hashes match, the release EXE builds, and the packaged sidecar reports `operator-v19` on `/health`. The desktop shell did not stay running in this restricted session, so interactive v19 behavior is not yet verified. This slice rejects stale visual context when focus or geometry changes and clears typing eligibility when accessibility reports focus on a non-input control. It does not prove goal completion or solve inaccessible controls. The earlier v18 live computer evidence is in the computer evaluation. Do not call all phases complete from narrow input tests or an EXE build.
 Current instruction: **Scoped implementation is authorized. The user requested lean checks and will manually test the desktop app. Do not claim phase completion without its real-world exit gate.**
 Current implementation phase: **Phase 3A's bounded comparison and Phase 3B's working-context contracts are complete for the tested task/file surface. Phase 3's varied-task reliability gate remains in progress. Phases 4–6 have bounded adapters in progress.**
 
@@ -55,7 +55,7 @@ The current user request authorizes scoped implementation and lean verification.
 | Extensions | Explicit startup loading of trusted installed Python skill entry points | No model-enabled installation; arbitrary host plugins in frozen EXE are unsupported |
 | Verification | Host evidence gate; file content read-back | No general independent goal verifier; model finish stays unverified |
 | Working context | Original goal and clarification history, model notes, all-record provenance index, bounded recent bodies with explicit clipping, retrieval of older results, file page/version coverage | No durable checkpoints; model notes remain fallible, historical results are not fresh observations |
-| Computer operation | Discovery of native apps from App Paths, Start menu shortcuts, PATH and bounded install roots; approved exact-path launch, experimental browser DOM, read-only foreground-window identity, bounded Win32 control input and navigation keys with post-action observation, and approved native process execution | No UWP coverage, general UI Automation, browser canvas control, guaranteed descendant cleanup, screenshot understanding or arbitrary keyboard/mouse control |
+| Computer operation | Task-scoped Windows screenshot/UI Automation observation and mouse/keyboard input, focus/geometry checks, approved exact-path app launch and bounded native process execution | No UWP coverage, reliable browser canvas control, guaranteed descendant cleanup or general independent GUI-goal verification |
 
 ## 4. Phase tracker
 
@@ -141,9 +141,9 @@ Already present:
 3C — Evidence-grounded stopping and recovery:
 
 - [ ] Match goal criteria to capability-owned, fresh postcondition evidence where possible.
-- [ ] Distinguish dispatch acceptance, observed artifact validity and whole-goal correctness.
-- [ ] Where independent verification is unavailable, report bounded partial/unverified results instead of inventing certainty.
-- [ ] Ground final summaries in actual results and identify incomplete work.
+- [x] Distinguish dispatch acceptance, observed artifact validity and whole-goal correctness in the current evidence ledger; arbitrary GUI outcomes still lack a verifier.
+- [x] Where independent verification is unavailable, report bounded partial/unverified results instead of inventing certainty.
+- [x] Ground final summaries in actual results and identify incomplete work for the current tested tool surface.
 - [ ] Recover from known-no-effect failures; inspect unknown outcomes before any retry.
 - [ ] Test misleading tool content, false model completion and premature finish.
 
@@ -208,7 +208,7 @@ The user installed `qwen3-vl:4b-instruct`; Ollama reports completion, vision and
 - [x] Assess installed local vision-provider availability, synthetic-image response, latency and local resource cost. No further download was performed here.
 - [ ] Establish complete screenshot scope/redaction/retention policy and capture provenance; initial per-window approval/in-memory/no-disk/known-password guard exists, but browser/canvas secrets are not reliably detected.
 - [ ] Prefer structured targets; use fresh screenshots only when those mechanisms are insufficient.
-- [ ] Bind coordinate/input actions to current window/display identity and recheck focus.
+- [x] Bind coordinate/input actions to fresh window identity, geometry and focus; reject changed state before dispatch. Cross-window dialogs require a new grant.
 - [ ] Observe each meaningful effect; detect stale screens, layout changes and obstructing dialogs.
 - [ ] Require confirmation for consequential visual actions exactly as for APIs.
 - [ ] Stop at authentication, MFA/CAPTCHA and permission barriers; request user intervention.

@@ -113,8 +113,9 @@ class ComputerSession:
             if controls.get('password_controls_present'):
                 task['frame'] = None
                 raise ValueError('A password control is visible; direct user interaction is required.')
-            if any(c.get('focused') and c.get('role') in {'ControlType.Edit', 'ControlType.Document'} for c in controls.get('controls', [])):
-                task['input_targeted'] = True
+            focused = [c for c in controls.get('controls', []) if c.get('focused')]
+            if focused:
+                task['input_targeted'] = any(c.get('role') in {'ControlType.Edit', 'ControlType.Document'} for c in focused)
             rect = self.platform.rectangle(window_id)
             pixels = self.platform.capture(rect)
             current = self._identity(task)
@@ -204,6 +205,14 @@ class ComputerSession:
             task = self.tasks.get(owner)
             frame = task and task['frame']
             if not frame or task['cancelled'].is_set() or self.clock() - frame['at'] > 120:
+                return None
+            try:
+                self._identity(task)
+                if self.platform.rectangle(task['window']['hwnd']) != frame['rect']:
+                    raise ValueError('Window moved since observation.')
+            except (ValueError, RuntimeError, OSError):
+                task['frame'] = None
+                task['input_targeted'] = False
                 return None
             return {'frame_id': frame['id'], 'window_id': task['window']['hwnd'],
                     'title': frame['title'], 'input_targeted': task['input_targeted'],

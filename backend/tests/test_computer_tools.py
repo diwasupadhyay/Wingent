@@ -71,6 +71,29 @@ def test_changed_observation_does_not_dispatch(granted, change):
     assert not desktop.calls
 
 
+@pytest.mark.parametrize('change', ['focus', 'bounds'])
+def test_visual_context_drops_observation_after_window_changes(granted, change):
+    session, desktop, _ = granted
+    if change == 'focus':
+        desktop.foreground = 2
+    else:
+        desktop.bounds[0] = 50
+    assert session.visual_context('owner') is None
+    assert session.tasks['owner']['frame'] is None
+    assert session.tasks['owner']['input_targeted'] is False
+
+
+def test_focused_non_input_control_clears_typing_target(granted):
+    session, desktop, frame = granted
+    desktop.accessibility = lambda _: {'controls': [
+        {'id': 'button', 'name': 'OK', 'role': 'ControlType.Button', 'focused': True}]}
+    session.observe(1)
+    assert session.visual_context('owner')['input_targeted'] is False
+    result = session.act(frame_id=session.tasks['owner']['frame']['id'], kind='type', text='Hello')
+    assert result['effect'] == 'no_effect'
+    assert not desktop.calls
+
+
 def test_grant_is_task_scoped_and_revocable(granted):
     session, desktop, frame = granted
     token = execution_task_id.set('other')
