@@ -178,6 +178,10 @@ class AgentRuntime:
                 state.records.append(ActionRecord(action=action, outcome=outcome, dispatched=dispatched))
                 yield 'step', {'index': index, 'state': {'accepted': 'accepted', 'no_effect': 'failed', 'unknown': 'unknown'}[outcome.status]}
                 if outcome.status == 'no_effect':
+                    if outcome.data.get('needs_user_attention') is True:
+                        yield self.terminal(TaskStatus.AWAITING_INPUT,
+                            'Windows blocked focus on the task window. Return to that window, then type ready here to continue the same task. No application input was sent by this attempt.')
+                        return
                     if state.recoveries >= state.limits.recoveries:
                         raise BudgetExceeded('Recovery budget exhausted; last action had no effect.')
                     state.recoveries += 1

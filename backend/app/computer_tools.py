@@ -171,8 +171,12 @@ class ComputerSession:
                 observation = self.observe(window['hwnd'])
             except (ValueError, RuntimeError) as exc:
                 observation = {'ok': False, 'reason': str(exc)}
+            after = task['frame'] if observation.get('ok') else None
+            visible_change = None if not after else (sum(a != b for a, b in zip(frame['signature'], after['signature'])) > 8 or
+                after['controls'] != frame['controls'])
             return {'ok': True, 'effect': 'accepted', 'action': params['kind'],
-                    'post_observation': observation, 'goal_verified': False}
+                    'post_observation': observation, 'visible_change_observed': visible_change,
+                    'goal_verified': False}
 
     @staticmethod
     def _sensitive(params, frame):
@@ -202,7 +206,8 @@ class ComputerSession:
             if not frame or task['cancelled'].is_set() or self.clock() - frame['at'] > 120:
                 return None
             return {'frame_id': frame['id'], 'window_id': task['window']['hwnd'],
-                    'title': frame['title'], 'image': frame['image']}
+                    'title': frame['title'], 'input_targeted': task['input_targeted'],
+                    'image': frame['image']}
 
     def cancel(self, owner):
         task = self.tasks.get(owner)
@@ -224,7 +229,9 @@ def register(registry, session=None):
             task = session.tasks.get(execution_task_id.get())
             if task:
                 task['frame'] = None
+            focus_blocked = 'Windows did not grant focus' in str(exc)
             return {'ok': False, 'effect': 'no_effect', 'reason': str(exc),
+                    'needs_user_attention': focus_blocked,
                     'limitation': 'Observation failed; window focus may have changed, but no application input was sent.'}
     registry.computer_session = session
     registry.capabilities['computer'] = Capability('computer',

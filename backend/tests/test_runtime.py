@@ -94,6 +94,21 @@ def test_known_no_effect_can_replan_and_recover():
     assert state.recoveries == 1
 
 
+def test_windows_focus_denial_pauses_without_retrying_input():
+    class FocusDenied(World):
+        async def execute(self, action):
+            self.actions.append(action)
+            return Outcome(status='no_effect', summary='Windows did not grant focus',
+                           data={'needs_user_attention': True})
+    world = FocusDenied()
+    state, events = run(world)
+    assert len(world.actions) == 1
+    assert state.recoveries == 0
+    assert state.status == TaskStatus.AWAITING_INPUT
+    assert events[-1][0] == 'clarification'
+    assert 'focus' in events[-1][1]['text'].lower()
+
+
 def test_cancellation_between_actions():
     world = World()
     async def disconnected():

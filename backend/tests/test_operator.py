@@ -1,5 +1,6 @@
 import asyncio
 import json
+from types import SimpleNamespace
 
 from app.capabilities import Arguments
 from app.application_tools import OpenDiscoveredApplication
@@ -9,6 +10,106 @@ from app.launch_runtime import BudgetedProvider
 from app.operator import OperatorAdapter, run_operator
 from app.task_state import Action, ActionRecord, Outcome, TaskState
 from app.tools import ToolRegistry, ToolPermission
+from app.working_context import observed_effects
+
+
+def test_focus_pause_preserves_task_for_resume_without_replaying_input():
+    from app.computer_tools import BeginControl, ObserveComputer
+    registry = ToolRegistry()
+    registry.tools.clear()
+    closed = []
+    registry.computer_session = SimpleNamespace(visual_context=lambda owner: None,
+                                                close_task=lambda owner: closed.append(owner))
+    registry.register('computer_begin', 'Grant a window', ToolPermission.SAFE, {},
+                      lambda p: {'ok': True, 'frame_id': 'new'}, input_model=BeginControl)
+    registry.register('computer_observe', 'Observe a window', ToolPermission.SAFE, {},
+                      lambda p: {'ok': False, 'effect': 'no_effect',
+                                 'reason': 'Windows did not grant focus', 'needs_user_attention': True},
+                      input_model=ObserveComputer)
+    state = TaskState(goal='Inspect the window', criteria=['Window inspected'])
+    prior = Action(tool='computer_begin', arguments={'window_id': 1, 'purpose': 'Inspect the window'}, label='Grant window')
+    state.records.append(ActionRecord(action=prior, outcome=Outcome(status='accepted', summary='Granted'), dispatched=True))
+    class Provider:
+        async def structured(self, prompt, system, schema):
+            if json.loads(prompt)['clarification_history']:
+                return '{"tool":"computer_begin","arguments":{"window_id":1,"purpose":"Inspect the window"}}'
+            return '{"tool":"computer_observe","arguments":{"window_id":1}}'
+    async def run():
+        return [event async for event in run_operator(registry, state, BudgetedProvider(Provider(), state), connected)]
+    events = asyncio.run(run())
+    assert events[-1][0] == 'clarification'
+    assert events[-1][1]['resume_task_id'] == state.id
+    assert state.recoveries == 0 and len(state.records) == 2
+    assert closed == [state.id]
+    state.resume('ready')
+    decision = asyncio.run(OperatorAdapter(registry, state, BudgetedProvider(Provider(), state)).decide(state.context()))
+    assert decision.kind == 'act' and decision.action.tool == 'computer_begin'
+
+
+def test_brain_replans_untargeted_typing_before_dispatch():
+    from app.computer_tools import ComputerAction
+    registry = ToolRegistry()
+    registry.tools.clear()
+    registry.register('computer_action', 'Input in the granted window', ToolPermission.SAFE, {},
+                      lambda p: {'ok': True}, input_model=ComputerAction)
+    registry.computer_session = SimpleNamespace(visual_context=lambda owner: {
+        'frame_id': 'current', 'input_targeted': False, 'image': b'pixels'})
+    calls = []
+    class Provider:
+        async def structured_images(self, prompt, system, schema, images):
+            calls.append(system)
+            if len(calls) == 1:
+                return '{"tool":"computer_action","arguments":{"frame_id":"current","kind":"type","text":"Hello"}}'
+            return '{"tool":"computer_action","arguments":{"frame_id":"current","kind":"click","x":500,"y":300}}'
+    state = TaskState(goal='Enter Hello in the open app', criteria=['Hello entered'])
+    decision = asyncio.run(OperatorAdapter(registry, state, BudgetedProvider(Provider(), state)).decide(state.context()))
+    assert decision.action.arguments['kind'] == 'click'
+    assert len(calls) == 2 and 'NOT dispatched' in calls[1]
+    assert not state.records
+
+
+def test_host_effect_ledger_distinguishes_dispatch_from_verified_artifact():
+    state = TaskState(goal='Create a report and complete the task', criteria=['Task complete'])
+    state.records.extend([
+        ActionRecord(action=Action(tool='computer_action', arguments={}, label='Click'),
+                     outcome=Outcome(status='accepted', summary='Sent', data={
+                         'post_observation': {'ok': True}, 'visible_change_observed': False,
+                         'verified': True}), dispatched=True),
+        ActionRecord(action=Action(tool='create_text', arguments={}, label='Write'),
+                     outcome=Outcome(status='accepted', summary='Written', data={
+                         'content_matches': True, 'path': 'D:/test/report.txt'}), dispatched=True),
+    ])
+    facts = observed_effects(state)
+    assert 'visible change not detected' in facts[0]['detail']
+    assert 'matching bytes' in facts[1]['detail']
+    assert all('Task complete' not in item['detail'] for item in facts)
+
+
+def test_repeated_computer_click_is_reconsidered_after_visible_change():
+    from app.computer_tools import ComputerAction
+    registry = ToolRegistry()
+    registry.tools.clear()
+    registry.register('computer_action', 'One window input', ToolPermission.SAFE, {},
+                      lambda p: {'ok': True}, input_model=ComputerAction)
+    registry.register('computer_confirm_action', 'Approved window input', ToolPermission.CONFIRMATION_REQUIRED, {},
+                      lambda p: {'ok': True}, input_model=ComputerAction)
+    registry.computer_session = SimpleNamespace(visual_context=lambda owner: {
+        'frame_id': 'current', 'input_targeted': True, 'image': b'pixels'})
+    state = TaskState(goal='Apply the visible change', criteria=['Applied'])
+    state.records.append(ActionRecord(
+        action=Action(tool='computer_action', arguments={'frame_id': 'old', 'kind': 'click', 'x': 500, 'y': 550}, label='Click'),
+        outcome=Outcome(status='accepted', summary='Sent', data={'visible_change_observed': True}), dispatched=True))
+    calls = []
+    class Provider:
+        async def structured_images(self, prompt, system, schema, images):
+            calls.append(system)
+            if len(calls) == 1:
+                return '{"tool":"computer_confirm_action","arguments":{"frame_id":"current","kind":"click","x":500,"y":550}}'
+            return '{"tool":"finish","message":"The requested change is visible."}'
+    decision = asyncio.run(OperatorAdapter(registry, state, BudgetedProvider(Provider(), state)).decide(state.context()))
+    assert decision.kind == 'finish'
+    assert len(calls) == 1
+    assert len(state.records) == 1
 
 
 class Input(Arguments):

@@ -1,5 +1,7 @@
 # Wingent Roadmap
 
+Phase 4's bounded general Windows-control gate is complete in `operator-v18`, backed by an unfamiliar GUI plus native Notepad and Calculator checks. Next priorities: Phase 3 reliable stopping and goal evidence across held-out tasks; Phase 6 sensitive-screen and visual-action hardening; Phase 5 process lifecycle; Phase 7 packaged mixed-task reliability. The earlier v17 priority below is historical.
+
 Latest priority (2026-10-04): general computer operation, not browser-first development. The v17 slice adds direct screenshot-to-brain reasoning and task-scoped UIA/mouse/keyboard control; native Notepad and Calculator checks pass. Next gates are unfamiliar-app autonomous completion, independent postconditions, focus/dialog recovery and packaged mixed-task evaluation. The authoritative plan and `evaluations/COMPUTER_OPERATOR.md` supersede older browser-first priorities below.
 
 Updated: 2026-10-03. The latest request authorizes scoped implementation and evaluation.

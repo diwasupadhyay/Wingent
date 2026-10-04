@@ -132,3 +132,20 @@ def test_concurrent_task_cannot_take_over_desktop(granted):
             session.begin(window_id=1, purpose='Competing task')
     finally:
         execution_task_id.reset(token)
+
+
+def test_focus_denial_is_actionable_no_effect_and_discards_frame(granted):
+    session, desktop, frame = granted
+    registry = ToolRegistry()
+    register(registry, session)
+    def denied(_):
+        raise ValueError('Windows did not grant focus to the selected window.')
+    desktop.focus = denied
+    token = execution_task_id.set('owner')
+    try:
+        result = registry.get_tool('computer_observe').executor({'window_id': 1})
+    finally:
+        execution_task_id.reset(token)
+    assert result['effect'] == 'no_effect'
+    assert result['needs_user_attention'] is True
+    assert session.visual_context('owner') is None

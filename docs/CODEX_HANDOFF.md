@@ -4,6 +4,8 @@ Updated: 2026-10-04.
 
 ## Latest general-computer slice (v17)
 
+Update for v18: Phase 4 bounded Windows-control gate passed in an isolated GUI, Notepad and Calculator. The real local model completed the GUI task in 6 calls / 103.58 seconds; app output independently matched. Wingent stopped after Apply without a duplicate action, while still reporting unverified whole-goal status in production. Focus denial now pauses/resumes task history; visual decisions have a shorter prompt and stale/untargeted input is rejected before dispatch. The rebuilt EXE was started and `/health` returned `operator-v18` with Ollama ready. Backend 218, UI 15 and Rust 1 tests passed. Other phase gates remain open. The v17 details below are historical.
+
 The LLM now receives approved window screenshots directly through `brain.py`. Generic `computer_begin`, `computer_observe`, `computer_action` and `computer_confirm_action` integrate UI Automation, mouse clicks, Unicode typing, scrolling and hotkeys with the existing runtime. Grants are task-scoped, frames are single-use, and input checks process/foreground/geometry. The overlay hides on approval and returns for confirmations/results. Images stay local.
 
 Native tests passed in an isolated GUI, Notepad and Calculator. Real-model tests exposed argument generation, untargeted typing and foreground-loss failures; guards were improved, but the autonomous reliability gate remains open. See [computer evidence](evaluations/COMPUTER_OPERATOR.md). Older limitations below describe v16 where superseded.

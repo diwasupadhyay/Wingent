@@ -4,6 +4,10 @@ Updated: 2026-10-04 (Asia/Calcutta)
 
 ## Latest slice: general computer environment
 
+### Phase 4 bounded exit gate met in operator-v18
+
+The tested Windows-control core now spans an isolated unfamiliar GUI, Notepad and Calculator, with app-independent screenshot/UIA/input tools and independent fixture or file/display checks. The local model completed the isolated greeting task in 6 calls / 103.58 seconds; the app's own output matched the requested value. Wingent stopped without repeating Apply and correctly labeled the whole goal unverified because the production computer adapter cannot independently prove arbitrary GUI semantics. Two consecutive native Notepad and Calculator runs passed after paced typing. Focus/geometry/stale-frame failures block input, and Windows focus denial now pauses with a resumable task instead of consuming recovery attempts. This satisfies Phase 4's **bounded general Windows-control exit gate**. It does not certify every application, elevated windows, browser automation or the broader Phase 3/7 reliability gates. See [computer evaluation](evaluations/COMPUTER_OPERATOR.md).
+
 `brain.py` now attaches approved window pixels directly to the LLM's next decision. `computer_tools.py` and `windows_computer.py` provide app-independent UI Automation, screenshot-grounded clicks, typing, scrolling and hotkeys. Files, terminal/process, browser and skills remain peer capabilities, not the product scope. This original implementation uses the screenshot/action/re-observation idea studied in Open-Interface without copying its source.
 
 Completed implementation slice: task/window grants, fresh one-use frames, process/focus/geometry checks, post-action images, cancellation, concurrent-input exclusion, local image transport and overlay handoff. Native isolated-GUI, Notepad and Calculator checks passed. Real-model runs exposed argument and focus-loss failures; the broader autonomous reliability gate remains open. See [computer evaluation](evaluations/COMPUTER_OPERATOR.md) for exact evidence and remaining limits.
@@ -63,7 +67,7 @@ Completed means the recorded phase's bounded exit criteria were met, not that th
 | 1 | Application-independent runtime | Verified complete for runtime contracts | Controlled tests establish observation-driven transitions, budgets and evidence gate |
 | 2 | Typed capability and approval contracts | Verified complete for current contracts | Validation and exact-action approval/denial/replay protections demonstrated |
 | 3 | Reliable general reasoning, working context and discovery | 3A comparison and 3B bounded working-context implementation complete; 3C/3D and overall reliability open | Held-out live tasks progress, recover and stop honestly without fixed workflows |
-| 4 | Structured computer observation and action | General UIA/input slice implemented; native Notepad and Calculator checks passed; broader gate open | Correct targets, meaningful observations and verified effects across independent adapters |
+| 4 | Structured computer observation and action | Complete for bounded Windows-control gate (v18); optional adapter expansion open | Actual targets, observations and effects demonstrated in isolated GUI, Notepad and Calculator; changed focus/identity prevents input |
 | 5 | Controlled process/code execution and environment discovery | In progress; executable discovery and approved bounded native execution added | Scoped approved execution, bounded output and controlled process-tree lifecycle |
 | 6 | Visual observation and input fallback | Direct multimodal brain and scoped visual input implemented; live failures recorded and fixes tested | Fresh visual targets, scoped input and observed postconditions under failure injection |
 | 7 | Cross-capability reliability and release readiness | Planned | Reproducible mixed-task and safety evidence from the packaged application |
@@ -153,7 +157,11 @@ Already present:
 
 Exit gate: the proposed evaluation gates in section 6 pass for this bounded tool surface, including unfamiliar inputs, injected failure, missing capability, correct stopping and no false verified completion. No application-specific phrase logic may be added to make the corpus pass.
 
-### Phase 4 — Structured computer observation and action
+### Phase 4 — Structured computer observation and action (bounded core complete)
+
+The core gate is met by the live isolated GUI plus two native applications and controlled stale/focus checks. The application-specific adapter notes and unchecked expansion items below describe extensions beyond that gate, not evidence that the general Windows primitives were never tested. Browser playback remains unverified and is tracked as a separate adapter/reliability item.
+
+Verified core: window/process identity checks, task-scoped approval, UI Automation observation, fresh screenshot-bound mouse/keyboard actions, safe refusal on changed focus/layout, independent text-file read-back, and actual effects in the isolated GUI, Notepad and Calculator. The following unchecked items are additional adapters or broader mutation capabilities, not requirements for this bounded core gate.
 
 Peer adapters, not an application-by-application roadmap:
 
@@ -165,14 +173,14 @@ Initial Windows-control slice: `observe_windows` exposes visible window IDs and 
 
 Native application discovery now reads Windows App Paths, matching Start menu shortcut targets, PATH, and bounded standard install roots. It returns local native `.exe` matches only. `application_open` binds a fresh, task-owned discovery ID to the exact executable path in the approval request; it rechecks file identity and refuses duplicate launch of the same path within one task. A missing/unresolvable shortcut or UWP app may still be absent. This is discovery and launch dispatch, not verified application control. The local model's [Phase 3A app corpus](evaluations/PHASE3A_BASELINE.md) still fails to choose launch reliably, so do not claim the natural-language app workflow works end to end.
 
-- [ ] Windows: discover applications/windows with stable identity, focus checks and capability availability.
-- [ ] Accessibility: inspect controls and state; invoke supported actions; handle dialogs/loading/stale controls.
+- [x] Windows: discover applications/windows with stable identity and focus checks in the bounded same-integrity surface.
+- [x] Accessibility: inspect controls/state and dispatch supported actions; stale/changed targets are rejected. Cross-window dialogs require a new grant.
 - [ ] Browser: managed sessions, semantic DOM targets, navigation/extraction and observed postconditions.
 - [ ] Application APIs: discover and use native structured interfaces where installed and appropriate.
-- [ ] Files: scoped discovery/read/search, artifact inspection and safe modification primitives.
+- [x] Files: scoped directory listing, bounded text reading, exclusive new-file creation and read-back. Broad search and mutation remain extensions.
 - [ ] Input/clipboard: explicit target/focus, privacy scope and post-action checks.
 - [ ] Mutation: previews, overwrite protection, backups/recovery and exact permissions where appropriate.
-- [ ] Register all adapters through the same contracts; return typed observations and limitations.
+- [x] Register implemented adapters through the same contracts; return typed observations and limitations.
 
 Exit gate: general primitives work across at least two independent structured adapters in controlled fixtures. Changed identity/focus, unexpected dialogs and inaccessible targets fail safely. Real user data/profile access needs its own scope decision.
 

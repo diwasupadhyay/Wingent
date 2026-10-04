@@ -2,6 +2,8 @@
 
 ## Latest resume point (2026-10-04)
 
+Current build is `operator-v18`. Phase 4 bounded Windows-control exit gate is met: real model completed isolated GUI task (6 calls, 103.58 s, external oracle exact match); Notepad saved-text and Calculator `Display is 56` passed twice after pacing fix. Production finish remains unverified without application-owned proof. Focus denial pauses for resumable user attention, visual actions reject stale frames/untargeted text and duplicate clicks, and final results list trusted observed effects. Built and started the v18 EXE; health/model readiness passed, with 218 backend, 15 UI and 1 Rust tests passing. Phases 3, 5, 6 and 7 remain open. The v17 note below is historical.
+
 General computer brain/control slice targets `operator-v17`. New owners: `brain.py`, `computer_tools.py`, `windows_computer.py`. Direct local vision input, scoped window grants, one-use frames, UIA/click/type/scroll/hotkeys, sensitive-input gates and overlay handoff are implemented. Native GUI/Notepad/Calculator checks passed. Model-driven runs still fail under foreground loss and imperfect action choices; do not claim all phases complete. Consult the current plan and `docs/evaluations/COMPUTER_OPERATOR.md` before following old browser-first notes. Rebuild/start the EXE and verify its marker; only project-owned old processes may be stopped.
 
 Updated: 2026-10-03. This is resume context, not a second phase tracker.

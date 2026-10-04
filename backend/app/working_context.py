@@ -128,6 +128,32 @@ def context_results(state):
     return history, recent
 
 
+def observed_effects(state):
+    """Small host-owned fact ledger; never infers whole-goal completion."""
+    facts = []
+    for number, record in enumerate(state.records, 1):
+        if record.outcome.status != 'accepted':
+            continue
+        data, tool = record.outcome.data, record.action.tool
+        detail = None
+        if tool == 'create_text' and data.get('content_matches') is True:
+            detail = f"New file read back with matching bytes: {str(data.get('path', ''))[:240]}"
+        elif tool == 'browser_play_media' and data.get('playback_progressed') is True:
+            detail = f"HTML media time advanced on {str(data.get('title', 'observed page'))[:180]}"
+        elif tool in {'computer_action', 'computer_confirm_action'}:
+            post = data.get('post_observation') or {}
+            detail = ('Computer input dispatched; window re-observed; visible change ' +
+                      ('detected' if data.get('visible_change_observed') is True else 'not detected')) if post.get('ok') else (
+                      'Computer input dispatched; follow-up window observation unavailable')
+        elif tool == 'application_open' and data.get('pid'):
+            detail = f"Application process launched: {str(data.get('path', ''))[:240]}; window state unverified"
+        elif tool == 'process_run':
+            detail = f"Process returned exit code {data.get('exit_code', 'unknown')}; task outcome unverified"
+        if detail:
+            facts.append({'record_id': number, 'tool': tool, 'detail': detail})
+    return facts[-8:]
+
+
 def repeat_problem(state, registry, action, refresh_reason=''):
     matches = [(i, r) for i, r in enumerate(state.records) if r.action.fingerprint() == action.fingerprint()]
     if not matches:

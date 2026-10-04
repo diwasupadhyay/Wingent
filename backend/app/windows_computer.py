@@ -78,7 +78,7 @@ $b=[System.Drawing.Bitmap]::new([int]$r[2],[int]$r[3]); $g=[System.Drawing.Graph
 $s=$null; $sg=$null; $m=[System.IO.MemoryStream]::new()
 try {
  $g.CopyFromScreen([int]$r[0],[int]$r[1],0,0,$b.Size)
- $scale=[Math]::Min(1.0,1280.0/[Math]::Max($b.Width,$b.Height))
+ $scale=[Math]::Min(1.0,768.0/[Math]::Max($b.Width,$b.Height))
  $s=[System.Drawing.Bitmap]::new([int]($b.Width*$scale),[int]($b.Height*$scale))
  $sg=[System.Drawing.Graphics]::FromImage($s); $sg.DrawImage($b,0,0,$s.Width,$s.Height)
  $s.Save($m,[System.Drawing.Imaging.ImageFormat]::Png)
@@ -244,4 +244,4 @@ def _dispatch(window_id, rect, action, cancelled):
             send([key_event(code, up, True) for up in (False, True)])
             # Some native edit controls sample VK_PACKET state while draining
             # their queue; batching different characters can repeat the last one.
-            time.sleep(.025)
+            time.sleep(.04)
