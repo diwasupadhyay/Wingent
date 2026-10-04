@@ -20,7 +20,7 @@ def test_endpoint_reports_unverified_not_complete(monkeypatch):
     assert '"task_id"' in response.text
     assert '"stage": "observing"' in response.text
     assert '"stage": "verifying"' in response.text
-    assert TestClient(app).get('/health').json()['runtime'] == 'operator-v22'
+    assert TestClient(app).get('/health').json()['runtime'] == 'operator-v23'
 
 
 def test_health_identifies_only_its_own_backend_instance(monkeypatch):

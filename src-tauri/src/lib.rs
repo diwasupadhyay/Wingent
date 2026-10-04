@@ -15,7 +15,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 const COLLAPSED_HEIGHT: f64 = 92.0;
 const EXPANDED_HEIGHT: f64 = 300.0;
-const REQUIRED_BACKEND_RUNTIME: &str = "operator-v22";
+const REQUIRED_BACKEND_RUNTIME: &str = "operator-v23";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum BackendHealth {
@@ -246,6 +246,7 @@ unsafe extern "system" {
   fn SetForegroundWindow(window: isize) -> i32;
   fn GetForegroundWindow() -> isize;
   fn IsWindow(window: isize) -> i32;
+  fn ShowWindow(window: isize, command: i32) -> i32;
 }
 
 #[tauri::command]
@@ -264,12 +265,22 @@ fn handoff_computer_focus(app: AppHandle, window_id: u64) -> Result<(), String> 
         let _ = AllowSetForegroundWindow(child.id());
       }
     }
+    let _ = ShowWindow(target, 9); // SW_RESTORE for a minimized approved window.
     let _ = SetForegroundWindow(target);
-    if GetForegroundWindow() != target {
-      return Err("Windows denied focus. Select the target window and retry the task.".into());
-    }
   }
   hide_overlay(app);
+  #[cfg(windows)]
+  unsafe {
+    let target = window_id as isize;
+    if GetForegroundWindow() != target {
+      let _ = SetForegroundWindow(target);
+    }
+    if GetForegroundWindow() != target {
+      // The backend performs its own checked focus attempt and pauses the
+      // task on denial; do not strand the user's approval in the overlay.
+      log::warn!("Windows did not grant focus during approval handoff.");
+    }
+  }
   Ok(())
 }
 
@@ -379,8 +390,8 @@ mod tests {
 
   #[test]
   fn refuses_stale_or_unrelated_loopback_backend() {
-    let current = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"service\":\"wingent\",\"runtime\":\"operator-v22\",\"instance_id\":\"owned\"}";
-    let stale = current.replace("operator-v22", "operator-v21");
+    let current = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"service\":\"wingent\",\"runtime\":\"operator-v23\",\"instance_id\":\"owned\"}";
+    let stale = current.replace("operator-v23", "operator-v22");
     let unrelated = current.replace("wingent", "another-service");
     assert!(matches!(classify_backend_response(current, "owned"), BackendHealth::Ready));
     assert!(matches!(classify_backend_response(current, "orphan"), BackendHealth::Incompatible));

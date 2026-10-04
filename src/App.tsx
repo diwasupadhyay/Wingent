@@ -143,7 +143,8 @@ export default function App() {
       setApproval((pending) => pending?.approval_id === current.approval_id ? null : pending);
     } catch (cause) {
       if (isTauri()) void invoke('reveal_overlay');
-      if (abortRef.current === controller) setApprovalError(cause instanceof Error ? cause.message : 'Approval could not be sent.');
+      if (abortRef.current === controller) setApprovalError(
+        typeof cause === 'string' ? cause : cause instanceof Error ? cause.message : 'Approval could not be sent.');
     } finally {
       if (abortRef.current === controller) setApprovalBusy(false);
     }

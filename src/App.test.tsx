@@ -111,6 +111,46 @@ describe('App', () => {
     expect(JSON.parse(fetchMock.mock.calls[1][1]?.body as string)).toEqual({ token: 'secret-token', approve });
     expect(screen.queryByText('Approve once')).toBeNull();
   });
+  it.each([false, true])('handles computer approval handoff failure=%s', async (denyFocus) => {
+    vi.stubGlobal('__TAURI_INTERNALS__', {});
+    vi.mocked(invoke).mockImplementation(async (command: string) => {
+      if (command === 'backend_status') return 'ready';
+      if (command === 'backend_base_url') return 'http://127.0.0.1:54321';
+      if (command === 'handoff_computer_focus' && denyFocus) throw 'The observed window closed. Observe windows again.';
+      return false;
+    });
+    let readCount = 0;
+    let finish: (value: unknown) => void = () => {};
+    const waiting = new Promise((resolve) => { finish = resolve; });
+    const encode = (text: string) => ({ done: false, value: new TextEncoder().encode(text) });
+    const send = vi.fn(async (url: string) => {
+      if (url.endsWith('/api/model-status')) return { ok: true, json: async () => ({
+        ready: true, code: 'ready', message: 'Model ready', model: 'local',
+      }) };
+      if (url.includes('/api/approvals/')) {
+        finish(encode('event: final\ndata: {"text":"Approved"}\n\n'));
+        return { ok: true };
+      }
+      return { ok: true, body: { getReader: () => ({ read: async () => {
+        readCount += 1;
+        if (readCount === 1) return encode('event: confirmation_required\ndata: {"approval_id":"request1","token":"secret-token","task_id":"task1","tool":"computer_begin","arguments":{"window_id":722322,"purpose":"Inspect window"},"expires_in":60}\n\n');
+        if (readCount === 2) return waiting;
+        return { done: true };
+      } }) } };
+    });
+    vi.stubGlobal('fetch', send);
+    runCommand();
+    await waitFor(() => expect(screen.getByRole('region', { name: 'Action approval' })).toBeTruthy());
+    fireEvent.click(screen.getByText('Approve once'));
+    await waitFor(() => expect(vi.mocked(invoke)).toHaveBeenCalledWith('handoff_computer_focus', { windowId: 722322 }));
+    if (denyFocus) {
+      await waitFor(() => expect(screen.getByText('The observed window closed. Observe windows again.')).toBeTruthy());
+      expect(send.mock.calls.some(([url]) => url.includes('/api/approvals/'))).toBe(false);
+    } else {
+      await waitFor(() => expect(screen.getByText('Approved')).toBeTruthy());
+      expect(send.mock.calls.some(([url]) => url.includes('/api/approvals/'))).toBe(true);
+    }
+  });
   it('distinguishes launch acceptance from verified completion', async () => {
     mockEvents('event: final\ndata: {"outcome":"unverified","verified":false,"text":"Requests accepted, result not observed."}\n\n');
     runCommand();

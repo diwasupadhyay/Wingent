@@ -10,7 +10,7 @@ The LLM now receives approved window screenshots directly through `brain.py`. Ge
 
 Native tests passed in an isolated GUI, Notepad and Calculator. Real-model tests exposed argument generation, untargeted typing and foreground-loss failures; guards were improved, but the autonomous reliability gate remains open. See [computer evidence](evaluations/COMPUTER_OPERATOR.md). Older limitations below describe v16 where superseded.
 
-Current build target: `operator-v22`, `src-tauri/target/release/app.exe`. The user authorizes stopping only old project-owned development processes blocking rebuilds and starting the new version. Do not stop unrelated listeners or user applications.
+Current build target: `operator-v23`, `src-tauri/target/release/app.exe`. The user authorizes stopping only old project-owned development processes blocking rebuilds and starting the new version. Do not stop unrelated listeners or user applications.
 
 ## Current instruction
 
