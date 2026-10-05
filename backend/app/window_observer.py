@@ -9,6 +9,11 @@ from app.capabilities import Arguments
 from app.tools import ToolPermission
 
 
+def is_agent_window(window):
+    """The command overlay is never an application input target."""
+    return window.get('title', '').casefold() == 'wingent' and window.get('process', '').casefold() in {'app.exe', 'wingent.exe'}
+
+
 def foreground_window_id():
     if os.name != 'nt':
         return None
@@ -52,8 +57,10 @@ def list_visible_windows(limit=40):
             executable = ctypes.create_unicode_buffer(32768)
             size = wintypes.DWORD(len(executable))
             if kernel32.QueryFullProcessImageNameW(handle, 0, executable, ctypes.byref(size)):
-                windows.append({'title': title.value, 'process': Path(executable.value).name,
-                                'executable': executable.value, 'pid': pid.value, 'hwnd': int(hwnd)})
+                window = {'title': title.value, 'process': Path(executable.value).name,
+                          'executable': executable.value, 'pid': pid.value, 'hwnd': int(hwnd)}
+                if not is_agent_window(window):
+                    windows.append(window)
         finally:
             kernel32.CloseHandle(handle)
         return len(windows) < limit

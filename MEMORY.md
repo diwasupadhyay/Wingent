@@ -10,6 +10,8 @@ Read [the plan](docs/AGENT_IMPLEMENTATION_PLAN.md), [architecture](docs/ARCHITEC
 
 ## Current state
 
+Routine computer_begin now runs without initial approval (Review still gates every action); consequential input retains confirmation. The overlay hides before task dispatch and is excluded from window discovery/control. resolve_known_folder and create_directory support grounded user-folder operations. HTTP errors now include Ollama's error detail. Latest synthetic vision/schema checks passed, but live isolated Notepad focus was denied by Windows; full user workflows and the reported HTTP 400 remain unverified.
+
 Natural tasks use `operator.py`, `AgentRuntime` and `AgentBrain`. The brain receives current approved pixels, original goal and bounded context. Production has one GUI protocol: `computer_begin`, `computer_observe`, `computer_action`, `computer_confirm_action`. Legacy desktop/screen adapters remain in compatibility tests only.
 
 Default window scope is narrow. Explicit desktop scope permits task-long switching among observed apps and following foreground dialogs. Input still targets a fresh foreground-window frame. Sensitive effects need approval. Arbitrary-goal verification is incomplete.

@@ -240,6 +240,12 @@ fn reveal_overlay(app: AppHandle) {
 
 #[tauri::command]
 fn hide_overlay(app: AppHandle) {
+  #[cfg(windows)]
+  if let Ok(child) = app.state::<BackendProcess>().child.lock() {
+    if let Some(child) = child.as_ref() {
+      unsafe { AllowSetForegroundWindow(child.id()); }
+    }
+  }
   if let Some(window) = app.get_webview_window("main") {
     let _ = window.hide();
   }

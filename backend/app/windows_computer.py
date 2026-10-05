@@ -28,6 +28,23 @@ def focus(window_id):
     api = user32()
     api.ShowWindow(window_id, 9)
     api.SetForegroundWindow(window_id)
+    # Frozen sidecars have a worker process separate from the launcher granted
+    # foreground permission by Tauri. Briefly attach input queues for this
+    # checked focus operation; never leave threads attached during model work.
+    if foreground_window_id() != window_id:
+        api.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+        api.AttachThreadInput.argtypes = [wintypes.DWORD, wintypes.DWORD, wintypes.BOOL]
+        kernel = ctypes.WinDLL('kernel32', use_last_error=True)
+        current_thread = kernel.GetCurrentThreadId()
+        foreground_thread = api.GetWindowThreadProcessId(api.GetForegroundWindow(), None)
+        attached = bool(foreground_thread and foreground_thread != current_thread and
+                        api.AttachThreadInput(current_thread, foreground_thread, True))
+        try:
+            if attached:
+                api.SetForegroundWindow(window_id)
+        finally:
+            if attached:
+                api.AttachThreadInput(current_thread, foreground_thread, False)
     for _ in range(10):
         if foreground_window_id() == window_id:
             return

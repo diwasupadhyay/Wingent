@@ -91,6 +91,13 @@ class OllamaClient:
             payload['images'] = [base64.b64encode(image).decode('ascii') for image in images]
         async with httpx.AsyncClient(timeout=60.0, trust_env=False) as client:
             response = await client.post(f'{self.base_url}/api/generate', json=payload)
+            if response.is_error:
+                try:
+                    detail = str(response.json().get('error', 'No error detail returned'))[:500]
+                except (ValueError, AttributeError):
+                    detail = 'Invalid error response'
+                raise RuntimeError(f'Ollama rejected the {"vision" if images else "text"} request '
+                                   f'for {payload["model"]} (HTTP {response.status_code}): {detail}')
             response.raise_for_status()
             payload = response.json()
             if payload.get('error'):

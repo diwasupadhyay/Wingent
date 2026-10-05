@@ -213,6 +213,7 @@ export default function App() {
             : 'Wingent backend is not ready. Restart Wingent and try again.');
         }
       }
+      if (isTauri()) await invoke('hide_overlay');
       const response = await fetch(`${apiBaseUrlRef.current}/api/command`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

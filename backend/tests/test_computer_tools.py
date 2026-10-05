@@ -59,6 +59,13 @@ def test_action_looks_again_and_cannot_replay_frame(granted):
     assert len(desktop.calls) == 1
 
 
+def test_cannot_begin_control_of_agent_overlay():
+    desktop = Desktop()
+    desktop.list_visible_windows = lambda: [dict(hwnd=1, pid=10, executable='app.exe', process='app.exe', title='Wingent')]
+    with pytest.raises(ValueError, match='own overlay'):
+        ComputerSession(desktop).prepare_begin({'window_id': 1})
+
+
 @pytest.mark.parametrize('change', ['focus', 'bounds', 'pixels', 'time'])
 def test_changed_observation_does_not_dispatch(granted, change):
     session, desktop, frame = granted
@@ -243,7 +250,7 @@ def test_noncomputer_argument_repair_skips_repeated_vision_call(granted):
 def test_control_requires_explicit_grant_and_sensitive_action_approval():
     registry = ToolRegistry()
     register(registry, ComputerSession(Desktop()))
-    assert registry.get_tool('computer_begin').permission == ToolPermission.CONFIRMATION_REQUIRED
+    assert registry.get_tool('computer_begin').permission == ToolPermission.SAFE
     assert registry.get_tool('computer_confirm_action').permission == ToolPermission.CONFIRMATION_REQUIRED
     with pytest.raises(ValueError): ComputerAction(frame_id='frame', kind='click')
 

@@ -29,6 +29,18 @@ def test_real_file_discovery_read_create_and_no_overwrite(tmp_path):
     assert destination.read_text() == 'measured input'
 
 
+def test_create_directory_without_approval_never_overwrites_file(tmp_path):
+    registry = ToolRegistry()
+    register(registry)
+    target = tmp_path / 'new-directory'
+    assert registry.execute('create_directory', {'path': str(target)})['ok']
+    assert target.is_dir()
+    existing = tmp_path / 'keep.txt'
+    existing.write_text('keep')
+    assert not registry.execute('create_directory', {'path': str(existing)})['ok']
+    assert existing.read_text() == 'keep'
+
+
 def test_file_access_requires_exact_approval(tmp_path):
     registry = ToolRegistry()
     register(registry)

@@ -31,7 +31,9 @@ Use the whole computer as your environment. For unfamiliar applications, observe
 finds windows; computer_begin requests control of the relevant window and supplies an actual
 screenshot plus UI Automation controls. computer_action clicks, types, scrolls, invokes controls
 and sends hotkeys. Each action looks again. Prefer observed accessible controls, then vision.
-For multi-window workflows request scope="desktop" in computer_begin; the host asks approval.
+For multi-window workflows use scope="desktop" in computer_begin. Routine control needs no approval unless Review is enabled.
+Never select Wingent's own overlay. Match the target process/title to the requested application.
+For Desktop/Documents/Downloads use resolve_known_folder first; never invent a username or home path.
 computer_observe with no arguments sees the foreground dialog; an observed window_id switches apps.
 Invoke only controls with supported actions. Otherwise use the screenshot, not a different control protocol.
 Use computer_confirm_action for sending, deleting, purchases, installation, terminal execution
@@ -487,7 +489,7 @@ class OperatorAdapter(LaunchAdapter):
                         continue
                     self.final_message = 'Stopped because no matching link was observed on a live browser page.'
                     return Decision(kind='finish', message=self.final_message)
-            if tool.name in {'list_directory', 'read_text', 'create_text'}:
+            if tool.name in {'list_directory', 'read_text', 'create_text', 'create_directory'}:
                 target = args.get('path', '')
                 parent = str(Path(target).parent)
                 sources = [user_context, *(json.dumps(record.outcome.data, ensure_ascii=False)

@@ -9,11 +9,26 @@ from pydantic import Field
 
 from app.capabilities import Arguments, Capability
 from app.tools import ToolPermission
+from app.folders import resolve_folder
+from typing import Literal
 
 PAGE_BYTES = 2048
 
 class FilePath(Arguments):
     path: str = Field(min_length=1, max_length=2048)
+
+
+class KnownFolder(Arguments):
+    name: Literal['home', 'desktop', 'documents', 'downloads', 'pictures', 'music', 'videos']
+
+
+def create_directory(params):
+    path = Path(local_path(params)['path'])
+    try:
+        path.mkdir()
+    except FileExistsError:
+        return {'ok': path.is_dir(), 'path': str(path), 'already_exists': True}
+    return {'ok': path.is_dir(), 'path': str(path), 'effect': 'accepted'}
 
 
 class ReadText(FilePath):
@@ -102,8 +117,16 @@ def create_text(params):
 
 
 def register(registry):
+    registry.register('resolve_known_folder', 'Get the actual Windows user folder path, including OneDrive redirection. Use before file operations; never guess a username.',
+                      ToolPermission.SAFE, {}, lambda p: {'ok': True, 'path': resolve_folder(p['name'])},
+                      input_model=KnownFolder, capability='files', retry_safe=True)
+    registry.register('create_directory', 'Create one new directory under an existing observed parent. Does not overwrite or recurse.',
+                      ToolPermission.SAFE, {}, create_directory, input_model=FilePath,
+                      capability='files', precondition=local_path)
     registry.capabilities['files'] = Capability('files',
         'Discover directory entries, read UTF-8 text in bounded pages, and create new text artifacts. '
+        'First resolve_known_folder for Desktop/Documents/Downloads to obtain the real user path. '
+        'create_directory creates a missing output directory under an existing parent. '
         'list_directory returns paths; read_text reads a returned path; create_text creates a new output. '
         'Choose read_text when you know a file path but need its content; do not ask the user for content. '
         'When read_text returns truncated=false, reading is finished. If the goal requests a report or new file, '

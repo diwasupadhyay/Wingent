@@ -4,7 +4,7 @@ Updated: 2026-10-05. These are implemented boundaries and explicit limitations, 
 
 ## Computer grants
 
-Default `computer_begin` scope is one window. Explicit `desktop` approval permits task-long screenshots/input across observed applications and foreground dialogs. The UI describes the scope/lifetime. This may expose private content in subsequently selected windows; it is not permission for unrelated tasks or silent data transfer.
+Default `computer_begin` scope is one window. Starting a requested task permits routine screenshots/input without a separate initial approval; Review mode still asks for each action. Desktop scope permits task-long operation across observed applications and dialogs. Wingent's overlay is excluded from control targets. Consequential actions retain exact approval.
 
 Frames bind HWND, PID, executable, geometry and capture time. Possible input consumes the frame. Recheck foreground and coarse pixels before dispatch; observe again afterwards. One task owns desktop input at a time. Stop/task end revokes control. A held Escape is checked during dispatch; a brief tap during model reasoning is not a latched global stop. Cancellation cannot undo prior effects.
 
