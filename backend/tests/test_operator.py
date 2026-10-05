@@ -1,4 +1,5 @@
 import asyncio
+import pytest
 import json
 from types import SimpleNamespace
 
@@ -111,7 +112,7 @@ def test_unique_launched_window_fills_grant_without_extra_model_call():
             return '{"tool":"computer_begin"}'
     decision = asyncio.run(OperatorAdapter(registry, state, BudgetedProvider(Provider(), state)).decide(state.context()))
     assert decision.kind == 'act'
-    assert decision.action.arguments == {'window_id': 7, 'purpose': state.goal,
+    assert decision.action.arguments == {'window_id': 7, 'purpose': state.goal, 'scope': 'window',
                                          'window_title': 'Untitled', 'process': 'notepad.exe'}
     assert len(calls) == 1
 
@@ -180,7 +181,8 @@ def test_host_effect_ledger_distinguishes_dispatch_from_verified_artifact():
     assert all('Task complete' not in item['detail'] for item in facts)
 
 
-def test_repeated_computer_click_is_reconsidered_after_visible_change():
+@pytest.mark.parametrize('changed_window', [False, True])
+def test_repeated_computer_click_is_reconsidered_after_visible_change(changed_window):
     from app.computer_tools import ComputerAction
     registry = ToolRegistry()
     registry.tools.clear()
@@ -189,11 +191,12 @@ def test_repeated_computer_click_is_reconsidered_after_visible_change():
     registry.register('computer_confirm_action', 'Approved window input', ToolPermission.CONFIRMATION_REQUIRED, {},
                       lambda p: {'ok': True}, input_model=ComputerAction)
     registry.computer_session = SimpleNamespace(visual_context=lambda owner: {
-        'frame_id': 'current', 'input_targeted': True, 'image': b'pixels'})
+        'frame_id': 'current', 'window_id': 2 if changed_window else 1, 'input_targeted': True, 'image': b'pixels'})
     state = TaskState(goal='Apply the visible change', criteria=['Applied'])
     state.records.append(ActionRecord(
         action=Action(tool='computer_action', arguments={'frame_id': 'old', 'kind': 'click', 'x': 500, 'y': 550}, label='Click'),
-        outcome=Outcome(status='accepted', summary='Sent', data={'visible_change_observed': True}), dispatched=True))
+        outcome=Outcome(status='accepted', summary='Sent', data={'visible_change_observed': True,
+                        'action_window_id': 1, 'post_observation': {'window_id': 2}}), dispatched=True))
     calls = []
     class Provider:
         async def structured_images(self, prompt, system, schema, images):
@@ -202,8 +205,10 @@ def test_repeated_computer_click_is_reconsidered_after_visible_change():
                 return '{"tool":"computer_confirm_action","arguments":{"frame_id":"current","kind":"click","x":500,"y":550}}'
             return '{"tool":"finish","message":"The requested change is visible."}'
     decision = asyncio.run(OperatorAdapter(registry, state, BudgetedProvider(Provider(), state)).decide(state.context()))
-    assert decision.kind == 'finish'
-    assert len(calls) == 1
+    assert decision.kind == ('act' if changed_window else 'finish')
+    assert len(calls) == (1 if changed_window else 2)
+    if not changed_window:
+        assert 'requested change is visible' in decision.message
     assert len(state.records) == 1
 
 
@@ -533,6 +538,19 @@ def test_discovery_only_finish_is_challenged_for_open_goal():
     assert decision.kind == 'act'
     assert decision.action.tool == 'application_open'
     assert decision.action.arguments['path'] == 'C:/Apps/Fixture.exe'
+
+
+def test_empty_application_search_can_fall_back_to_running_windows():
+    registry = ToolRegistry()
+    registry.register('observe_windows', 'See running apps', ToolPermission.SAFE, {},
+                      lambda _: {'ok': True}, input_model=Arguments)
+    state = TaskState(goal='Use the open unfamiliar app', criteria=['Done'])
+    state.records.append(ActionRecord(
+        action=Action(tool='application_search', arguments={'query': 'unfamiliar'}, label='Search'),
+        outcome=Outcome(status='accepted', summary='No installed match', data={'applications': []}), dispatched=True))
+    decision = asyncio.run(OperatorAdapter(registry, state, None).decide(state.context()))
+    assert decision.kind == 'act'
+    assert decision.action.tool == 'observe_windows'
 
 
 def test_empty_application_search_stops_without_invented_launch():

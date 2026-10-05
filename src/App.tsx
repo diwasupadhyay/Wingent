@@ -393,7 +393,11 @@ export default function App() {
                 <div className='approval-actions'>
                   <button type='button' disabled={approvalBusy} onClick={() => void answerApproval(false)}>Deny</button>
                   <button type='button' disabled={approvalBusy} onClick={() => void answerApproval(true)}>Approve once</button>
-                  <span>One action only · expires automatically</span>
+                  <span>{approval.tool === 'computer_begin'
+                    ? (approval.arguments.scope === 'desktop'
+                      ? 'Across apps and dialogs · until this task ends · Stop revokes control'
+                      : 'This window · until this task ends · Stop revokes control')
+                    : 'One action only · expires automatically'}</span>
                 </div>
                 {approvalError && <div role='alert'>{approvalError}</div>}
               </section>

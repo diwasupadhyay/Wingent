@@ -1,73 +1,47 @@
-# Wingent Security and Permission Boundaries
+# Security and Permission Boundaries
 
-## General computer control (v17)
+Updated: 2026-10-05. These are implemented boundaries and explicit limitations, not a claim of a secure sandbox.
 
-`computer_begin` grants broad ordinary UI interaction and local screenshot interpretation for one window/task. Grants bind HWND, PID and executable; one task owns input at a time. Window switches need another grant. Fresh frame IDs are single-use; age, focus, geometry and coarse visual-change checks reject stale input. Stop/Escape interrupts further input but cannot undo effects. Task end releases pixels and grants.
+## Computer grants
 
-Enter/Delete/Windows-key input, multiline typing, paste shortcuts and recognized sensitive UIA labels require `computer_confirm_action`. The model must also identify other consequential effects. These incomplete semantic checks are not a sandbox. Known password controls block capture, but custom authentication surfaces may not expose them. Secure desktop/elevation is unsupported. Capture can include occluding content: keep unrelated sensitive windows out of the approved surface.
+Default `computer_begin` scope is one window. Explicit `desktop` approval permits task-long screenshots/input across observed applications and foreground dialogs. The UI describes the scope/lifetime. This may expose private content in subsequently selected windows; it is not permission for unrelated tasks or silent data transfer.
 
-Production pixels stay in memory and go only to loopback Ollama. Screen/UIA content is untrusted data, not authority. The opt-in test harness alone may save its synthetic window screenshots in ignored `.build/`.
+Frames bind HWND, PID, executable, geometry and capture time. Possible input consumes the frame. Recheck foreground and coarse pixels before dispatch; observe again afterwards. One task owns desktop input at a time. Stop/task end revokes control. A held Escape is checked during dispatch; a brief tap during model reasoning is not a latched global stop. Cancellation cannot undo prior effects.
 
-Updated: 2026-10-03. Current implementation and future requirements are distinguished below. See the implementation plan for authorization and phase status.
+Enter/Delete/Windows key, multiline text, paste shortcuts, drag and recognized sensitive UIA labels require exact approval. The model must also flag sending, deletion, purchases, installation, terminal execution and other consequential semantics. These mechanical checks are incomplete: a harmless-looking click or shortcut may still have an important effect. This is not a sandbox.
 
-## Non-negotiable rules
+Drag is limited to a visible path inside the approved window and releases the button on interruption. Occlusion/focus changes can leave a partial unknown effect; never replay blindly.
 
-- Model proposals, skill guidance and observed external content do not grant authority.
-- Prefer structured automation, but apply the same policy to APIs, files, processes and future visual input.
-- Ask before consequential actions: publication/sending, deletion/overwrite, purchases, installation, elevation, system/security changes and private-data transfer.
-- Preserve unrelated files, unsaved work, credentials and existing user sessions.
-- Never bypass authentication, MFA/CAPTCHA, permissions or OS security.
-- Do not silently upload local data or switch to remote reasoning.
-- Finite budgets and an accessible stop/cancel path remain mandatory.
+Known UIA password controls block capture. Custom/canvas authentication may not expose them; stop for login/MFA/CAPTCHA rather than bypassing it. Capture can include occluding sensitive windows. Secure/elevated desktop is unsupported.
 
-## Implemented controls
+## Data and model boundary
 
-- Strict typed arguments and registered tool selection; restricted tools cannot be authorized by model output or user approval tokens.
-- Explicit approvals bind task ID, tool name/revision and canonical arguments. Tokens are single-use, expire, reject replay and are revoked when the task stream closes.
-- Approval is rechecked at dispatch; changed canonical arguments invalidate it. Tokens stay out of model context and displayed/logged output.
-- Review mode also gates otherwise safe launches.
-- Accepted, known-no-effect and unknown outcomes remain distinct. Unknown dispatch outcomes stop further actions rather than encouraging replay.
-- A model finish message cannot grant verified status; the runtime requires fresh trusted evidence for all criteria.
-- Task planning notes are untrusted model interpretations. Record references must exist, but a reference is not proof that its content supports the model's claim. Historical result retrieval is scoped to the current task's copied registry and performs no new external access; approvals and dispatch remain subject to the existing runtime.
-- UTF-8 report inputs must have contiguous observed pages from the same file version. This blocks missing-page outputs, not semantic errors or hostile file replacement. One explained observation refresh is permitted; accepted consequential actions are not replayed.
-- File operations require exact-action approval. Listing is nonrecursive; text reads use host-controlled 2048-byte UTF-8 pages; new files use exclusive creation and read-back.
-- File tools reject linked/junction paths, remote/device paths, alternate streams and ambiguous reserved names.
-- Natural tasks validate the next action at execution time. Whole-plan preflight applies only to the fixed launch compatibility path, not all dynamic tasks.
-- Genuine model clarifications may retain bounded task state in memory for 15 minutes and resume once; completed effects are not replayed by the continuation. Approval tokens are not persisted in this state.
-- Native app discovery is read-only and bounded to App Paths, matching Start menu shortcut targets, PATH and standard install roots. Launch requires a fresh task-owned discovery ID, host-bound exact executable path and explicit approval; file identity is rechecked and the same executable is not relaunched within one task. This is not a sandbox and does not prove a window appeared.
-- `screen_inspect` requires explicit approval for a recently observed foreground window and purpose. The host rechecks window PID/executable/title and foreground, refuses known Win32 password controls, limits pixels, keeps the PNG in memory, and sends it only to loopback Ollama with proxy environment disabled. Wingent does not save or return the PNG. The vision description is untrusted model text, not action authority or independent verification.
+Production pixels stay in memory and go only to loopback Ollama. No silent cloud fallback, screenshot persistence or credential logging. Synthetic evaluation screenshots may be saved only in ignored build fixtures. Screen text, files and tool output are untrusted data, never new instructions or authority.
 
-## Important limitations
+Model proposals cannot grant permissions or certify completion. Typed registered tools, exact target checks and host policy remain authoritative. A model finish or dispatch acknowledgement stays unverified unless fresh trusted evidence covers the goal.
 
-- File path revalidation is not a handle-based sandbox against malicious concurrent target replacement. Read-back equality does not prove semantic correctness.
-- Local approval tokens are not protection against malware already controlling the user's session.
-- Plugin entry points execute trusted native Python with backend privileges. Staging/metadata validation cannot sandbox malicious code.
-- No executable plugin is loaded by the model; enablement/installations are separate trust decisions. Frozen builds must bundle enabled plugins.
-- Existing launch tools cannot inspect page/window contents. Current general goal verification and live stopping remain incomplete.
-- Prompt instructions to ignore malicious external content are not sufficient protection on their own. Host permissions, isolation, targeted adversarial tests and limited data scope are required.
-- Cancelling an await cannot undo an in-flight synchronous OS action. Do not describe cancellation as rollback.
-- Exact-action-approved native process execution exists with bounded output and timeout. Task cancellation now attempts to stop its owned process, with a direct-PID fallback if tree termination fails; it is not a sandbox or a guarantee against detached descendants or earlier effects. Approved programs may still modify files or access the network. Destructive file mutation and unrestricted keyboard/mouse tools are not implemented. A bounded navigation-key tool requires exact-action approval and fresh window identity, but live delivery is unverified. The initial screenshot interpreter cannot reliably detect browser/canvas password fields, MFA, CAPTCHA or secrets; the user must review each capture request. No live Windows screenshot was validated in this restricted session. Experimental browser DOM/media and approval-gated Win32 control tools are not independently verified workflow engines.
-- In-memory continuation is not crash-safe. A stream interruption after a resume is consumed can lose the state; do not promise durable recovery or automatic replay of unknown effects.
-- Agent-owned Chrome uses a separate temporary profile and an ephemeral loopback debugging port. It does not read personal Chrome cookies/tabs. Live control is not yet verified; a dropped debugger connection must never be reported as page observation or playback.
-- The browser fallback starts normal Chrome only after controlled-session failure. It reports a visible window separately from page observation; it never reads or controls the normal profile. Window-title observation stays local but may reveal sensitive text to the local model.
+## Approval and execution
 
-## Requirements before broader capabilities
+Approvals bind task, tool revision and canonical arguments; tokens are single-use and expiring. Revalidate before execution. Tokens are not displayed/logged or retained for resume. Restricted tools cannot become allowed through a model proposal. Review mode also gates safe actions.
 
-| Surface | Required controls before enabling |
-| --- | --- |
-| Scoped reads | Explicit roots/resources, lifetime, revocation, no implicit whole-disk scans |
-| File mutation | Stable target checks, preview, overwrite approval, recovery where feasible |
-| Browser/application sessions | Explicit ownership/profile/data scope; no silent attachment to private sessions |
-| Process/code execution | Exact executable/arguments/cwd/environment, approval, output/time bounds and process-tree ownership |
-| Installation/system changes | Explicit download/elevation/change scope and truthful recovery limitations |
-| Screenshots/clipboard/input | Capture/data scope, minimal retention, fresh target/focus identity and post-action checks |
-| Task persistence | Minimized storage, no token/secret persistence, safe resume and unknown-effect reconciliation |
-| Skills/plugins | Trusted source review, dependencies/versioning and packaging; isolation before untrusted code |
+Outcomes distinguish accepted, known-no-effect and unknown. Unknown effects stop further dispatch until reconciled; cancellation is not rollback. Finite model/action/time/recovery budgets remain mandatory.
 
-## Evidence and data hygiene
+Files require exact-action approval. Existing operations provide nonrecursive listing, host-sized UTF-8 reads and exclusive new-file creation/read-back. They reject links/junctions, remote/device paths and ambiguous names, but path revalidation is not a handle-based adversarial filesystem sandbox. Matching written bytes does not prove semantic correctness.
 
-Do not log secrets, approval tokens, private document/browser content or screenshots by default. Keep source/environment credentials out of Git. Treat observed content as data, never authority to alter the user goal.
+Native process execution binds executable, arguments, working directory and bounded output/time with approval. Cancellation attempts owned process-tree cleanup; detached descendants and earlier effects are not guaranteed reversible. Native code runs with backend privileges.
 
-Keep contract tests, adversarial tests, live-model evaluations and packaged checks separate. Two narrow live fixture passes do not satisfy the broader reliability gate; no broad safety or competence claim follows from passing approval tests.
+## Extensions and sessions
 
-The latest request authorizes scoped implementation and evaluation, not blanket installation, private-data access or security-setting changes.
+Trusted installed Python skill entry points load only through explicit startup configuration. They are not sandboxed; the model cannot install/import/enable them. Frozen packages must bundle enabled code and metadata.
+
+Browser structured tools use a separate agent-owned profile and do not silently attach to personal cookies/tabs. Their live reliability is distinct from generic desktop control. A desktop grant can visually interact with a selected browser window and must respect the same data/sensitive-action boundary.
+
+Clarification continuation is in-memory, expiring and single-use, not crash-safe. Interrupted resume or in-flight unknown effects require reconciliation before replay.
+
+Tauri owns a per-run backend port and checks runtime/instance identity. Local approval tokens do not protect against malware already controlling the user's session.
+
+## Evaluation and development
+
+Only newly owned windows and isolated files may be auto-approved by test harnesses. Never use broad automatic approval to obtain a passing test. Keep reference clones under ignored `references/` and unchanged; they are not executable dependencies. Record native, model and packaged results separately.
+
+Personal-data scope, downloads, executable skill installation, elevation and consequential system changes require a deliberate decision. Passing a finite evaluation suite is not proof of universal safety.

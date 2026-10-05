@@ -38,7 +38,8 @@ def run():
         subprocess.Popen(['notepad.exe', str(scratch.resolve())])
         window = new_window(before, lambda w: scratch.stem in w['title'])
         owned.append(window)
-        frame = session.begin(window_id=window['hwnd'], purpose='Edit the isolated scratch document')
+        frame = session.begin(window_id=window['hwnd'], scope='desktop', purpose='Test only the disposable Notepad and Calculator windows')
+        notepad_window = window
 
         def act(kind, **params):
             nonlocal frame
@@ -59,13 +60,20 @@ def run():
         subprocess.Popen(['calc.exe'])
         window = new_window(before, lambda w: 'calculator' in w['title'].lower())
         owned.append(window)
-        frame = session.begin(window_id=window['hwnd'], purpose='Compute in the newly opened calculator')
+        # No second grant: the same task can follow the new foreground app.
+        # Check ownership before allowing the broad session to observe it.
+        native.focus(window['hwnd'])
+        frame = session.observe()
+        assert frame['window_id'] == window['hwnd']
         for keys in [['escape'], ['7'], ['multiply'], ['8'], ['enter']]:
             act('hotkey', keys=keys)
         names = [c['name'] for c in frame['controls']]
         passed = any('56' in name for name in names)
         print(json.dumps({'application': 'Calculator', 'passed': passed, 'display_matches': [n for n in names if '56' in n]}), flush=True)
         if not passed: raise RuntimeError('Calculator did not expose the expected result')
+        frame = session.observe(notepad_window['hwnd'])
+        assert frame['window_id'] == notepad_window['hwnd']
+        print(json.dumps({'cross_application_session': True, 'returned_to_owned_notepad': True}), flush=True)
     finally:
         session.close_task('native-smoke')
         execution_task_id.reset(token)

@@ -31,6 +31,9 @@ Use the whole computer as your environment. For unfamiliar applications, observe
 finds windows; computer_begin requests control of the relevant window and supplies an actual
 screenshot plus UI Automation controls. computer_action clicks, types, scrolls, invokes controls
 and sends hotkeys. Each action looks again. Prefer observed accessible controls, then vision.
+For multi-window workflows request scope="desktop" in computer_begin; the host asks approval.
+computer_observe with no arguments sees the foreground dialog; an observed window_id switches apps.
+Invoke only controls with supported actions. Otherwise use the screenshot, not a different control protocol.
 Use computer_confirm_action for sending, deleting, purchases, installation, terminal execution
 or other consequential effects. Ask only when the goal is unclear or a real boundary blocks you.
 Without an attached screenshot, window titles and Win32 controls are only structured metadata.
@@ -79,6 +82,10 @@ changes the state. Do not alternate observations endlessly while waiting for pro
 VISION_SYSTEM = """You are Wingent, a local computer operator. Complete the ORIGINAL goal, not a click script.
 Choose ONE registered tool or finish/ask. The attached image is the latest approved window screenshot.
 Check what changed after the previous action, then choose the shortest useful next step.
+The computer is the environment; tools for specific apps are optional accelerators, not limits.
+For multi-window work request computer_begin with scope="desktop" once. This needs user approval.
+Use computer_observe with no arguments to see a new foreground dialog; with an observed window_id to switch apps.
+When a control is not actionable through UI Automation, use screenshot-grounded clicks instead of repeating invoke.
 Use observed UI Automation targets with invoke when actionable, otherwise normalized screenshot coordinates.
 Click the field before typing unless a focused Edit/Document control is observed. Never reuse a stale frame ID.
 If the goal is already visibly satisfied, finish now; a second click can undo or repeat work.
@@ -173,9 +180,13 @@ class OperatorAdapter(LaunchAdapter):
                                 message='Observed paused media on the selected page; checking playback.')
             if (last.action.tool == 'application_search' and last.outcome.status == 'accepted' and
                     last.outcome.data.get('applications') == []):
-                self.final_message = ('No matching native application was found in App Paths, Start menu '
-                                      'shortcuts, PATH or standard install roots. No application was launched. '
-                                      'Search coverage is incomplete.')
+                if self.registry.get_tool('observe_windows') is not None:
+                    # Installation discovery is incomplete (portable apps, UWP,
+                    # already-running custom apps). It is not a goal boundary.
+                    return Decision(kind='act', action=action_from_pair('observe_windows', {}),
+                                    message='Checking running windows after incomplete application discovery.')
+                self.final_message = ('No matching native application was found. Search coverage is incomplete '
+                                      'and this environment has no window observation capability.')
                 return Decision(kind='finish', message=self.final_message)
         if self.state.records and self.state.model_calls >= self.state.limits.model_calls:
             self.final_message = 'Reasoning budget reached. Review the recorded results; remaining goal steps are unverified.'
@@ -497,10 +508,22 @@ class OperatorAdapter(LaunchAdapter):
                                        if record.action.tool in {'computer_action', 'computer_confirm_action', 'computer_begin'}), None)
                 if previous_input and previous_input.action.tool != 'computer_begin' and previous_input.outcome.status == 'accepted':
                     prior = {key: value for key, value in previous_input.action.arguments.items()
-                             if key not in {'frame_id', 'button', 'clicks', 'amount'}}
+                             if key not in {'frame_id', 'button', 'clicks', 'amount', 'duration_ms'}}
                     proposed = {key: value for key, value in args.items()
-                                if key not in {'frame_id', 'button', 'clicks', 'amount'}}
-                    if prior == proposed and len(proposal.refresh_reason.strip()) < 12:
+                                if key not in {'frame_id', 'button', 'clicks', 'amount', 'duration_ms'}}
+                    prior_window = previous_input.outcome.data.get('action_window_id',
+                        (previous_input.outcome.data.get('post_observation') or {}).get('window_id'))
+                    current_window = frame.get('window_id') if frame else None
+                    same_window = prior_window is None or current_window is None or prior_window == current_window
+                    if same_window and prior == proposed and len(proposal.refresh_reason.strip()) < 12:
+                        if choice_attempt == 0 and self.state.model_calls < self.state.limits.model_calls:
+                            # Keep the large system/schema prefix stable so the
+                            # local provider can reuse it during bounded repair.
+                            prompt = json.dumps({**json.loads(prompt), 'rejected_computer_input':
+                                'This input repeats the previous dispatched input and was NOT run again. '
+                                'Inspect the CURRENT screenshot: finish if the goal is satisfied; otherwise '
+                                'choose a different action or explain the needed repeat in refresh_reason.'})
+                            continue
                         self.final_message = ('The same computer input was already dispatched. '
                                               'The latest window was observed; no repeat was sent. '
                                               'Review the visible result to confirm the full goal.')

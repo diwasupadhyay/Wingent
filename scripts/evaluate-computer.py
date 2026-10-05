@@ -54,19 +54,27 @@ def run(model=False, autonomous=False):
             from app.launch_runtime import BudgetedProvider
             from app.operator import run_operator
             from app.task_state import TaskState, Limits
-            from app.tools import ToolRegistry, ToolPermission
-            registry = ToolRegistry()
-            registry.tools.clear()
+            from app.tools import ToolPermission
+            from app.main import registry as production_registry
+            import copy
+            registry = copy.copy(production_registry)
+            registry.tools = production_registry.tools.copy()
+            registry.capabilities = production_registry.capabilities.copy()
             register(registry, session)
             registry.register('observe_windows', 'List available windows', ToolPermission.SAFE, {},
                               lambda _: {'ok': True, 'windows': [{'window_id': window['hwnd'], 'title': window['title']}]}, input_model=Arguments)
             state = TaskState(goal='In the Wingent isolated computer evaluation app, enter Hello from Wingent in the greeting box and apply the greeting. Verify the displayed result.',
                               criteria=['Greeting applied'], limits=Limits(model_calls=12, seconds=360.0))
             async def disconnected(): return False
+            terminal = None
             async def execute():
+                nonlocal terminal
                 async for event, data in run_operator(registry, state, BudgetedProvider(OllamaClient(), state), disconnected):
+                    if event in {'final', 'error', 'clarification'}:
+                        terminal = {'event': event, 'outcome': data.get('outcome')}
                     if event == 'confirmation_required':
-                        if data['tool'] != 'computer_begin' or data['arguments']['window_id'] != window['hwnd']:
+                        if (data['tool'] != 'computer_begin' or data['arguments']['window_id'] != window['hwnd']
+                                or data['arguments'].get('scope', 'window') != 'window'):
                             registry.approvals.respond(data['approval_id'], data['token'], False)
                         else:
                             registry.approvals.respond(data['approval_id'], data['token'], True)
@@ -80,9 +88,12 @@ def run(model=False, autonomous=False):
             child.terminate()
             output, _ = child.communicate(timeout=5)
             passed = '"applied": "Hello from Wingent"' in output
+            clean_stop = terminal is not None and terminal['event'] == 'final'
             print(json.dumps({'oracle_passed': passed, 'seconds': round(time.monotonic()-started, 2), 'model_calls': state.model_calls,
+                              'clean_stop': clean_stop, 'terminal': terminal,
                               'records': [{'tool': r.action.tool, 'status': r.outcome.status, 'summary': r.outcome.summary} for r in state.records]}), flush=True)
             if not passed: raise RuntimeError('Independent fixture state did not match the goal')
+            if not clean_stop: raise RuntimeError('Fixture effect succeeded, but the agent did not terminate cleanly')
             return
         observed = session.begin(window_id=window['hwnd'], purpose='Evaluate isolated test application')
         Path('.build/computer-before.png').write_bytes(session.visual_context('interactive-smoke')['image'])

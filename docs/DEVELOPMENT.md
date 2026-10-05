@@ -1,39 +1,52 @@
 # Development
 
-## Packaged backend
+Requires Windows, Python 3.12+, Node.js, Rust/MSVC toolchain and separately installed Ollama. Default model is `qwen3-vl:4b-instruct`; only configure installed models.
+
+## Setup and browser-only development
+
 ```powershell
-python -m pip install pyinstaller==6.16.0
-powershell -ExecutionPolicy Bypass -File scripts/build-backend-sidecar.ps1
-```
-
-The generated target-triple executable is ignored by Git. Build it before `npm run tauri:build`; Tauri registers it as an external binary. The installed app starts hidden in the tray and starts the backend automatically. Press `Ctrl+Space` or left-click the tray icon to open it.
-
-## Prerequisites
-- Node.js 20+
-- Python 3.12+
-- Rust toolchain for future Tauri packaging work
-- Ollama installed locally
-
-## Setup
-```powershell
-npm install
+npm.cmd install
 python -m pip install -r backend/requirements.txt
+$env:PYTHONPATH = 'backend'
+python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-## Run locally
+Run `npm.cmd run dev` in another terminal. `VITE_API_BASE_URL` overrides the browser-development API URL. Environment examples are configuration references; do not assume files are automatically loaded.
+
+## Native development and release
+
+Build the sidecar first; Tauri development and release own their own per-run private backend port, independent of a manually started port-8000 service.
+
 ```powershell
-npm run dev
-python -m uvicorn backend.app.main:app --host 127.0.0.1 --port 8000 --reload
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File scripts/build-backend-sidecar.ps1
+npm.cmd run tauri:dev
 ```
 
-## Testing
+Release:
+
 ```powershell
-pytest -q
-npm test -- --run
-npm run build
+npm.cmd run tauri:build -- --no-bundle
 ```
 
-## Notes
-- Use the local Ollama model from `.env.example` or set the environment before starting the backend.
-- Set `OLLAMA_COMPLEX_MODEL` only to a model already installed in Ollama; otherwise Wingent keeps using `OLLAMA_MODEL`.
-- If Ollama is not running, the app will surface a clear error rather than silently failing.
+Output: `src-tauri/target/release/app.exe` with its adjacent backend binary. Rebuild the sidecar before the EXE when Python changes. Stop only exact project-owned old processes blocking the build. Start the EXE; it stays in the tray, opened with Ctrl+Space. Closing the overlay hides it; tray Quit exits.
+
+## Verification
+
+```powershell
+python -m pytest backend/tests -q
+npm.cmd test
+cargo test --manifest-path src-tauri/Cargo.toml --lib
+```
+
+Interactive, opt-in isolated checks (do not use your mouse/keyboard during execution):
+
+```powershell
+$env:PYTHONPATH = 'backend'
+python scripts/evaluate-native-computer.py
+python scripts/evaluate-gestures.py
+python scripts/evaluate-computer.py --autonomous
+```
+
+The native scripts control only newly created test windows. The model harness approves only its fixture's window grant, and checks output independently. Native scripted success is not autonomous model success.
+
+Keep reference clones untouched under ignored `references/`. Never stage screenshots, fixture documents, model data, credentials or reference code.

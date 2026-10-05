@@ -1,28 +1,18 @@
 # Wingent Roadmap
 
-Phase 4's bounded general Windows-control gate is complete in `operator-v18`, backed by an unfamiliar GUI plus native Notepad and Calculator checks. Next priorities: Phase 3 reliable stopping and goal evidence across held-out tasks; Phase 6 sensitive-screen and visual-action hardening; Phase 5 process lifecycle; Phase 7 packaged mixed-task reliability. The earlier v17 priority below is historical.
+Updated: 2026-10-05. A general self-operating Windows agent; applications are environments, not phases.
 
-Latest priority (2026-10-04): general computer operation, not browser-first development. The v17 slice adds direct screenshot-to-brain reasoning and task-scoped UIA/mouse/keyboard control; native Notepad and Calculator checks pass. Next gates are unfamiliar-app autonomous completion, independent postconditions, focus/dialog recovery and packaged mixed-task evaluation. The authoritative plan and `evaluations/COMPUTER_OPERATOR.md` supersede older browser-first priorities below.
+`GOAL -> SEE -> THINK -> ACT -> SEE AGAIN -> VERIFY -> REPLAN`
 
-Updated: 2026-10-03. The latest request authorizes scoped implementation and evaluation.
+[AGENT_IMPLEMENTATION_PLAN.md](AGENT_IMPLEMENTATION_PLAN.md) is the sole detailed tracker. [CHANGES.md](../CHANGES.md) records improvements; [evaluations](evaluations/COMPUTER_OPERATOR.md) record actual results.
 
-The product is a general-purpose personal computer agent. The user supplies a goal; Wingent discovers and combines capabilities to achieve it. Applications are adapters and test fixtures, not separate product phases.
+Priority order:
 
-The sole detailed tracker is [AGENT_IMPLEMENTATION_PLAN.md](AGENT_IMPLEMENTATION_PLAN.md).
+1. Reliable stopping/recovery in unfamiliar interfaces with the production tool catalogue.
+2. Fresh screenshot/UIA context, dialog/window transitions and bounded generic gestures.
+3. Independent postconditions, partial completion and unknown-effect reconciliation.
+4. Faster local decisions/observation, measured without hiding loops behind larger budgets.
+5. Controlled process lifecycle, durable continuation and trusted skill discovery.
+6. Packaged mixed-task regressions and daily-use reliability.
 
-| Phase | Layer | Current status |
-| --- | --- | --- |
-| 0 | Audit and rollback baseline | Historically complete |
-| 1 | Application-independent runtime | Complete for recorded runtime contracts |
-| 2 | Typed capabilities and bound approvals | Complete for current contracts |
-| 3 | Reliable reasoning, working context and skill discovery | 3A comparison and bounded 3B working-context contracts complete; evidence-based stopping, continuity and varied-task reliability remain open |
-| 4 | Structured computer observation/action | Native app discovery/approved launch, experimental Chrome, Win32 controls and files exist; live cross-app control/playback not verified |
-| 5 | Controlled process/code execution | In progress; discovery and approved native execution added, cancellation/recovery not complete |
-| 6 | Vision and input fallback | In progress; approved foreground-window image-to-local-model description added, live interactive capture and visual actions unverified |
-| 7 | Cross-capability reliability and release readiness | Planned |
-
-Next: expand live/held-out cases, measure repeat/stop behavior, improve independent goal verification, and harden continuation across disconnects. Working notes, task-local result retrieval, source-page completeness and in-memory clarification are implemented. The latest speed slice skips redundant browser launches for media tasks and uses a trusted observed-media postcondition to avoid one model call for flexible requests. The installed vision model selected and played a Joji result in the isolated fake browser in 4 calls/32.89 seconds; the named 777 variant used 5 calls/26.33 seconds. These are variable live-model timings, not real Chrome playback. The smaller text model remained unreliable on the flexible case; do not switch defaults for speed alone. The previous two-page report took 172 seconds through the frozen backend; broad reliability and latency remain open.
-
-Then add Windows/accessibility, browser DOM and application APIs as peer adapters; controlled process execution and visual fallback follow their safety prerequisites. Security, recovery, evaluations and packaging are continuous work, not a final cleanup phase.
-
-A rebuilt EXE, passing unit tests or an accepted tool call does not prove reliable goal completion. See the plan for recorded evidence, pending decisions, proposed evaluation thresholds and release gates.
+Phases 0-2 and bounded Phase 4 have historical evidence. Initial Phase 3A comparison and 3B context contracts are complete; broad Phases 3, 5, 6 and 7 remain open. Preserve the UI and local-only vision. Never claim success from input acceptance or auto-install executable skills.

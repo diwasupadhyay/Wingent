@@ -24,10 +24,8 @@ from app.task_state import TaskState, Limits
 from app.task_store import TaskStore
 from app.browser_tools import register as register_browser
 from app.window_observer import register as register_windows
-from app.desktop_tools import register as register_desktop
 from app.process_tools import register as register_process
 from app.application_tools import register as register_applications
-from app.screen_tools import register as register_screen
 from app.version import RUNTIME_VERSION
 from app.computer_tools import register as register_computer
 
@@ -49,8 +47,8 @@ app.add_middleware(
 registry = ToolRegistry()
 register_files(registry)
 register_windows(registry)
-desktop_session = register_desktop(registry)
-register_screen(registry, desktop_session)
+# One observation/input protocol in production. Legacy desktop/screen adapters
+# use incompatible target IDs and grants and must not compete with this session.
 register_computer(registry)
 register_process(registry)
 register_applications(registry)

@@ -55,7 +55,7 @@ class Capability:
 
 
 CAPABILITIES = (
-    Capability('windows', 'observe_windows lists visible window_id, process, title and the foreground window at capture time. desktop_observe reads bounded Win32 child controls of a selected window_id; desktop_click_control, desktop_type_text and desktop_press_key require exact-action user approval and a fresh observation_id. These do not see Chrome DOM, canvas pixels or the whole screen. Never claim input completed the goal without a later observation.'),
+    Capability('windows', 'observe_windows lists visible window_id, process, title and the foreground window. Use computer_begin for an approved screenshot/input session, then computer_action and computer_observe. Request desktop scope for work across apps/dialogs. Titles alone do not prove task completion. For an unfamiliar installed app, use application_search and application_open; no app-specific adapter is required for visual control.'),
     Capability('browser', 'For interactive web goals use browser_search/browser_open in a separate agent-owned Chrome profile, then browser_inspect, browser_follow_link using an observed index, and browser_play_media for playback. Legacy open_url/search_web only send launch requests and cannot observe a page. Do not use file tools for web content or invent local media paths. Personal Chrome tabs/profiles are not attached.'),
     Capability('files', 'Open existing local directories only. Known aliases: downloads, desktop, documents, pictures, music, videos, home. For other folders require an exact user-supplied path. Never invent a path.'),
 )

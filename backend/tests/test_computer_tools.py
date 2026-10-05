@@ -126,6 +126,90 @@ def test_unobserved_accessibility_target_is_rejected(granted):
     assert not desktop.calls
 
 
+class MultiWindowDesktop(Desktop):
+    def __init__(self):
+        super().__init__()
+        self.windows = super().list_visible_windows() + [
+            dict(hwnd=2, pid=20, executable='other.exe', process='other.exe', title='Other')]
+
+    def list_visible_windows(self):
+        return self.windows
+
+
+def test_desktop_scope_switches_observed_apps_and_follows_new_dialog():
+    desktop = MultiWindowDesktop()
+    session = ComputerSession(desktop)
+    token = execution_task_id.set('desktop-test')
+    try:
+        first = session.begin(window_id=1, scope='desktop', purpose='Work across apps')
+        assert len(first['windows']) == 2
+        switched = session.observe(2)
+        assert switched['window_id'] == 2
+        assert session.act(frame_id=first['frame_id'], kind='type', text='stale')['effect'] == 'no_effect'
+        def open_dialog(*_):
+            desktop.windows.append(dict(hwnd=3, pid=20, executable='other.exe', process='other.exe', title='Dialog'))
+            desktop.foreground = 3
+        desktop.dispatch = open_dialog
+        result = session.act(frame_id=switched['frame_id'], kind='click', x=500, y=500)
+        assert result['action_window_id'] == 2
+        assert result['post_observation']['window_id'] == 3
+        assert session.visual_context('desktop-test')['window_id'] == 3
+        assert desktop.foreground == 3
+    finally:
+        session.close_task('desktop-test')
+        execution_task_id.reset(token)
+
+
+def test_desktop_scope_rejects_reused_or_unobserved_switch_targets():
+    desktop = MultiWindowDesktop()
+    session = ComputerSession(desktop)
+    token = execution_task_id.set('desktop-test')
+    try:
+        session.begin(window_id=1, scope='desktop', purpose='Work across apps')
+        desktop.windows[1] = {**desktop.windows[1], 'pid': 999}
+        with pytest.raises(ValueError, match='identity changed'):
+            session.observe(2)
+        with pytest.raises(ValueError):
+            session.observe(999)
+        assert desktop.foreground == 1
+    finally:
+        session.close_task('desktop-test')
+        execution_task_id.reset(token)
+
+
+def test_window_scope_does_not_silently_expand_to_foreground_dialog(granted):
+    session, desktop, _ = granted
+    desktop.foreground = 2
+    with pytest.raises(ValueError, match='not been granted'):
+        session.observe()
+
+
+def test_non_actionable_uia_control_reports_known_no_effect(granted):
+    session, desktop, frame = granted
+    session.tasks['owner']['frame']['controls'][0]['actions'] = []
+    result = session.act(frame_id=frame['frame_id'], kind='invoke', target_id='button')
+    assert result['effect'] == 'no_effect'
+    assert 'screenshot' in result['reason']
+    assert not desktop.calls
+
+
+def test_opaque_focused_container_preserves_visual_click_target():
+    desktop = Desktop()
+    desktop.accessibility = lambda _: {'controls': [{'id': 'canvas', 'role': 'ControlType.Pane', 'focused': True}]}
+    session = ComputerSession(desktop)
+    token = execution_task_id.set('canvas-test')
+    try:
+        frame = session.begin(window_id=1, purpose='Use unfamiliar canvas app')
+        assert session.visual_context('canvas-test')['input_targeted'] is False
+        clicked = session.act(frame_id=frame['frame_id'], kind='click', x=500, y=300)
+        assert session.visual_context('canvas-test')['input_targeted'] is True
+        typed = session.act(frame_id=clicked['post_observation']['frame_id'], kind='type', text='Hello')
+        assert typed['ok']
+    finally:
+        session.close_task('canvas-test')
+        execution_task_id.reset(token)
+
+
 def test_brain_attaches_pixels_without_putting_them_in_history(granted):
     session, _, _ = granted
     calls = []
@@ -176,6 +260,43 @@ def test_submission_needs_exact_approval_even_with_window_grant(granted):
     assert session.act(**args)['effect'] == 'no_effect'
     assert not desktop.calls
     assert session.act(_confirmed=True, **args)['ok']
+
+
+def test_drag_always_requires_exact_approval(granted):
+    session, desktop, frame = granted
+    args = ComputerAction(frame_id=frame['frame_id'], kind='drag', x=100, y=200,
+                          end_x=600, end_y=200).model_dump(exclude_none=True)
+    assert session.act(**args)['effect'] == 'no_effect'
+    assert not desktop.calls
+    assert session.act(_confirmed=True, **args)['ok']
+
+
+@pytest.mark.parametrize('arguments', [
+    {'kind': 'hover'}, {'kind': 'drag', 'x': 1, 'y': 2},
+    {'kind': 'wait', 'duration_ms': 10000},
+    {'kind': 'drag', 'x': 0, 'y': 0, 'end_x': 1001, 'end_y': 2},
+])
+def test_pointer_and_wait_arguments_are_bounded(arguments):
+    with pytest.raises(ValueError):
+        ComputerAction(frame_id='fresh', **arguments)
+
+
+def test_interrupted_drag_releases_mouse_button(monkeypatch):
+    from app import windows_computer as native
+    fake = SimpleNamespace(GetAsyncKeyState=lambda _: 0, SetCursorPos=lambda *_: True,
+                           WindowFromPoint=lambda _: 1, GetAncestor=lambda *_: 1)
+    monkeypatch.setattr(native, 'user32', lambda: fake)
+    monkeypatch.setattr(native, 'foreground_window_id', lambda: 1)
+    events = []
+    monkeypatch.setattr(native, 'send', lambda items: events.extend(item.mouse.dwFlags for item in items))
+    checks = []
+    def cancelled():
+        checks.append(True)
+        return len(checks) > 3
+    with pytest.raises(RuntimeError, match='stopped'):
+        native._dispatch(1, [0, 0, 800, 600], dict(kind='drag', x=100, y=100,
+                         end_x=600, end_y=100, duration_ms=100), cancelled)
+    assert events == [2, 4]  # Down then release, even after partial movement.
 
 
 def test_concurrent_task_cannot_take_over_desktop(granted):

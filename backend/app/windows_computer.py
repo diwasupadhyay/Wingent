@@ -23,6 +23,8 @@ def user32():
 
 
 def focus(window_id):
+    if foreground_window_id() == window_id:
+        return
     api = user32()
     api.ShowWindow(window_id, 9)
     api.SetForegroundWindow(window_id)
@@ -117,8 +119,14 @@ for($i=0;$i -lt [Math]::Min($all.Count,500);$i++){
    $name=$c.Name; if($name.Length -gt 180){$name=$name.Substring(0,180)}
    $value=''; $pattern=$null
    if($e.TryGetCurrentPattern([System.Windows.Automation.ValuePattern]::Pattern,[ref]$pattern)){$value=$pattern.Current.Value}
+   elseif($e.TryGetCurrentPattern([System.Windows.Automation.TextPattern]::Pattern,[ref]$pattern)){$value=$pattern.DocumentRange.GetText(500)}
    if($value.Length -gt 500){$value=$value.Substring(0,500)}
-   $items+=@{id=$id;name=$name;value=$value;role=$c.ControlType.ProgrammaticName;enabled=$c.IsEnabled;focused=$c.HasKeyboardFocus;rect=@($r.X,$r.Y,$r.Width,$r.Height)}
+   $actions=@(); foreach($patternName in @('Invoke','SelectionItem','Toggle')){
+    $patternType=('System.Windows.Automation.'+$patternName+'Pattern') -as [type]
+    $supported=$null
+    if($e.TryGetCurrentPattern($patternType::Pattern,[ref]$supported)){$actions+=$patternName}
+   }
+   $items+=@{id=$id;name=$name;value=$value;role=$c.ControlType.ProgrammaticName;enabled=$c.IsEnabled;focused=$c.HasKeyboardFocus;actions=$actions;rect=@($r.X,$r.Y,$r.Width,$r.Height)}
   }
  } catch {if($p.target){throw}}
 }
@@ -203,7 +211,15 @@ def _dispatch(window_id, rect, action, cancelled):
     if kind == 'invoke':
         if not accessibility(window_id, action['target_id'])['acted']:
             raise ValueError('Observed control has no supported accessibility action.')
-    elif kind in {'click', 'scroll'}:
+    elif kind == 'wait':
+        deadline = time.monotonic() + action.get('duration_ms', 300) / 1000
+        while time.monotonic() < deadline:
+            if cancelled() or user32().GetAsyncKeyState(0x1B) & 0x8000:
+                raise RuntimeError('Computer observation wait cancelled.')
+            time.sleep(.02)
+        # Foreground may legitimately change while an app/dialog loads. The
+        # session observes it afterwards; wait never sends input to either app.
+    elif kind in {'click', 'scroll', 'hover', 'drag'}:
         x = rect[0] + round((action.get('x') if action.get('x') is not None else 500) * (rect[2]-1) / 1000)
         y = rect[1] + round((action.get('y') if action.get('y') is not None else 500) * (rect[3]-1) / 1000)
         api = user32()
@@ -218,6 +234,31 @@ def _dispatch(window_id, rect, action, cancelled):
         check()
         if kind == 'scroll':
             send([Input(0, InputData(mouse=Mouse(0, 0, action['amount'] * 120 & 0xffffffff, 0x0800, 0, 0)))])
+        elif kind == 'hover':
+            deadline = time.monotonic() + action.get('duration_ms', 300) / 1000
+            while time.monotonic() < deadline:
+                check()
+                time.sleep(.02)
+        elif kind == 'drag':
+            end_x = rect[0] + round(action['end_x'] * (rect[2]-1) / 1000)
+            end_y = rect[1] + round(action['end_y'] * (rect[3]-1) / 1000)
+            steps = max(5, action.get('duration_ms', 300) // 20)
+            points = [(round(x+(end_x-x)*i/steps), round(y+(end_y-y)*i/steps)) for i in range(steps+1)]
+            def owns_point(point):
+                return api.GetAncestor(api.WindowFromPoint(wintypes.POINT(*point)), 2) == window_id
+            if not all(owns_point(point) for point in points):
+                raise ValueError('Drag path leaves the approved visible window.')
+            down, up = (8, 16) if action.get('button') == 'right' else (2, 4)
+            try:
+                send([Input(0, InputData(mouse=Mouse(0, 0, 0, down, 0, 0)))])
+                for point in points[1:]:
+                    check()
+                    if not owns_point(point):
+                        raise RuntimeError('Drag path became occluded; partial effect is unknown.')
+                    api.SetCursorPos(*point)
+                    time.sleep(.02)
+            finally:
+                send([Input(0, InputData(mouse=Mouse(0, 0, 0, up, 0, 0)))])
         else:
             down, up = (8, 16) if action.get('button') == 'right' else (2, 4)
             for _ in range(action.get('clicks', 1)):

@@ -20,6 +20,7 @@ backend/.env
 screenshots/
 cache/
 .build/
+references/
 src-tauri/binaries/*.exe
 
 # OS

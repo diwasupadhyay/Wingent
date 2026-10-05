@@ -8,6 +8,13 @@ from app.tools import ToolPermission, ToolRegistry
 client = TestClient(app)
 
 
+def test_production_has_one_computer_control_protocol():
+    from app.main import registry
+    names = {tool['name'] for tool in registry.manifest()}
+    assert {'computer_begin', 'computer_observe', 'computer_action'} <= names
+    assert not any(name.startswith('desktop_') or name == 'screen_inspect' for name in names)
+
+
 def test_health_endpoint():
     response = client.get('/health')
     assert response.status_code == 200

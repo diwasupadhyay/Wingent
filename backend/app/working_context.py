@@ -142,9 +142,10 @@ def observed_effects(state):
             detail = f"HTML media time advanced on {str(data.get('title', 'observed page'))[:180]}"
         elif tool in {'computer_action', 'computer_confirm_action'}:
             post = data.get('post_observation') or {}
-            detail = ('Computer input dispatched; window re-observed; visible change ' +
+            effect = 'Bounded wait completed' if record.action.arguments.get('kind') == 'wait' else 'Computer input dispatched'
+            detail = (effect + '; window re-observed; visible change ' +
                       ('detected' if data.get('visible_change_observed') is True else 'not detected')) if post.get('ok') else (
-                      'Computer input dispatched; follow-up window observation unavailable')
+                      effect + '; follow-up window observation unavailable')
         elif tool == 'application_open' and data.get('pid'):
             detail = f"Application process launched: {str(data.get('path', ''))[:240]}; window state unverified"
         elif tool == 'process_run':

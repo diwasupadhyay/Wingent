@@ -133,7 +133,7 @@ describe('App', () => {
       }
       return { ok: true, body: { getReader: () => ({ read: async () => {
         readCount += 1;
-        if (readCount === 1) return encode('event: confirmation_required\ndata: {"approval_id":"request1","token":"secret-token","task_id":"task1","tool":"computer_begin","arguments":{"window_id":722322,"purpose":"Inspect window"},"expires_in":60}\n\n');
+        if (readCount === 1) return encode('event: confirmation_required\ndata: {"approval_id":"request1","token":"secret-token","task_id":"task1","tool":"computer_begin","arguments":{"window_id":722322,"scope":"desktop","purpose":"Inspect window"},"expires_in":60}\n\n');
         if (readCount === 2) return waiting;
         return { done: true };
       } }) } };
@@ -141,6 +141,7 @@ describe('App', () => {
     vi.stubGlobal('fetch', send);
     runCommand();
     await waitFor(() => expect(screen.getByRole('region', { name: 'Action approval' })).toBeTruthy());
+    expect(screen.getByText(/Across apps and dialogs/)).toBeTruthy();
     fireEvent.click(screen.getByText('Approve once'));
     await waitFor(() => expect(vi.mocked(invoke)).toHaveBeenCalledWith('handoff_computer_focus', { windowId: 722322 }));
     if (denyFocus) {

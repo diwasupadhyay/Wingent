@@ -1,52 +1,25 @@
 # Wingent Memory
 
-## Latest resume point (2026-10-04)
+Updated: 2026-10-05 (Asia/Calcutta). Current source: `operator-v24`.
 
-Current build is `operator-v18`. Phase 4 bounded Windows-control exit gate is met: real model completed isolated GUI task (6 calls, 103.58 s, external oracle exact match); Notepad saved-text and Calculator `Display is 56` passed twice after pacing fix. Production finish remains unverified without application-owned proof. Focus denial pauses for resumable user attention, visual actions reject stale frames/untargeted text and duplicate clicks, and final results list trusted observed effects. Built and started the v18 EXE; health/model readiness passed, with 218 backend, 15 UI and 1 Rust tests passing. Phases 3, 5, 6 and 7 remain open. The v17 note below is historical.
+## Direction and entry points
 
-General computer brain/control slice targets `operator-v17`. New owners: `brain.py`, `computer_tools.py`, `windows_computer.py`. Direct local vision input, scoped window grants, one-use frames, UIA/click/type/scroll/hotkeys, sensitive-input gates and overlay handoff are implemented. Native GUI/Notepad/Calculator checks passed. Model-driven runs still fail under foreground loss and imperfect action choices; do not claim all phases complete. Consult the current plan and `docs/evaluations/COMPUTER_OPERATOR.md` before following old browser-first notes. Rebuild/start the EXE and verify its marker; only project-owned old processes may be stopped.
+A general local-first Windows computer agent: user supplies WHAT, the LLM chooses HOW through observation, controlled tools and replanning. Keep the minimal overlay, tray, Ctrl+Space, approvals and cancellation. Do not hardcode app workflows.
 
-Updated: 2026-10-03. This is resume context, not a second phase tracker.
+Read [the plan](docs/AGENT_IMPLEMENTATION_PLAN.md), [architecture](docs/ARCHITECTURE.md), [security](docs/SECURITY.md) and [changes](CHANGES.md). [Computer evaluations](docs/evaluations/COMPUTER_OPERATOR.md) distinguish native, model and packaged evidence. [Structure](STRUCTURE.md) maps ownership.
 
-## Latest user instruction
+## Current state
 
-Progress the general agent's autonomy and reasoning through completed, tested implementation slices. Preserve honest verification, rebuild the EXE and keep Git rollback checkpoints.
+Natural tasks use `operator.py`, `AgentRuntime` and `AgentBrain`. The brain receives current approved pixels, original goal and bounded context. Production has one GUI protocol: `computer_begin`, `computer_observe`, `computer_action`, `computer_confirm_action`. Legacy desktop/screen adapters remain in compatibility tests only.
 
-## Direction
+Default window scope is narrow. Explicit desktop scope permits task-long switching among observed apps and following foreground dialogs. Input still targets a fresh foreground-window frame. Sensitive effects need approval. Arbitrary-goal verification is incomplete.
 
-General-purpose personal computer agent: user provides the goal, agent discovers tools, reasons, observes, acts, verifies and replans. Examples are not architectural limits. Keep local-first reasoning, minimal overlay/tray, explicit sensitive-action approvals and honest results.
+Default installed model: `qwen3-vl:4b-instruct`. Do not download or switch models silently. Study-only clones are in ignored `references/`; never modify or commit them.
 
-Authoritative tracker: [docs/AGENT_IMPLEMENTATION_PLAN.md](docs/AGENT_IMPLEMENTATION_PLAN.md). Earlier application-specific phases and launcher-only restrictions are superseded. Historical evidence is retained in docs/history/AGENT_PLAN_BEFORE_DOCS_REALIGNMENT.md.
+## Working discipline
 
-## Implemented and unfinished
+Inspect the worktree; preserve useful changes. Identify the owning path, hypothesis and cheapest disconfirming test. Use isolated owned windows/files for live evaluations. Rebuild both sidecar and EXE after code changes. Only terminate project-owned old processes, never an unknown port occupant.
 
-- Phases 0–2: recorded baseline, generic bounded runtime and typed/approved tool contracts complete for their stated scope.
-- Phase 3: registry-driven next-tool reasoning, typed arguments, outcome feedback, general approved file primitives and opt-in trusted skill entry points exist.
-- Phase 3 remains incomplete. Phase 3A's bounded measurement and installed-model comparison are complete: `qwen3-vl:4b-instruct` passed 3/4 in each of two runs but failed different cases; `llama3.2:3b` passed 2/4 after a host clarification guard. This does not meet the varied/held-out reliability gate. See docs/evaluations/PHASE3A_BASELINE.md. A model-only completion assessor had hallucinated success and was removed.
-- Fixed 2048-byte read pages replaced model-selected page sizes after a one-byte-read failure.
-- Phase 3B working-context contracts are complete for the current task/file surface: bounded model notes preserve requested outcomes/constraints/targets and remaining work; a full host action index exposes provenance and `task_read_result` retrieves historical bodies without redispatch. Source reports require contiguous pages of the same observed version. Alternating observation cycles require a bounded refresh reason or an intervening action. Clarification answers now ground missing names/paths. These contracts do not establish broad model competence or independent completion.
-- Initial Win32 child-control input and scoped navigation keys return bounded post-action observations; visible-window and control observations include foreground-at-capture identity. Exact-action-approved native process execution has a task cancellation hook and exact-PID fallback; detached descendants remain uncertain. Explicitly approved `screen_inspect` now captures a fresh foreground window in memory for local Ollama vision, refusing known password controls, stale identity and remote URLs. Its description is untrusted; real capture is unverified. General UI accessibility and arbitrary keyboard/mouse remain unavailable. The narrow browser DOM adapter remains experimental.
-- Native application discovery covers App Paths, matching Start menu shortcuts, PATH and bounded install roots; opening requires a fresh task-owned discovery ID, host-bound exact-path approval and identity recheck. Same executable launch is deduplicated within a task. Notepad and VS Code were found read-only, but live GUI launch/control was not verified.
-- An experimental agent-owned Chrome DOM/media adapter was added after a reported YouTube playback failure. Chrome and Edge browser-level CDP works, but enabling a page-level session exits with `0x80000003` here; disabling GPU did not help. Normal Chrome fallback showed no new visible window here. Playback remains unverified. The model initially reopened the Joji 777 search URL and tried Play too early; host guards now reject those no-progress actions. It then selected search → observed 777 link → Play in a simulated browser. Browser-control failure stops early instead of wasting model calls.
-- After the same old trace recurred, native startup was found to accept any `service: wingent` on port 8000. It now requires the current runtime marker and blocks incompatible submissions instead of silently using a stale backend.
-- Initial desktop adapter: observe visible Win32 child controls, then exact-action-approved click or text entry against a fresh window/control identity. This is not visual screen understanding or a claim of general computer control.
-- Genuine clarification questions have 15-minute, single-use in-memory resume preserving prior actions and answer history. No durable checkpoints or persistent personal memory; interrupted resumes may be lost.
-- Plugin code is trusted native code, not sandboxed. Frozen releases must bundle enabled plugins and metadata.
+EXE: `src-tauri/target/release/app.exe`. Tauri owns a private per-run backend port and verifies runtime plus instance identity. An unrelated service on port 8000 is not this EXE. Ollama is a separate local service.
 
-## Recorded evidence
-
-Earlier evidence: operator-v12 passed 178 backend tests; the UI suite previously passed 14 tests. `qwen3-vl:4b-instruct` described a synthetic red image through local Ollama; live screen capture is unverified because this restricted session enumerates zero visible windows. Phase 3A comparison results are above. A controlled sleeping-process cancellation fixture passed; scoped keyboard and foreground identity have only fixture coverage. A simulated-browser Joji sequence passed, but actual Chrome/Edge page control crashed and playback was not verified. Packaged denial/replay passed previously; approved Explorer launch had an unknown outcome here.
-
-Latest speed/readiness slice: 195 backend tests and 15 UI tests passed; one Rust contract test passed. Tool selection and typed arguments can be returned together, with a guarded fallback. Host logic refuses to claim a media goal after search alone without observed playback progress. With the installed model, an isolated fake-browser Joji task selected search, an observed result and Play in 5 calls/20.33 seconds. This does not verify real Chrome or playback. Model readiness now checks Ollama's model catalogue, retries a transient timeout once and reports a specific diagnostic; a pending clarification is not consumed when Ollama is offline. Previous two-page report took 124.22 seconds/11 calls in source and 172.49 seconds through the frozen API.
-
-Latest operator-v16 slice: 200 backend tests, 15 UI tests and one Rust test pass. A plain Chrome launch is rejected for an explicit browser-media task; flexible media requests automatically dispatch the registered Play tool after the model follows an observed link to paused HTML media, saving one model call while retaining review and playback-progress checks. Named-title requests do not auto-play. A malformed empty clarification after completed actions now yields an honest partial final instead of an error. Qwen fake-browser Joji-any passed in 4 calls/32.89 seconds and exact Joji-777 in 5 calls/26.33 seconds; live-model timings vary. The smaller llama3.2:3b still made a poor final decision and is not a safe default merely for speed. Real Chrome/Edge page-level CDP closes with process exit `0x80000003`, including an isolated `1+1` evaluation and headless trial; actual playback remains unverified.
-
-Current source and normal release backend marker: operator-v16. EXE: src-tauri/target/release/app.exe. Source/release sidecar SHA-256 match: `0FAA4747EE6F3FD20A282A9B9A8F2574AE2CDDB3D9197B96E0121DC321A6C079`. EXE SHA-256: `172A903BE154F09248C27CA41A572298A86540B9DFE2ADFD19F612E282A77B2D`. Check running process identity before treating an open app as current.
-
-## Next when authorized
-
-Expand the varied/held-out live corpus; improve explicit remaining-work, observation completeness and independent verification. Harden continuation against disconnect/restart and start read-only structured Windows observation before general UI actions. The current failures do not prove model size is the sole cause.
-
-Every new capability needs typed input/output, declared permissions, target validation, bounded execution, truthful outcomes, observation and verification/recovery behavior. Prefer structured mechanisms, but plan general process and visual fallbacks.
-
-Ask before new personal data/profile access, downloads, executable skill installation, elevation and consequential changes. Rebuild both sidecar and EXE after authorized code slices; record actual evidence and phase status.
+Phases 0-2, bounded 3A/3B and bounded Phase 4 have evidence. Broad Phase 3/5/6/7 gates remain open. A successful click or build is not reliable autonomous completion.
