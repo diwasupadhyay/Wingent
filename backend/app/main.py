@@ -6,6 +6,9 @@ from fastapi import FastAPI, Request, HTTPException
 from pydantic import BaseModel, ConfigDict, Field
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse
+from fastapi.exceptions import RequestValidationError
+from fastapi.exception_handlers import request_validation_exception_handler
 
 from app.llm import OllamaClient
 from app.model_routing import select_model
@@ -28,8 +31,16 @@ from app.process_tools import register as register_process
 from app.application_tools import register as register_applications
 from app.version import RUNTIME_VERSION
 from app.computer_tools import register as register_computer
+from app.provider_settings import ProviderSettings, CloudClient
 
 app = FastAPI(title='Wingent', version='0.1.0')
+
+
+@app.exception_handler(RequestValidationError)
+async def validation_error(request, exc):
+    if request.url.path == '/api/settings':
+        return JSONResponse(status_code=422, content={'detail': 'Invalid settings. Check provider, model, HTTPS endpoint and API key.'})
+    return await request_validation_exception_handler(request, exc)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[
@@ -55,6 +66,30 @@ register_applications(registry)
 register_browser(registry)
 loaded_skills = load_skills(registry, [name.strip() for name in os.getenv('WINGENT_SKILLS', '').split(',') if name.strip()])
 task_store = TaskStore()
+provider_settings = None
+
+
+def make_provider(goal=''):
+    settings = provider_settings
+    if settings and settings.provider == 'cloud':
+        return CloudClient(settings)
+    return OllamaClient(model=settings.model if settings else select_model(goal))
+
+
+@app.get('/api/settings')
+def get_settings():
+    return (provider_settings or ProviderSettings(model=select_model(''))).public()
+
+
+@app.post('/api/settings')
+def set_settings(settings: ProviderSettings, request: Request):
+    global provider_settings
+    origin = request.headers.get('origin')
+    if origin and origin not in {'http://localhost:5173', 'http://127.0.0.1:5173', 'tauri://localhost',
+                                 'http://tauri.localhost', 'https://tauri.localhost'}:
+        raise HTTPException(status_code=403, detail='Settings require the Wingent application origin.')
+    provider_settings = settings.model_copy(deep=True)
+    return provider_settings.public()
 
 
 def sse_event(event: str, payload: dict[str, object]) -> str:
@@ -90,7 +125,7 @@ def capabilities():
 
 @app.get('/api/model-status')
 async def model_status():
-    return await OllamaClient(model=select_model('')).availability()
+    return await make_provider().availability()
 
 
 @app.post('/api/command')
@@ -102,10 +137,7 @@ async def command(request: Request, command_request: CommandRequest) -> Streamin
             pending_state = task_store.peek(command_request.resume_task_id)
         except KeyError as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
-        resume_model = OllamaClient(
-            base_url=os.getenv('OLLAMA_BASE_URL', 'http://127.0.0.1:11434'),
-            model=select_model(pending_state.goal),
-        )
+        resume_model = make_provider(pending_state.goal)
         available = await resume_model.is_available()
         if not available:
             message = (resume_model.last_availability or {}).get('message', 'Ollama is unavailable.')
@@ -124,10 +156,7 @@ async def command(request: Request, command_request: CommandRequest) -> Streamin
         if await request.is_disconnected():
             return
 
-        llm = BudgetedProvider(OllamaClient(
-            base_url=os.getenv('OLLAMA_BASE_URL', 'http://127.0.0.1:11434'),
-            model=select_model(state.goal),
-        ), state)
+        llm = BudgetedProvider(make_provider(state.goal), state)
         actions = [] if resuming else detect_deterministic_tools(prompt)
         if actions:
             async for event, payload in execute_plan(actions, registry, request.is_disconnected, state=state, review_actions=command_request.review_actions):

@@ -9,11 +9,17 @@ type StepState = 'pending' | 'running' | 'accepted' | 'failed' | 'not_run' | 'un
 type ActionStep = { label: string; state: StepState };
 type Approval = { approval_id: string; token: string; task_id: string; tool: string; arguments: Record<string, unknown>; expires_in: number };
 type BackendState = 'ready' | 'incompatible' | 'unavailable';
+type ProviderSettings = { provider: 'local' | 'cloud'; model: string; endpoint: string; api_key: string; share_screenshots: boolean };
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
 const isTauri = () => '__TAURI_INTERNALS__' in window;
 
 export default function App() {
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [settingsBusy, setSettingsBusy] = useState(false);
+  const [settingsMessage, setSettingsMessage] = useState('');
+  const [provider, setProvider] = useState<'local' | 'cloud'>('local');
+  const [settings, setSettings] = useState<ProviderSettings>({ provider: 'local', model: 'qwen3-vl:4b-instruct', endpoint: '', api_key: '', share_screenshots: false });
   const [prompt, setPrompt] = useState('');
   const [status, setStatus] = useState<Stage>('idle');
   const [progress, setProgress] = useState('Ready');
@@ -38,7 +44,37 @@ export default function App() {
   const backendProblem = backendReady === 'incompatible'
     ? 'Wingent connected to the wrong backend instance. Restart this EXE.'
     : 'Wingent service is unavailable. Restart Wingent if this persists.';
-  const expanded = loading || Boolean(content) || Boolean(error) || (backendReady !== null && backendReady !== 'ready');
+  const expanded = settingsOpen || loading || Boolean(content) || Boolean(error) || (backendReady !== null && backendReady !== 'ready');
+
+  const openSettings = async () => {
+    if (loading) return;
+    setSettingsMessage('');
+    setSettingsOpen(true);
+    try {
+      if (isTauri()) apiBaseUrlRef.current = await invoke<string>('backend_base_url');
+      const response = await fetch(`${apiBaseUrlRef.current}/api/settings`);
+      if (!response.ok) throw new Error('Settings unavailable');
+      const info = await response.json();
+      setSettings({ provider: info.provider, model: info.model, endpoint: info.endpoint, api_key: '', share_screenshots: info.share_screenshots });
+      setProvider(info.provider);
+    } catch { setSettingsMessage('Could not load settings. Check the Wingent service.'); }
+  };
+
+  const saveSettings = async () => {
+    setSettingsBusy(true);
+    setSettingsMessage('');
+    try {
+      const response = await fetch(`${apiBaseUrlRef.current}/api/settings`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(settings),
+      });
+      if (!response.ok) throw new Error('Check the model, HTTPS endpoint and API key.');
+      setProvider(settings.provider);
+      setSettings((current) => ({ ...current, api_key: '' }));
+      setSettingsOpen(false);
+      void checkOllama();
+    } catch (cause) { setSettingsMessage(cause instanceof Error ? cause.message : 'Could not save settings.'); }
+    finally { setSettingsBusy(false); }
+  };
 
   const checkOllama = useCallback((): Promise<ModelStatus | null> => {
     if (ollamaCheckRef.current) return ollamaCheckRef.current;
@@ -184,11 +220,12 @@ export default function App() {
 
   const submit = async (value = prompt) => {
     const trimmed = value.trim();
-    if (!trimmed || loading) return;
+    if (!trimmed || loading || abortRef.current || settingsOpen) return;
     const continuingTask = resumeTaskId;
     const controller = new AbortController();
     abortRef.current = controller;
     setLastPrompt(trimmed);
+    setPrompt('');
     setLoading(true);
     setStatus('planning');
     setProgress('Planning');
@@ -250,7 +287,7 @@ export default function App() {
           const name = lines.find((line) => line.startsWith('event:'))?.slice(6).trim();
           const raw = lines.find((line) => line.startsWith('data:'))?.slice(5).trim();
           if (!raw) continue;
-          let data: { stage?: string; message?: string; text?: string; code?: string; steps?: string[]; index?: number; state?: StepState; label?: string; outcome?: string; verified?: boolean; resume_task_id?: string } & Partial<Approval>;
+          let data: { stage?: string; message?: string; text?: string; code?: string; steps?: string[]; index?: number; state?: StepState; label?: string; outcome?: string; verified?: boolean; resume_task_id?: string; automatic_handoff?: boolean } & Partial<Approval>;
           try { data = JSON.parse(raw); } catch { continue; }
           if (name === 'status') {
             setStatus(data.stage === 'executing' ? 'tool_running' : (data.stage as Stage) ?? 'idle');
@@ -271,6 +308,17 @@ export default function App() {
             const state = data.state;
             if (typeof index === 'number' && state) setSteps((current) => current.map((step, i) => i === index ? { ...step, state } : step));
           } else if (name === 'confirmation_required' && data.approval_id && data.token && data.tool && data.arguments) {
+            if (data.automatic_handoff === true && data.tool === 'computer_begin' && isTauri() && typeof data.arguments.window_id === 'number') {
+              setProgress('Focusing the requested application');
+              await invoke('handoff_computer_focus', { windowId: data.arguments.window_id });
+              if (abortRef.current !== controller) return;
+              const handoff = await fetch(`${apiBaseUrlRef.current}/api/approvals/${encodeURIComponent(data.approval_id)}`, {
+                method: 'POST', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ token: data.token, approve: true }), signal: controller.signal,
+              });
+              if (!handoff.ok) throw new Error('Application focus handoff expired. Stop and retry the task.');
+              continue;
+            }
             if (isTauri()) void invoke('reveal_overlay');
             setApproval(data as Approval);
             setApprovalBusy(false);
@@ -334,13 +382,13 @@ export default function App() {
     <main className={`overlay ${expanded ? 'overlay-expanded' : ''}`}>
       <section className='command-surface' role='dialog' aria-label='Wingent command bar'>
         <div className='search-row'>
-          <div className='wingent-mark' aria-hidden='true'>W</div>
           <label className='sr-only' htmlFor='command-input'>What should Wingent do?</label>
           <input
             id='command-input'
             ref={inputRef}
             aria-label='Command input'
             value={prompt}
+            disabled={loading}
             onChange={(event) => setPrompt(event.target.value)}
             onKeyDown={(event) => {
               if (event.key === 'Enter') void submit();
@@ -349,10 +397,12 @@ export default function App() {
                 loading ? cancel() : isTauri() && void invoke('hide_overlay');
               }
             }}
-            placeholder={resumeTaskId ? 'Answer Wingent’s question...' : 'Tell Wingent what you want done...'}
+            placeholder={loading ? 'Working on your task…' : resumeTaskId ? 'Answer Wingent’s question...' : 'Tell Wingent what you want done...'}
             autoComplete='off'
             spellCheck='false'
           />
+          <button type='button' className='settings-button' aria-label='Settings' title='Model settings'
+            disabled={loading} onClick={() => settingsOpen ? setSettingsOpen(false) : void openSettings()}>⚙</button>
           <button type='button' className={`review-toggle ${reviewActions ? 'review-active' : ''}`}
             aria-label='Review actions before running' aria-pressed={reviewActions}
             disabled={loading} onClick={() => setReviewActions((value) => !value)}
@@ -360,19 +410,36 @@ export default function App() {
           <button
             type='button'
             className={`ollama-control ollama-${ollama}`}
-            onClick={() => ollama !== 'running' && void startOllama()}
+            onClick={() => provider === 'cloud' ? void openSettings() : ollama !== 'running' && void startOllama()}
             disabled={!isTauri() || ollama === 'checking' || ollama === 'starting' || ollama === 'running'}
             aria-label={ollamaLabel}
-            title={ollamaMessage}
+            title={provider === 'cloud' ? `Cloud: ${settings.model}` : ollamaMessage}
           >
             <span className='status-dot' />
-            {ollama !== 'running' && <span>{ollamaLabel}</span>}
+            {provider === 'cloud' ? <span>Cloud</span> : ollama !== 'running' && <span>{ollamaLabel}</span>}
           </button>
-          <button type='button' className='run-button' onClick={() => void submit()} disabled={loading || !prompt.trim()} aria-label='Run command'>
+          <button type='button' className='run-button' onClick={() => void submit()} disabled={loading || settingsOpen || !prompt.trim()} aria-label='Run command'>
             {loading ? <span className='spinner' /> : <span aria-hidden='true'>↑</span>}
           </button>
         </div>
-        {expanded && (
+        {settingsOpen && (
+          <section className='settings-panel' aria-label='Model settings'>
+            <div className='settings-grid'>
+              <label>Provider<select value={settings.provider} onChange={(e) => setSettings({ ...settings, provider: e.target.value as 'local' | 'cloud', model: '' })}>
+                <option value='local'>Local · Ollama</option><option value='cloud'>Cloud · compatible API</option>
+              </select></label>
+              <label>Model<input value={settings.model} placeholder='Vision-capable model ID' onChange={(e) => setSettings({ ...settings, model: e.target.value })} /></label>
+              {settings.provider === 'cloud' && <>
+                <label>API base URL<input value={settings.endpoint} placeholder='https://your-provider.example/v1' onChange={(e) => setSettings({ ...settings, endpoint: e.target.value })} /></label>
+                <label>API key<input type='password' autoComplete='off' value={settings.api_key} placeholder='Session only · re-enter to save' onChange={(e) => setSettings({ ...settings, api_key: e.target.value })} /></label>
+              </>}
+            </div>
+            {settings.provider === 'cloud' && <label className='cloud-consent'><input type='checkbox' checked={settings.share_screenshots} onChange={(e) => setSettings({ ...settings, share_screenshots: e.target.checked })} />Send screenshots to this provider for vision. Task text and tool results also leave this PC.</label>}
+            <div className='settings-footer'><span>{settingsMessage || 'Settings last until Wingent closes. Cloud usage may incur charges.'}</span>
+              <button disabled={settingsBusy || !settings.model.trim()} onClick={() => void saveSettings()}>{settingsBusy ? 'Saving…' : 'Save'}</button></div>
+          </section>
+        )}
+        {expanded && !settingsOpen && (
           <div className='result-panel' aria-live='polite' aria-busy={loading}>
             <div className='result-meta'>
               <span className={`activity-dot activity-${backendReady !== null && backendReady !== 'ready' && !loading ? 'error' : status}`} />

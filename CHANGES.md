@@ -1,6 +1,16 @@
 # Wingent Changes
 
-2026-10-05. Source marker: `operator-v24`. The existing project and UI are retained.
+2026-10-05. Source marker: `operator-v25`.
+
+## Routine tasks, provider settings and command bar
+
+Routine computer sessions use an automatic Tauri focus handoff acknowledged through the existing single-use token channel. It is allowed only for the SAFE computer_begin tool with Review off; consequential actions never use this path. This restores the handoff previously coupled to the visible approval dialog.
+
+- Missing pieces: overlay could be selected as a target, routine grants prompted repeatedly, folder paths were guessed, and provider errors lacked useful detail.
+- Changes: overlay exclusion/hide, routine session grants, known-folder discovery and directory creation, session-only cloud/local settings, explicit cloud vision opt-in, input lock/clear, removed logo. Ollama schema/grammar rejection gets one JSON-mode retry; all tool proposals still undergo host validation.
+- Reference concepts reviewed: Open-Interface core/LLM/model/settings separation and original-request/step context; Self-Operating Computer's repeated screenshot/action loop and model adapters. No reference files modified or copied.
+- Verification: mocked provider/privacy/schema fallback tests and UI tests. No live model calls, desktop task execution or paid API tests in this pass, per user request. Original HTTP 400 cause and Windows focus reliability remain pending manual retest.
+- Protocol reference: [Ollama structured outputs](https://github.com/ollama/ollama/blob/main/docs/capabilities/structured-outputs.mdx).
 
 ## What was missing or broken
 

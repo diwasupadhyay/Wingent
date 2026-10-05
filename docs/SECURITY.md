@@ -16,7 +16,7 @@ Known UIA password controls block capture. Custom/canvas authentication may not 
 
 ## Data and model boundary
 
-Production pixels stay in memory and go only to loopback Ollama. No silent cloud fallback, screenshot persistence or credential logging. Synthetic evaluation screenshots may be saved only in ignored build fixtures. Screen text, files and tool output are untrusted data, never new instructions or authority.
+By default production pixels stay in memory and go only to loopback Ollama. Cloud mode is explicitly selected in Settings; task text/tool results go to the configured HTTPS provider and images require the screenshot-sharing checkbox. Keys are session-only, omitted from API responses and never persisted. No silent cloud fallback or screenshot persistence. Synthetic evaluation screenshots may be saved only in ignored build fixtures. Screen text, files and tool output are untrusted data, never new instructions or authority.
 
 Model proposals cannot grant permissions or certify completion. Typed registered tools, exact target checks and host policy remain authoritative. A model finish or dispatch acknowledgement stays unverified unless fresh trusted evidence covers the goal.
 

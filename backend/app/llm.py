@@ -83,7 +83,7 @@ class OllamaClient:
 
     async def _generate(self, prompt, system, schema, images=None):
         payload = {
-            'model': os.getenv('OLLAMA_VISION_MODEL', 'qwen3-vl:4b-instruct') if images else self.model,
+            'model': os.getenv('OLLAMA_VISION_MODEL', self.model) if images else self.model,
             'system': system, 'prompt': prompt, 'stream': False, 'format': schema,
             'options': {'temperature': 0, 'num_predict': 1200, 'num_ctx': 8192},
         }
@@ -91,6 +91,17 @@ class OllamaClient:
             payload['images'] = [base64.b64encode(image).decode('ascii') for image in images]
         async with httpx.AsyncClient(timeout=60.0, trust_env=False) as client:
             response = await client.post(f'{self.base_url}/api/generate', json=payload)
+            if response.status_code == 400:
+                try:
+                    reason = str(response.json().get('error', '')).lower()
+                except (ValueError, AttributeError):
+                    reason = ''
+                if any(word in reason for word in ('schema', 'grammar', 'format')):
+                    # Some installed runners reject recursive JSON schemas.
+                    # Retry only that rejected inference, never a computer action.
+                    payload['format'] = 'json'
+                    payload['system'] += '\nReturn JSON matching this schema: ' + json.dumps(schema)
+                    response = await client.post(f'{self.base_url}/api/generate', json=payload)
             if response.is_error:
                 try:
                     detail = str(response.json().get('error', 'No error detail returned'))[:500]

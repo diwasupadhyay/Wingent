@@ -32,6 +32,37 @@ function runCommand() {
 }
 
 describe('App', () => {
+  it('automatically hands off routine focus without showing an approval card', async () => {
+    vi.stubGlobal('__TAURI_INTERNALS__', {});
+    vi.mocked(invoke).mockImplementation(async (command: string) => command === 'backend_status' ? 'ready' : command === 'backend_base_url' ? 'http://127.0.0.1:54321' : undefined);
+    let reads = 0;
+    const send = vi.fn(async (url: string) => {
+      if (url.endsWith('/api/model-status')) return { ok: true, json: async () => ({ ready: true, message: 'Ready', model: 'test' }) };
+      if (url.includes('/api/approvals/')) return { ok: true };
+      return { ok: true, body: { getReader: () => ({ read: async () => {
+        const events = [
+          'event: confirmation_required\ndata: {"automatic_handoff":true,"approval_id":"focus","token":"test","tool":"computer_begin","arguments":{"window_id":123}}\n\n',
+          'event: final\ndata: {"text":"Finished"}\n\n'];
+        return reads < events.length ? { done: false, value: new TextEncoder().encode(events[reads++]) } : { done: true };
+      } }) } };
+    });
+    vi.stubGlobal('fetch', send);
+    runCommand();
+    await waitFor(() => expect(screen.getByText('Finished')).toBeTruthy());
+    expect(invoke).toHaveBeenCalledWith('handoff_computer_focus', { windowId: 123 });
+    expect(send.mock.calls.some(([url]) => url.includes('/api/approvals/focus'))).toBe(true);
+    expect(screen.queryByRole('region', { name: 'Action approval' })).toBeNull();
+  });
+  it('clears and locks input during a task, then unlocks on Stop', async () => {
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => {})));
+    runCommand();
+    const input = screen.getByLabelText('Command input') as HTMLInputElement;
+    expect(input.value).toBe('');
+    expect(input.disabled).toBe(true);
+    expect(screen.queryByText('W')).toBeNull();
+    fireEvent.click(screen.getByText('Stop'));
+    expect(input.disabled).toBe(false);
+  });
   it('does not show ready for a running server with a missing model', async () => {
     vi.stubGlobal('__TAURI_INTERNALS__', {});
     vi.mocked(invoke).mockImplementation(async (command: string) =>

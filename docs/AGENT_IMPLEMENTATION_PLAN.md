@@ -4,6 +4,19 @@ Updated: 2026-10-05. This is the sole phase tracker. [Changes](../CHANGES.md), [
 
 ## Product contract
 
+### Current repair pass (2026-10-05)
+
+- [x] Exclude Wingent from computer targets; hide overlay on task submission.
+- [x] Routine computer session starts without approval; retain consequential-action gates and optional Review mode.
+- [x] Resolve real Windows known folders and support exclusive directory creation.
+- [x] Session-only local/cloud provider settings, explicit cloud screenshot sharing, no stored API keys.
+- [x] Remove command-bar logo; lock input while running and clear submitted text.
+- [x] Report Ollama rejection details; bounded JSON-mode retry only for schema/grammar rejection.
+- [ ] User manual retest: Notepad typing, Calculator-to-Notepad, Desktop folder/file.
+- [ ] Establish the actual cause of reported HTTP 400 and Windows focus denial if they recur.
+
+Validation for this pass is lightweight mocked tests/builds only; no live desktop tasks or paid model calls. Reference review: Open-Interface core/model/settings and Self-Operating Computer loop/model API. Applied provider separation and original-goal/fresh-observation continuity; retain host validation of actions.
+
 A local-first general self-operating Windows computer agent. The user states WHAT; the LLM determines HOW. Keep the existing UI and useful tools.
 
 `GOAL -> SEE -> THINK -> ACT -> SEE AGAIN -> VERIFY -> REPLAN`

@@ -37,6 +37,8 @@ API budgets: 12 model calls including repair, 180 seconds, 16 actions, 24 decisi
 
 ## Packaging and UX
 
+`provider_settings.py` supplies a session-only model configuration and a Chat Completions compatible cloud adapter behind the existing brain interface. Local remains default; cloud pixels require explicit opt-in. Credentials are never returned or persisted. The gear panel selects provider/model; task submission clears and locks the input and hides the overlay. Reference concepts come from Open-Interface's model boundary and Self-Operating Computer's goal/screenshot loop; host tool validation remains authoritative.
+
 Tauri owns a frozen backend on a per-run private loopback port and verifies runtime plus instance identity. The React overlay retrieves that port through Tauri. Browser-only development may use port 8000. Ollama runs separately. Tray Quit stops the owned backend tree; overlay close hides the window.
 
 Approval hides the overlay for input handoff. Stop revokes the grant; holding Escape during native dispatch also stops further input. It cannot undo prior effects. The UI distinguishes approvals, partial effects and unverified completion.

@@ -128,13 +128,16 @@ class LaunchAdapter:
 
     async def request_approval(self, action):
         tool = self.registry.get_tool(action.tool)
-        if not self.review_actions and tool.permission != ToolPermission.CONFIRMATION_REQUIRED:
+        automatic_handoff = (action.tool == 'computer_begin' and not self.review_actions
+                             and tool.permission == ToolPermission.SAFE)
+        if not automatic_handoff and not self.review_actions and tool.permission != ToolPermission.CONFIRMATION_REQUIRED:
             return None
         params = await asyncio.to_thread(self.registry.prepare, action.tool, action.arguments)
         item = self.registry.approvals.request(self.state.id, tool.name, tool.revision, params)
         self.approval_id = item.id
         return {'approval_id': item.id, 'token': item.token, 'task_id': self.state.id,
                 'tool': tool.name, 'arguments': params, 'expires_in': self.registry.approvals.ttl,
+                'automatic_handoff': automatic_handoff,
                 'message': 'Approve this exact action?'}
 
     async def await_approval(self, pending):

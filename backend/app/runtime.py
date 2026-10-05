@@ -140,7 +140,7 @@ class AgentRuntime:
                     request_approval = getattr(self.executor, 'request_approval', None)
                     pending = await self.checked(lambda: request_approval(action)) if request_approval else None
                     if pending:
-                        yield self.status(TaskStatus.AWAITING_INPUT, 'Waiting for your approval')
+                        yield self.status(TaskStatus.AWAITING_INPUT, 'Focusing the requested application' if pending.get('automatic_handoff') else 'Waiting for your approval')
                         yield 'confirmation_required', pending
                         try:
                             await self.checked(lambda: self.executor.await_approval(pending))

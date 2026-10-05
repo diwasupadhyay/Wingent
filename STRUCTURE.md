@@ -17,6 +17,7 @@ Updated: 2026-10-05. [Plan](docs/AGENT_IMPLEMENTATION_PLAN.md) owns phase status
 | backend/app/file_tools.py, browser_tools.py | Optional file and browser capabilities |
 | backend/app/plugins.py | Explicit trusted installed skill entry points |
 | backend/app/llm.py, model_routing.py | Replaceable local model provider and selection |
+| backend/app/provider_settings.py | Session-only local/cloud configuration and compatible cloud text/vision provider |
 
 Legacy desktop_tools.py/screen_tools.py are not registered in production. planner.py/capability_planner.py and launch adapters retain compatibility/evaluation roles; they are not the general brain.
 

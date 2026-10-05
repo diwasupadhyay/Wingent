@@ -544,8 +544,8 @@ class OperatorAdapter(LaunchAdapter):
                     'reason': problem}})
                 system += '\nThe previous proposal repeats an action and was NOT dispatched. Pick a different action needed for the ORIGINAL goal, or finish. Do not retry the same arguments.'
                 continue
-            self.final_message = ('Stopped because the next proposal repeats a recorded accepted action. '
-                                  'Review the accepted results; the whole goal is not independently verified.')
+            self.final_message = ('Stopped because the next proposal repeats an earlier action without new evidence. '
+                                  'Review the recorded results; the whole goal is not independently verified.')
             return Decision(kind='finish', message=self.final_message)
         raise AssertionError('A bounded next-action decision was not returned.')
 

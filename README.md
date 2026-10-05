@@ -62,7 +62,9 @@ cargo test --manifest-path src-tauri/Cargo.toml --lib
 
 ## Safety and current status
 
-Wingent keeps model traffic on the local Ollama endpoint, validates fresh window/frame identity, and asks before sensitive effects. Password fields, secure desktop/UAC, and arbitrary elevated applications are not supported.
+Use the gear icon to select a local model or an HTTPS Chat Completions compatible cloud API. Cloud mode requires your provider's model ID and API key; choose a model supporting images and JSON output for computer tasks. Enable screenshot sharing explicitly for cloud vision. Settings and keys last only for the current app session. Cloud calls send task text/tool results and may incur charges; no cloud service is used by default.
+
+Wingent uses local Ollama by default, validates fresh window/frame identity, and asks before sensitive effects. Routine control starts without approval unless Review is enabled. Password fields, secure desktop/UAC, and arbitrary elevated applications are not supported.
 
 This is active experimental software. The tested computer-control primitives work across isolated Notepad, Calculator, and custom UI fixtures, but reliable autonomous completion across arbitrary applications is still in progress. Review requested actions and do not use it unattended for destructive, financial, security-sensitive, or irreversible work.
 

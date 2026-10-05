@@ -1,6 +1,6 @@
 # Wingent Memory
 
-Updated: 2026-10-05 (Asia/Calcutta). Current source: `operator-v24`.
+Updated: 2026-10-05 (Asia/Calcutta). Current source: `operator-v25`.
 
 ## Direction and entry points
 
@@ -9,6 +9,8 @@ A general local-first Windows computer agent: user supplies WHAT, the LLM choose
 Read [the plan](docs/AGENT_IMPLEMENTATION_PLAN.md), [architecture](docs/ARCHITECTURE.md), [security](docs/SECURITY.md) and [changes](CHANGES.md). [Computer evaluations](docs/evaluations/COMPUTER_OPERATOR.md) distinguish native, model and packaged evidence. [Structure](STRUCTURE.md) maps ownership.
 
 ## Current state
+
+v25 adds session-only Settings (local model or HTTPS Chat Completions compatible cloud endpoint/key), explicit cloud screenshot opt-in, no logo, cleared submission and locked busy input. Cloud keys are never persisted/returned. Local schema/grammar HTTP 400 gets one JSON-mode inference retry; other rejections retain error detail. Lightweight mocked tests only per user request; no live desktop/model tasks during this pass. Do not claim the original manual workflows are verified. References were re-inspected for provider separation and goal/screenshot continuity. Production builds must use `npm run tauri:build -- --no-bundle`, after building the sidecar.
 
 Routine computer_begin now runs without initial approval (Review still gates every action); consequential input retains confirmation. The overlay hides before task dispatch and is excluded from window discovery/control. resolve_known_folder and create_directory support grounded user-folder operations. HTTP errors now include Ollama's error detail. Latest synthetic vision/schema checks passed, but live isolated Notepad focus was denied by Windows; full user workflows and the reported HTTP 400 remain unverified.
 
