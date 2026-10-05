@@ -9,7 +9,9 @@ type StepState = 'pending' | 'running' | 'accepted' | 'failed' | 'not_run' | 'un
 type ActionStep = { label: string; state: StepState };
 type Approval = { approval_id: string; token: string; task_id: string; tool: string; arguments: Record<string, unknown>; expires_in: number };
 type BackendState = 'ready' | 'incompatible' | 'unavailable';
-type ProviderSettings = { provider: 'local' | 'cloud'; model: string; endpoint: string; api_key: string; share_screenshots: boolean };
+type CloudService = 'custom' | 'groq' | 'google' | 'openai' | 'anthropic';
+type ProviderSettings = { provider: 'local' | 'cloud'; service: CloudService; model: string; endpoint: string; api_key: string; share_screenshots: boolean };
+type ProviderPreset = { label: string; endpoint: string; model: string; note: string; key_url: string };
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
 const isTauri = () => '__TAURI_INTERNALS__' in window;
@@ -19,7 +21,11 @@ export default function App() {
   const [settingsBusy, setSettingsBusy] = useState(false);
   const [settingsMessage, setSettingsMessage] = useState('');
   const [provider, setProvider] = useState<'local' | 'cloud'>('local');
-  const [settings, setSettings] = useState<ProviderSettings>({ provider: 'local', model: 'qwen3-vl:4b-instruct', endpoint: '', api_key: '', share_screenshots: false });
+  const [activeService, setActiveService] = useState<CloudService>('custom');
+  const [activeModel, setActiveModel] = useState('qwen3-vl:4b-instruct');
+  const [settings, setSettings] = useState<ProviderSettings>({ provider: 'local', service: 'custom', model: 'qwen3-vl:4b-instruct', endpoint: '', api_key: '', share_screenshots: false });
+  const [presets, setPresets] = useState<Partial<Record<CloudService, ProviderPreset>>>({});
+  const [keyConfigured, setKeyConfigured] = useState(false);
   const [prompt, setPrompt] = useState('');
   const [status, setStatus] = useState<Stage>('idle');
   const [progress, setProgress] = useState('Ready');
@@ -52,12 +58,37 @@ export default function App() {
     setSettingsOpen(true);
     try {
       if (isTauri()) apiBaseUrlRef.current = await invoke<string>('backend_base_url');
-      const response = await fetch(`${apiBaseUrlRef.current}/api/settings`);
-      if (!response.ok) throw new Error('Settings unavailable');
+      const [response, catalogue] = await Promise.all([
+        fetch(`${apiBaseUrlRef.current}/api/settings`), fetch(`${apiBaseUrlRef.current}/api/provider-presets`),
+      ]);
+      if (!response.ok || !catalogue.ok) throw new Error('Settings unavailable');
       const info = await response.json();
-      setSettings({ provider: info.provider, model: info.model, endpoint: info.endpoint, api_key: '', share_screenshots: info.share_screenshots });
+      setPresets(await catalogue.json());
+      setKeyConfigured(info.key_configured);
+      setSettings({ provider: info.provider, service: info.service ?? 'custom', model: info.model, endpoint: info.endpoint, api_key: '', share_screenshots: info.share_screenshots });
       setProvider(info.provider);
+      setActiveService(info.service ?? 'custom');
+      setActiveModel(info.model);
     } catch { setSettingsMessage('Could not load settings. Check the Wingent service.'); }
+  };
+
+  const chooseProvider = (choice: string) => {
+    setKeyConfigured(false);
+    setSettingsMessage('');
+    const service = choice as CloudService;
+    const preset = presets[service];
+    setSettings({ provider: choice === 'local' ? 'local' : 'cloud', service: choice === 'local' ? 'custom' : service,
+      model: choice === 'local' ? 'qwen3-vl:4b-instruct' : preset?.model ?? '',
+      endpoint: preset?.endpoint ?? '', api_key: '', share_screenshots: false });
+  };
+
+  const openKeyPage = async () => {
+    const preset = presets[settings.service];
+    if (!preset) return;
+    try {
+      if (isTauri()) await invoke('open_provider_key_page', { service: settings.service });
+      else window.open(preset.key_url, '_blank', 'noopener,noreferrer');
+    } catch { setSettingsMessage('Could not open the provider page. Visit its API console in your browser.'); }
   };
 
   const saveSettings = async () => {
@@ -69,6 +100,9 @@ export default function App() {
       });
       if (!response.ok) throw new Error('Check the model, HTTPS endpoint and API key.');
       setProvider(settings.provider);
+      setActiveService(settings.service);
+      setActiveModel(settings.model);
+      setKeyConfigured(settings.provider === 'cloud');
       setSettings((current) => ({ ...current, api_key: '' }));
       setSettingsOpen(false);
       void checkOllama();
@@ -134,8 +168,8 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (isTauri()) void invoke('set_overlay_expanded', { expanded });
-  }, [expanded]);
+    if (isTauri()) void invoke('set_overlay_expanded', { expanded, settings: settingsOpen });
+  }, [expanded, settingsOpen]);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
@@ -402,21 +436,23 @@ export default function App() {
             spellCheck='false'
           />
           <button type='button' className='settings-button' aria-label='Settings' title='Model settings'
-            disabled={loading} onClick={() => settingsOpen ? setSettingsOpen(false) : void openSettings()}>⚙</button>
+            disabled={loading || settingsBusy} onClick={() => settingsOpen ? setSettingsOpen(false) : void openSettings()}>
+            <svg width='19' height='19' viewBox='0 0 24 24' fill='none' stroke='currentColor' strokeWidth='1.5' aria-hidden='true'><path d='m9 3-.6 2.2-1.8 1L4.4 6 2 10l1.7 1.6v1.8L2 15l2.4 4 2.2-.2 1.8 1L9 22h5l.6-2.2 1.8-1 2.2.2 2.4-4-1.7-1.6v-1.8L21 10l-2.4-4-2.2.2-1.8-1L14 3Z'/><circle cx='11.5' cy='12.5' r='3.1'/></svg>
+          </button>
           <button type='button' className={`review-toggle ${reviewActions ? 'review-active' : ''}`}
             aria-label='Review actions before running' aria-pressed={reviewActions}
             disabled={loading} onClick={() => setReviewActions((value) => !value)}
             title='Ask before each action, including safe launches'>Review</button>
           <button
             type='button'
-            className={`ollama-control ollama-${ollama}`}
+            className={`ollama-control ollama-${ollama} ${provider === 'cloud' ? 'provider-cloud' : ''}`}
             onClick={() => provider === 'cloud' ? void openSettings() : ollama !== 'running' && void startOllama()}
-            disabled={!isTauri() || ollama === 'checking' || ollama === 'starting' || ollama === 'running'}
-            aria-label={ollamaLabel}
-            title={provider === 'cloud' ? `Cloud: ${settings.model}` : ollamaMessage}
+            disabled={loading || (provider !== 'cloud' && (!isTauri() || ollama === 'checking' || ollama === 'starting' || ollama === 'running'))}
+            aria-label={provider === 'cloud' ? 'Cloud model settings' : ollamaLabel}
+            title={provider === 'cloud' ? `Cloud: ${activeModel}` : ollamaMessage}
           >
             <span className='status-dot' />
-            {provider === 'cloud' ? <span>Cloud</span> : ollama !== 'running' && <span>{ollamaLabel}</span>}
+            {provider === 'cloud' ? <span>{presets[activeService]?.label ?? 'Cloud'}</span> : ollama !== 'running' && <span>{ollamaLabel}</span>}
           </button>
           <button type='button' className='run-button' onClick={() => void submit()} disabled={loading || settingsOpen || !prompt.trim()} aria-label='Run command'>
             {loading ? <span className='spinner' /> : <span aria-hidden='true'>↑</span>}
@@ -424,18 +460,24 @@ export default function App() {
         </div>
         {settingsOpen && (
           <section className='settings-panel' aria-label='Model settings'>
+            <div className='settings-heading'><div><h2>Make it yours</h2><p>Choose the brain behind your assistant.</p></div><span className='session-badge'>This session</span></div>
+            <fieldset disabled={settingsBusy}>
             <div className='settings-grid'>
-              <label>Provider<select value={settings.provider} onChange={(e) => setSettings({ ...settings, provider: e.target.value as 'local' | 'cloud', model: '' })}>
-                <option value='local'>Local · Ollama</option><option value='cloud'>Cloud · compatible API</option>
+              <label>Provider<select value={settings.provider === 'local' ? 'local' : settings.service} onChange={(e) => chooseProvider(e.target.value)}>
+                <option value='local'>On this PC · Ollama</option>
+                {Object.entries(presets).map(([id, preset]) => <option key={id} value={id}>{preset.label}</option>)}
+                <option value='custom'>Custom compatible API</option>
               </select></label>
               <label>Model<input value={settings.model} placeholder='Vision-capable model ID' onChange={(e) => setSettings({ ...settings, model: e.target.value })} /></label>
               {settings.provider === 'cloud' && <>
-                <label>API base URL<input value={settings.endpoint} placeholder='https://your-provider.example/v1' onChange={(e) => setSettings({ ...settings, endpoint: e.target.value })} /></label>
-                <label>API key<input type='password' autoComplete='off' value={settings.api_key} placeholder='Session only · re-enter to save' onChange={(e) => setSettings({ ...settings, api_key: e.target.value })} /></label>
+                {settings.service === 'custom' && <label>API base URL<input value={settings.endpoint} placeholder='https://your-provider.example/v1' onChange={(e) => { setKeyConfigured(false); setSettings({ ...settings, endpoint: e.target.value }); }} /></label>}
+                <label className={settings.service === 'custom' ? '' : 'settings-wide'}>API key<input type='password' autoComplete='off' value={settings.api_key} placeholder={keyConfigured ? 'Saved for this session · leave blank to keep' : 'Paste your API key'} onChange={(e) => setSettings({ ...settings, api_key: e.target.value })} /></label>
               </>}
             </div>
+            {settings.provider === 'cloud' && presets[settings.service] && <div className='provider-note'><span>{presets[settings.service]?.note}</span><button type='button' onClick={() => void openKeyPage()}>Get API key ↗</button></div>}
             {settings.provider === 'cloud' && <label className='cloud-consent'><input type='checkbox' checked={settings.share_screenshots} onChange={(e) => setSettings({ ...settings, share_screenshots: e.target.checked })} />Send screenshots to this provider for vision. Task text and tool results also leave this PC.</label>}
-            <div className='settings-footer'><span>{settingsMessage || 'Settings last until Wingent closes. Cloud usage may incur charges.'}</span>
+            </fieldset>
+            <div className='settings-footer'><span role={settingsMessage ? 'alert' : undefined}>{settingsMessage || (settings.provider === 'local' ? 'Local inference. Your API key is never needed.' : 'Keys stay in memory until you quit Wingent.')}</span>
               <button disabled={settingsBusy || !settings.model.trim()} onClick={() => void saveSettings()}>{settingsBusy ? 'Saving…' : 'Save'}</button></div>
           </section>
         )}

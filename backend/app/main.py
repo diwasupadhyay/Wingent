@@ -31,7 +31,7 @@ from app.process_tools import register as register_process
 from app.application_tools import register as register_applications
 from app.version import RUNTIME_VERSION
 from app.computer_tools import register as register_computer
-from app.provider_settings import ProviderSettings, CloudClient
+from app.provider_settings import ProviderSettings, CloudClient, PRESETS
 
 app = FastAPI(title='Wingent', version='0.1.0')
 
@@ -81,6 +81,11 @@ def get_settings():
     return (provider_settings or ProviderSettings(model=select_model(''))).public()
 
 
+@app.get('/api/provider-presets')
+def provider_presets():
+    return PRESETS
+
+
 @app.post('/api/settings')
 def set_settings(settings: ProviderSettings, request: Request):
     global provider_settings
@@ -88,6 +93,13 @@ def set_settings(settings: ProviderSettings, request: Request):
     if origin and origin not in {'http://localhost:5173', 'http://127.0.0.1:5173', 'tauri://localhost',
                                  'http://tauri.localhost', 'https://tauri.localhost'}:
         raise HTTPException(status_code=403, detail='Settings require the Wingent application origin.')
+    if settings.provider == 'cloud' and not settings.api_key.get_secret_value().strip():
+        previous = provider_settings
+        if (previous and previous.provider == 'cloud' and previous.service == settings.service
+                and previous.endpoint == settings.endpoint and previous.api_key.get_secret_value()):
+            settings = settings.model_copy(update={'api_key': previous.api_key})
+        else:
+            raise HTTPException(status_code=422, detail='Enter an API key for this provider.')
     provider_settings = settings.model_copy(deep=True)
     return provider_settings.public()
 

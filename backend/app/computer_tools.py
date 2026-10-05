@@ -29,13 +29,16 @@ class ObserveComputer(Arguments):
 
 class ComputerAction(Arguments):
     frame_id: str = Field(min_length=1, max_length=64)
-    kind: Literal['click', 'type', 'hotkey', 'scroll', 'invoke', 'hover', 'drag', 'wait']
+    kind: Literal['click', 'type', 'hotkey', 'press', 'scroll', 'invoke', 'move', 'hover', 'drag', 'wait']
     x: int | None = Field(default=None, ge=0, le=1000, description='Required for click: horizontal position in the screenshot, normalized 0..1000. Not a control ID.')
     y: int | None = Field(default=None, ge=0, le=1000, description='Required for click: vertical position in the screenshot, normalized 0..1000.')
-    button: Literal['left', 'right'] = 'left'
+    button: Literal['left', 'right', 'middle'] = 'left'
     clicks: int = Field(default=1, ge=1, le=2)
     text: str | None = Field(default=None, min_length=1, max_length=500, description='Up to 500 characters per UI action; prefer a file/API tool for large documents.')
-    keys: list[str] | None = Field(default=None, min_length=1, max_length=4)
+    keys: list[str] | None = Field(default=None, min_length=1, max_length=16, description='hotkey holds a chord; press taps these keys in order. Example press: ["tab", "tab", "space"].')
+    presses: int = Field(default=1, ge=1, le=5, description='For press only: repeat the key sequence this many times.')
+    modifiers: list[Literal['ctrl', 'shift', 'alt']] = Field(default_factory=list, max_length=3, description='For click only: hold modifiers during the click, then release them.')
+    axis: Literal['vertical', 'horizontal'] = 'vertical'
     amount: int = Field(default=0, ge=-10, le=10)
     target_id: str | None = Field(default=None, max_length=200)
     end_x: int | None = Field(default=None, ge=0, le=1000, description='Drag destination, normalized to the current screenshot.')
@@ -44,14 +47,23 @@ class ComputerAction(Arguments):
 
     @model_validator(mode='after')
     def coherent(self):
-        if self.kind in {'click', 'hover', 'drag'} and (self.x is None or self.y is None):
+        if self.kind in {'click', 'move', 'hover', 'drag'} and (self.x is None or self.y is None):
             raise ValueError('Pointer action needs normalized x and y coordinates from the screenshot.')
         if self.kind == 'drag' and (self.end_x is None or self.end_y is None):
             raise ValueError('Drag needs normalized end_x and end_y coordinates.')
         if self.kind == 'type' and (not self.text or any(ord(c) < 32 and c not in '\n\t' for c in self.text)):
             raise ValueError('Type needs ordinary Unicode text.')
-        if self.kind == 'hotkey' and (not self.keys or any(k not in native.KEYS for k in self.keys)):
+        if self.keys:
+            aliases = {'control': 'ctrl', 'return': 'enter', 'esc': 'escape', 'pgup': 'page_up', 'pgdn': 'page_down', 'pageup': 'page_up', 'pagedown': 'page_down', 'del': 'delete'}
+            self.keys = [aliases.get(k.lower(), k.lower()) for k in self.keys]
+        if self.kind in {'hotkey', 'press'} and (not self.keys or any(k not in native.KEYS for k in self.keys)):
             raise ValueError('Hotkey needs supported lowercase keys, such as ["ctrl","a"].')
+        if self.kind == 'hotkey' and len(self.keys) > 4:
+            raise ValueError('Hotkeys allow at most four simultaneous keys; use press for a sequence.')
+        if self.kind == 'press' and any(k in {'ctrl', 'alt', 'shift', 'win'} for k in self.keys):
+            raise ValueError('Use hotkey for modifier keys; press is for sequential ordinary key taps.')
+        if self.modifiers and self.kind != 'click':
+            raise ValueError('Modifier keys apply only to click. Use hotkey for keyboard chords.')
         if self.kind == 'scroll' and self.amount == 0:
             raise ValueError('Scroll needs a nonzero amount; positive is up.')
         if self.kind == 'invoke' and not self.target_id:
@@ -154,6 +166,7 @@ class ComputerSession:
                      'image': pixels['image'], 'signature': pixels['signature'],
                      'controls': controls.get('controls', []), 'title': current['title'],
                      'width': pixels['width'], 'height': pixels['height']}
+            frame['pointer'] = self.platform.pointer_position(rect) if hasattr(self.platform, 'pointer_position') else {'available': False}
             task['frame'] = frame
             task['known_windows'] = {w['hwnd']: w for w in windows} if task['scope'] == 'desktop' else {window_id: current}
             return {'ok': True, 'window_id': window_id, 'frame_id': frame['id'], 'title': frame['title'],
@@ -162,6 +175,7 @@ class ComputerSession:
                                 for w in task['known_windows'].values()],
                     'process': current['process'], 'screenshot_attached_to_brain': True,
                     'image_size': [frame['width'], frame['height']], 'coordinate_system': 'x,y normalized 0..1000 within this window screenshot',
+                    'pointer': frame['pointer'],
                     'controls': frame['controls'], 'truncated': controls.get('truncated', False)}
 
     def act(self, _confirmed=False, **params):
@@ -201,7 +215,7 @@ class ComputerSession:
                         'post_observation': observation}
             task['frame'] = None  # Never replay the same frame after a possible effect.
             self.platform.dispatch(window['hwnd'], frame['rect'], params, task['cancelled'].is_set)
-            if params['kind'] in {'click', 'invoke'} or params['kind'] == 'hotkey' and params.get('keys') == ['tab']:
+            if params['kind'] in {'click', 'invoke'} or params['kind'] in {'hotkey', 'press'} and params.get('keys', [])[-1:] == ['tab']:
                 task['input_targeted'] = True
             time.sleep(.2)
             try:
@@ -258,6 +272,7 @@ class ComputerSession:
             return {'frame_id': frame['id'], 'window_id': task['window']['hwnd'],
                     'scope': task['scope'],
                     'title': frame['title'], 'input_targeted': task['input_targeted'],
+                    'pointer': frame.get('pointer', {'available': False}),
                     'image': frame['image']}
 
     def cancel(self, owner):
@@ -289,7 +304,11 @@ def register(registry, session=None):
         'The computer is a general environment. Use observe_windows then computer_begin to obtain task-scoped '
         'control of a selected window. This sends fresh window screenshots to the local LLM. '
         'Use UI Automation target IDs with invoke when available, otherwise normalized screenshot coordinates. '
-        'computer_action supports click, type, hotkey, scroll, invoke, hover and bounded wait across unfamiliar apps. Every action returns a fresh frame. '
+        'computer_action supports click, type, hotkey, press, scroll, invoke, move, hover and bounded wait across unfamiliar apps. Every action returns a fresh frame. '
+        'move smoothly positions the pointer without clicking; hover also waits for a tooltip. '
+        'click supports left/right/middle buttons, clicks=2 for double-click, and modifiers=["ctrl"] or ["shift"] for selection. '
+        'press taps keys sequentially (e.g. ["tab","tab","space"]), with presses=1..5 to repeat. hotkey holds a chord simultaneously. '
+        'Scroll axis can be vertical (positive up) or horizontal (positive right); use x,y to target a pane. '
         'Hover uses x,y to reveal menus. Wait uses duration_ms (100..2000) to let a transition settle, then looks again. '
         'Drag uses x,y,end_x,end_y inside one window, always through computer_confirm_action. '
         'For click, provide kind="click", frame_id, x and y (0..1000). Do not use target_id for clicks. '

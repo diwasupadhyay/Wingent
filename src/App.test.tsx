@@ -32,6 +32,28 @@ function runCommand() {
 }
 
 describe('App', () => {
+  it('fills a cloud preset so only a key is needed and sends the chosen provider', async () => {
+    const send = vi.fn(async (url: string) => ({ ok: true, json: async () =>
+      url.endsWith('/api/provider-presets') ? {
+        groq: { label: 'Groq', model: 'vision-default', endpoint: 'https://api.groq.com/openai/v1', note: 'Free plan with limits', key_url: 'https://console.groq.com/keys' },
+      } : url.endsWith('/api/settings') ? {
+        provider: 'local', service: 'custom', model: 'local-model', endpoint: '', share_screenshots: false, key_configured: false,
+      } : { ready: true, model: 'vision-default', message: 'Configured' },
+    }));
+    vi.stubGlobal('fetch', send);
+    render(<App />);
+    fireEvent.click(screen.getByLabelText('Settings'));
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Groq' })).toBeTruthy());
+    fireEvent.change(screen.getByLabelText('Provider'), { target: { value: 'groq' } });
+    expect((screen.getByLabelText('Model') as HTMLInputElement).value).toBe('vision-default');
+    expect(screen.queryByLabelText('API base URL')).toBeNull();
+    fireEvent.change(screen.getByLabelText('API key'), { target: { value: 'key-test-only' } });
+    fireEvent.click(screen.getByText('Save'));
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Model settings' })).toBeNull());
+    const saved = vi.mocked(fetch).mock.calls.find(([, options]) => options?.method === 'POST');
+    expect(JSON.parse(saved?.[1]?.body as string)).toMatchObject({ provider: 'cloud', service: 'groq', model: 'vision-default', api_key: 'key-test-only' });
+    expect(screen.getByLabelText('Cloud model settings')).toBeTruthy();
+  });
   it('automatically hands off routine focus without showing an approval card', async () => {
     vi.stubGlobal('__TAURI_INTERNALS__', {});
     vi.mocked(invoke).mockImplementation(async (command: string) => command === 'backend_status' ? 'ready' : command === 'backend_base_url' ? 'http://127.0.0.1:54321' : undefined);

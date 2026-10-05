@@ -1,3 +1,3 @@
 """Backend contract marker shared by health checks and packaged diagnostics."""
 
-RUNTIME_VERSION = 'operator-v25'
+RUNTIME_VERSION = 'operator-v26'

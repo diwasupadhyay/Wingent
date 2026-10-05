@@ -163,6 +163,25 @@ def accessibility(window_id, target=None):
     return powershell(UIA, {'window_id': window_id, 'target': target})
 
 
+def pointer_position(rect):
+    api = user32()
+    api.SetThreadDpiAwarenessContext.argtypes = [ctypes.c_void_p]
+    api.SetThreadDpiAwarenessContext.restype = ctypes.c_void_p
+    old = api.SetThreadDpiAwarenessContext(ctypes.c_void_p(-4))
+    try:
+        point = wintypes.POINT()
+        api.GetCursorPos.argtypes = [ctypes.POINTER(wintypes.POINT)]
+        if not api.GetCursorPos(ctypes.byref(point)):
+            return {'available': False}
+        left, top, width, height = rect
+        inside = left <= point.x < left + width and top <= point.y < top + height
+        return {'available': True, 'inside_window': inside,
+                'x': round((point.x-left)*1000/max(1, width-1)),
+                'y': round((point.y-top)*1000/max(1, height-1))}
+    finally:
+        api.SetThreadDpiAwarenessContext(old)
+
+
 class Mouse(ctypes.Structure):
     _fields_ = [('dx', wintypes.LONG), ('dy', wintypes.LONG), ('mouseData', wintypes.DWORD),
                 ('dwFlags', wintypes.DWORD), ('time', wintypes.DWORD), ('extra', ctypes.c_size_t)]
@@ -200,8 +219,27 @@ def send(events):
 
 
 def key_event(key, up=False, unicode=False):
+    extended = 1 if not unicode and key in {33, 34, 35, 36, 37, 38, 39, 40, 45, 46, 91, 92, 111} else 0
     return Input(1, InputData(keyboard=Keyboard(0 if unicode else key, key if unicode else 0,
-                                               (4 if unicode else 0) | (2 if up else 0), 0, 0)))
+                                               (4 if unicode else 0) | (2 if up else 0) | extended, 0, 0)))
+
+
+def move_pointer(api, x, y, duration_ms, check):
+    """Smooth, cancellable native pointer motion; no extra decorative circles."""
+    point = wintypes.POINT()
+    api.GetCursorPos.argtypes = [ctypes.POINTER(wintypes.POINT)]
+    if not api.GetCursorPos(ctypes.byref(point)):
+        raise RuntimeError('Could not read the pointer position.')
+    start_x, start_y = point.x, point.y
+    steps = max(1, duration_ms // 16)
+    for step in range(1, steps + 1):
+        check()
+        t = step / steps
+        eased = t * t * (3 - 2 * t)
+        if not api.SetCursorPos(round(start_x + (x-start_x)*eased), round(start_y + (y-start_y)*eased)):
+            raise RuntimeError('Windows refused pointer movement.')
+        time.sleep(duration_ms / steps / 1000)
+    check()
 
 
 def dispatch(window_id, rect, action, cancelled=lambda: False):
@@ -236,7 +274,7 @@ def _dispatch(window_id, rect, action, cancelled):
             time.sleep(.02)
         # Foreground may legitimately change while an app/dialog loads. The
         # session observes it afterwards; wait never sends input to either app.
-    elif kind in {'click', 'scroll', 'hover', 'drag'}:
+    elif kind in {'click', 'scroll', 'move', 'hover', 'drag'}:
         x = rect[0] + round((action.get('x') if action.get('x') is not None else 500) * (rect[2]-1) / 1000)
         y = rect[1] + round((action.get('y') if action.get('y') is not None else 500) * (rect[3]-1) / 1000)
         api = user32()
@@ -247,10 +285,18 @@ def _dispatch(window_id, rect, action, cancelled):
         api.GetAncestor.restype = wintypes.HWND
         if api.GetAncestor(api.WindowFromPoint(wintypes.POINT(x, y)), 2) != window_id:
             raise ValueError('Pointer target is covered by a different window.')
-        api.SetCursorPos(x, y)
+        if kind == 'drag':
+            api.SetCursorPos(x, y)
+        else:
+            move_pointer(api, x, y, action.get('duration_ms', 300) if kind == 'move' else 160, check)
         check()
+        if api.GetAncestor(api.WindowFromPoint(wintypes.POINT(x, y)), 2) != window_id:
+            raise ValueError('Pointer target became covered during movement; no click sent.')
         if kind == 'scroll':
-            send([Input(0, InputData(mouse=Mouse(0, 0, action['amount'] * 120 & 0xffffffff, 0x0800, 0, 0)))])
+            flag = 0x1000 if action.get('axis') == 'horizontal' else 0x0800
+            send([Input(0, InputData(mouse=Mouse(0, 0, action['amount'] * 120 & 0xffffffff, flag, 0, 0)))])
+        elif kind == 'move':
+            return
         elif kind == 'hover':
             deadline = time.monotonic() + action.get('duration_ms', 300) / 1000
             while time.monotonic() < deadline:
@@ -265,7 +311,7 @@ def _dispatch(window_id, rect, action, cancelled):
                 return api.GetAncestor(api.WindowFromPoint(wintypes.POINT(*point)), 2) == window_id
             if not all(owns_point(point) for point in points):
                 raise ValueError('Drag path leaves the approved visible window.')
-            down, up = (8, 16) if action.get('button') == 'right' else (2, 4)
+            down, up = {'right': (8, 16), 'middle': (32, 64)}.get(action.get('button'), (2, 4))
             try:
                 send([Input(0, InputData(mouse=Mouse(0, 0, 0, down, 0, 0)))])
                 for point in points[1:]:
@@ -277,11 +323,34 @@ def _dispatch(window_id, rect, action, cancelled):
             finally:
                 send([Input(0, InputData(mouse=Mouse(0, 0, 0, up, 0, 0)))])
         else:
-            down, up = (8, 16) if action.get('button') == 'right' else (2, 4)
-            for _ in range(action.get('clicks', 1)):
+            down, up = {'right': (8, 16), 'middle': (32, 64)}.get(action.get('button'), (2, 4))
+            held = []
+            try:
+                for modifier in action.get('modifiers', []):
+                    check()
+                    held.append(KEYS[modifier])
+                    send([key_event(KEYS[modifier])])
+                for _ in range(action.get('clicks', 1)):
+                    check()
+                    try:
+                        send([Input(0, InputData(mouse=Mouse(0, 0, 0, down, 0, 0)))])
+                    finally:
+                        send([Input(0, InputData(mouse=Mouse(0, 0, 0, up, 0, 0)))])
+                    time.sleep(.06)
+            finally:
+                if held:
+                    send([key_event(key, True) for key in reversed(held)])
+    elif kind == 'press':
+        for _ in range(action.get('presses', 1)):
+            for name in action['keys']:
                 check()
-                send([Input(0, InputData(mouse=Mouse(0, 0, 0, flag, 0, 0))) for flag in (down, up)])
-                time.sleep(.06)
+                key = KEYS[name]
+                try:
+                    send([key_event(key)])
+                    time.sleep(.025)
+                finally:
+                    send([key_event(key, True)])
+                time.sleep(.025)
     elif kind == 'hotkey':
         keys = [KEYS[key] for key in action['keys']]
         try:

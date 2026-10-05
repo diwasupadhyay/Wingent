@@ -15,7 +15,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 const COLLAPSED_HEIGHT: f64 = 92.0;
 const EXPANDED_HEIGHT: f64 = 300.0;
-const REQUIRED_BACKEND_RUNTIME: &str = "operator-v25";
+const REQUIRED_BACKEND_RUNTIME: &str = "operator-v26";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum BackendHealth {
@@ -234,6 +234,22 @@ fn start_ollama() -> Result<(), String> {
 }
 
 #[tauri::command]
+fn open_provider_key_page(service: &str) -> Result<(), String> {
+  let url = match service {
+    "groq" => "https://console.groq.com/keys",
+    "google" => "https://aistudio.google.com/apikey",
+    "openai" => "https://platform.openai.com/api-keys",
+    "anthropic" => "https://platform.claude.com/settings/keys",
+    _ => return Err("Unknown provider".into()),
+  };
+  let mut command = Command::new("explorer.exe");
+  command.arg(url);
+  #[cfg(windows)]
+  command.creation_flags(0x08000000);
+  command.spawn().map(|_| ()).map_err(|_| "Could not open the provider page".into())
+}
+
+#[tauri::command]
 fn reveal_overlay(app: AppHandle) {
   show_overlay(&app);
 }
@@ -297,9 +313,9 @@ fn handoff_computer_focus(app: AppHandle, window_id: u64) -> Result<(), String> 
 }
 
 #[tauri::command]
-fn set_overlay_expanded(app: AppHandle, expanded: bool) {
+fn set_overlay_expanded(app: AppHandle, expanded: bool, settings: Option<bool>) {
   if let Some(window) = app.get_webview_window("main") {
-    let height = if expanded { EXPANDED_HEIGHT } else { COLLAPSED_HEIGHT };
+    let height = if settings.unwrap_or(false) { 440.0 } else if expanded { EXPANDED_HEIGHT } else { COLLAPSED_HEIGHT };
     let _ = window.set_size(LogicalSize::new(760.0, height));
     let _ = window.center();
   }
@@ -314,6 +330,7 @@ pub fn run() {
       backend_base_url,
       ollama_status,
       start_ollama,
+      open_provider_key_page,
       hide_overlay,
       handoff_computer_focus,
       reveal_overlay,
@@ -402,8 +419,8 @@ mod tests {
 
   #[test]
   fn refuses_stale_or_unrelated_loopback_backend() {
-    let current = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"service\":\"wingent\",\"runtime\":\"operator-v25\",\"instance_id\":\"owned\"}";
-    let stale = current.replace("operator-v25", "operator-v24");
+    let current = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"service\":\"wingent\",\"runtime\":\"operator-v26\",\"instance_id\":\"owned\"}";
+    let stale = current.replace("operator-v26", "operator-v25");
     let unrelated = current.replace("wingent", "another-service");
     assert!(matches!(classify_backend_response(current, "owned"), BackendHealth::Ready));
     assert!(matches!(classify_backend_response(current, "orphan"), BackendHealth::Incompatible));

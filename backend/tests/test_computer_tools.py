@@ -331,3 +331,50 @@ def test_focus_denial_is_actionable_no_effect_and_discards_frame(granted):
     assert result['effect'] == 'no_effect'
     assert result['needs_user_attention'] is True
     assert session.visual_context('owner') is None
+
+
+def test_sequential_press_normalizes_aliases_and_preserves_sensitive_gate(granted):
+    session, desktop, frame = granted
+    action = ComputerAction(frame_id=frame['frame_id'], kind='press', keys=['TAB', 'return'])
+    assert action.keys == ['tab', 'enter']
+    assert session.act(**action.model_dump(exclude_none=True))['effect'] == 'no_effect'
+    assert not desktop.calls
+    with pytest.raises(ValueError):
+        ComputerAction(frame_id='fresh', kind='press', keys=['ctrl', 'a'])
+
+
+def test_smooth_move_and_horizontal_scroll_use_requested_coordinates(monkeypatch):
+    from app import windows_computer as native
+    positions = []
+    flags = []
+    fake = SimpleNamespace(GetAsyncKeyState=lambda _: 0, GetCursorPos=lambda _: True,
+                           SetCursorPos=lambda x, y: positions.append((x, y)) or True,
+                           WindowFromPoint=lambda _: 1, GetAncestor=lambda *_: 1)
+    monkeypatch.setattr(native, 'user32', lambda: fake)
+    monkeypatch.setattr(native, 'foreground_window_id', lambda: 1)
+    monkeypatch.setattr(native.time, 'sleep', lambda _: None)
+    monkeypatch.setattr(native, 'send', lambda items: flags.extend(item.mouse.dwFlags for item in items))
+    native._dispatch(1, [-800, 0, 801, 601], {'kind': 'move', 'x': 500, 'y': 500, 'duration_ms': 100}, lambda: False)
+    assert len(positions) > 1 and positions[-1] == (-400, 300)
+    assert not flags
+    native._dispatch(1, [0, 0, 801, 601], {'kind': 'scroll', 'axis': 'horizontal', 'amount': 3}, lambda: False)
+    assert flags == [0x1000]
+
+
+def test_modifier_click_releases_held_keys_on_dispatch_failure(monkeypatch):
+    from app import windows_computer as native
+    fake = SimpleNamespace(GetAsyncKeyState=lambda _: 0, GetCursorPos=lambda _: True,
+                           SetCursorPos=lambda *_: True, WindowFromPoint=lambda _: 1, GetAncestor=lambda *_: 1)
+    monkeypatch.setattr(native, 'user32', lambda: fake)
+    monkeypatch.setattr(native, 'foreground_window_id', lambda: 1)
+    monkeypatch.setattr(native.time, 'sleep', lambda _: None)
+    events = []
+    def send(items):
+        for item in items:
+            events.append((item.kind, item.keyboard.vk, item.keyboard.flags) if item.kind == 1 else (0, item.mouse.dwFlags))
+            if item.kind == 0 and item.mouse.dwFlags == 2:
+                raise RuntimeError('injected mouse error')
+    monkeypatch.setattr(native, 'send', send)
+    with pytest.raises(RuntimeError, match='injected'):
+        native._dispatch(1, [0, 0, 800, 600], {'kind': 'click', 'x': 500, 'y': 500, 'modifiers': ['shift']}, lambda: False)
+    assert events == [(1, native.KEYS['shift'], 0), (0, 2), (0, 4), (1, native.KEYS['shift'], 2)]

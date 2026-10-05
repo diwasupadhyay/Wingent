@@ -10,13 +10,25 @@
 
 .settings-button { border: 0; background: transparent; color: #a7a7b6; font-size: 21px; cursor: pointer; padding: 7px; border-radius: 9px; }
 .settings-button:hover { background: #ffffff0d; color: #fff; }
-.settings-panel { padding: 0 18px 14px; max-height: 205px; overflow-y: auto; }
+.settings-panel { padding: 0 22px 18px; max-height: 340px; overflow-y: auto; scrollbar-width: thin; }
+.settings-heading { display: flex; align-items: center; justify-content: space-between; padding: 6px 0 18px; }
+.settings-heading h2 { margin: 0 0 4px; font-size: 17px; font-weight: 580; letter-spacing: -.025em; }
+.settings-heading p { margin: 0; color: #97979f; font-size: 12px; }
+.session-badge { padding: 5px 8px; border: 1px solid #ffffff12; border-radius: 6px; color: #9999a4; font-size: 10px; }
+.settings-panel fieldset { border: 0; padding: 0; margin: 0; min-width: 0; }
+.settings-wide { grid-column: 1 / -1; }
+.provider-note { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 10px 0; color: #9b9ba6; font-size: 11px; line-height: 1.5; }
+.provider-note button { flex-shrink: 0; border: 0; background: transparent; color: #accbff; font-size: 11px; cursor: pointer; padding: 4px 0; }
+.provider-cloud.ollama-control { width: auto; padding: 0 10px; }
 .settings-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; }
 .settings-grid label { color: #acacb7; font-size: 11px; }
 .settings-grid input, .settings-grid select { display: block; width: 100%; margin-top: 4px; padding: 7px 9px; border: 1px solid #ffffff20; border-radius: 8px; background: #24242c; color: #f7f7fa; font-size: 12px; }
-.cloud-consent { display: flex; align-items: start; gap: 7px; margin: 9px 0; color: #bdbdcc; font-size: 11px; }
+.cloud-consent { display: flex; align-items: start; gap: 8px; margin: 12px 0; color: #bdbdcc; font-size: 11px; line-height: 1.5; }
+.cloud-consent input { flex: 0 0 auto; margin: 2px 0; accent-color: #9bbcfb; }
 .settings-footer { display: flex; align-items: center; gap: 12px; justify-content: space-between; margin-top: 8px; color: #aaaabb; font-size: 11px; }
-.settings-footer button { padding: 7px 16px; border: 0; border-radius: 8px; background: #e3dfff; color: #252135; cursor: pointer; }
+.settings-footer button { padding: 8px 20px; border: 0; border-radius: 8px; background: #ececf0; color: #202024; cursor: pointer; }
+button:focus-visible, select:focus-visible { outline: 2px solid #99baff; outline-offset: 3px; }
+.settings-grid input:focus-visible { border-color: #99baff; }
 input:disabled { opacity: .65; cursor: wait; }
 
 * { box-sizing: border-box; }
@@ -27,17 +39,16 @@ button { -webkit-tap-highlight-color: transparent; }
 .overlay {
   width: 100%;
   height: 100%;
-  padding: 10px;
+  padding: 8px;
   animation: reveal 160ms cubic-bezier(.2, .8, .2, 1);
 }
 
 .command-surface {
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.13);
-  border-radius: 22px;
-  background: rgba(23, 23, 27, 0.92);
-  box-shadow: 0 18px 55px rgba(0, 0, 0, 0.48), inset 0 1px 0 rgba(255, 255, 255, 0.06);
-  backdrop-filter: blur(34px) saturate(150%);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 24px;
+  background: linear-gradient(155deg, rgba(39, 39, 43, .98), rgba(26, 26, 30, .98));
+  box-shadow: none;
 }
 
 .search-row {
@@ -45,7 +56,7 @@ button { -webkit-tap-highlight-color: transparent; }
   display: flex;
   align-items: center;
   gap: 12px;
-  padding: 10px 12px 10px 14px;
+  padding: 10px 14px 10px 22px;
 }
 
 
