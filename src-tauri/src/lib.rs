@@ -72,14 +72,20 @@ impl Drop for BackendProcess {
 }
 
 fn classify_backend_response(response: &str, instance_id: &str) -> BackendHealth {
+  // A just-started PyInstaller sidecar can accept a connection before it has
+  // produced a complete HTTP response. Treat partial startup I/O as transient;
+  // only a complete, parseable health document can prove an identity mismatch.
+  if response.trim().is_empty() {
+    return BackendHealth::Unavailable;
+  }
   if !response.starts_with("HTTP/1.1 200") {
     return BackendHealth::Incompatible;
   }
   let Some((_, body)) = response.split_once("\r\n\r\n") else {
-    return BackendHealth::Incompatible;
+    return BackendHealth::Unavailable;
   };
   let Ok(value) = serde_json::from_str::<serde_json::Value>(body) else {
-    return BackendHealth::Incompatible;
+    return BackendHealth::Unavailable;
   };
   if value.get("service").and_then(|item| item.as_str()) == Some("wingent")
     && value.get("runtime").and_then(|item| item.as_str()) == Some(REQUIRED_BACKEND_RUNTIME)
@@ -110,7 +116,7 @@ fn backend_health(port: u16, instance_id: &str) -> BackendHealth {
     match stream.read(&mut buffer) {
       Ok(0) => break,
       Ok(count) => response.extend_from_slice(&buffer[..count]),
-      Err(_) => break,
+      Err(_) => return BackendHealth::Unavailable,
     }
   }
   let response = String::from_utf8_lossy(&response);
@@ -397,5 +403,18 @@ mod tests {
     assert!(matches!(classify_backend_response(current, "orphan"), BackendHealth::Incompatible));
     assert!(matches!(classify_backend_response(&stale, "owned"), BackendHealth::Incompatible));
     assert!(matches!(classify_backend_response(&unrelated, "owned"), BackendHealth::Incompatible));
+  }
+
+  #[test]
+  fn treats_incomplete_startup_responses_as_temporarily_unavailable() {
+    assert!(matches!(classify_backend_response("", "owned"), BackendHealth::Unavailable));
+    assert!(matches!(
+      classify_backend_response("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n", "owned"),
+      BackendHealth::Unavailable
+    ));
+    assert!(matches!(
+      classify_backend_response("HTTP/1.1 200 OK\r\n\r\n{\"service\":", "owned"),
+      BackendHealth::Unavailable
+    ));
   }
 }
