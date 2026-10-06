@@ -234,6 +234,7 @@ def open_search(cancelled=lambda: False):
         raise ValueError('Windows Search opening was cancelled.')
     try:
         send([key_event(KEYS['win']), key_event(KEYS['s'])])
+        time.sleep(.1)  # Let the shell consume the chord before releasing it.
     finally:
         send([key_event(KEYS['s'], True), key_event(KEYS['win'], True)])
     deadline = time.monotonic() + 5
@@ -242,6 +243,8 @@ def open_search(cancelled=lambda: False):
         if cancelled():
             raise ValueError('Windows Search opening was cancelled.')
         current = foreground_window_id()
+        foreground_description = (f'foreground HWND {current} could not be inspected' if current else
+                                  'Windows returned no foreground HWND')
         for window in list_visible_windows():
             if window['hwnd'] == current:
                 foreground_description = window['process'] + ': ' + window['title'][:120]

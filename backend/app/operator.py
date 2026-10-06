@@ -242,6 +242,18 @@ class OperatorAdapter(LaunchAdapter):
                 self.state.records[-1].outcome.status == 'accepted' and
                 self.registry.get_tool('computer_begin')):
             grounded = _ground_window_grant({}, self.state.records, self.state.goal)
+            if not grounded.get('window_id') and any(
+                    r.action.tool == 'computer_open_search' and r.outcome.status == 'no_effect'
+                    for r in self.state.records):
+                # Search may become ready after the bounded startup wait. Use
+                # the new foreground observation rather than toggling it again.
+                candidates = [w for w in self.state.records[-1].outcome.data.get('windows', [])
+                    if w.get('is_foreground') and str(w.get('process', '')).casefold()
+                    in {'searchhost.exe', 'searchapp.exe', 'searchui.exe'}]
+                if len(candidates) == 1:
+                    target = candidates[0]
+                    grounded = {'window_id': target['window_id'], 'window_title': target['title'],
+                                'process': target['process'], 'purpose': 'Inspect the now-visible Windows Search panel'}
             if grounded.get('window_id'):
                 grounded = self.registry.get_tool('computer_begin').input_model.model_validate(grounded).model_dump(exclude_none=True)
                 return Decision(kind='act', action=action_from_pair('computer_begin', grounded),

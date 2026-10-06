@@ -40,8 +40,12 @@ def list_visible_windows(limit=40):
     kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
     windows = []
     foreground = foreground_window_id()
+    seen = set()
 
     def inspect(hwnd, unused):
+        if not hwnd or int(hwnd) in seen:
+            return True
+        seen.add(int(hwnd))
         if not user32.IsWindowVisible(hwnd):
             return True
         title_length = min(user32.GetWindowTextLengthW(hwnd), 300)
@@ -68,6 +72,11 @@ def list_visible_windows(limit=40):
             kernel32.CloseHandle(handle)
         return len(windows) < limit
 
+    # EnumWindows does not reliably enumerate modern shell/UWP surfaces.
+    # Inspect the actual foreground HWND directly before the desktop list;
+    # retain the same visibility and executable-identity checks.
+    if foreground:
+        inspect(foreground, 0)
     user32.EnumWindows(callback_type(inspect), 0)
     return windows
 

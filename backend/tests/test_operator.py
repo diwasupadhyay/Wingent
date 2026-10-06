@@ -14,6 +14,25 @@ from app.tools import ToolRegistry, ToolPermission
 from app.working_context import observed_effects
 
 
+def test_late_search_handoff_uses_fresh_foreground_without_inference():
+    from app.computer_tools import BeginControl
+    registry = ToolRegistry()
+    registry.register('computer_begin', 'Begin', ToolPermission.SAFE, {}, lambda p: {}, input_model=BeginControl)
+    registry.computer_session = SimpleNamespace(visual_context=lambda _: None)
+    state = TaskState(goal='Open an app using search', criteria=['Opened'])
+    state.records.extend([
+        ActionRecord(action=Action(tool='computer_open_search', arguments={}, label='Search'),
+            outcome=Outcome(status='no_effect', summary='Search not yet observed'), dispatched=True),
+        ActionRecord(action=Action(tool='observe_windows', arguments={}, label='Observe'),
+            outcome=Outcome(status='accepted', summary='Observed', data={'windows': [
+                {'window_id': 42, 'title': '', 'process': 'SearchHost.exe', 'is_foreground': True}]}), dispatched=True),
+    ])
+    # No provider: this branch must not need another model round.
+    decision = asyncio.run(OperatorAdapter(registry, state, None).decide(state.context()))
+    assert decision.action.tool == 'computer_begin'
+    assert decision.action.arguments['window_id'] == 42
+
+
 def test_packaged_app_grant_uses_unique_observed_title_not_explorer_pid():
     from app.operator import _ground_window_grant
     launch = ActionRecord(action=Action(tool='application_open', arguments={}, label='Open'),
