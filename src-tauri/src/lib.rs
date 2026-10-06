@@ -15,7 +15,7 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
 
 const COLLAPSED_HEIGHT: f64 = 92.0;
 const EXPANDED_HEIGHT: f64 = 300.0;
-const REQUIRED_BACKEND_RUNTIME: &str = "operator-v26";
+const REQUIRED_BACKEND_RUNTIME: &str = "operator-v27";
 
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum BackendHealth {
@@ -255,6 +255,28 @@ fn reveal_overlay(app: AppHandle) {
 }
 
 #[tauri::command]
+fn set_task_running(app: AppHandle, running: bool) -> Result<(), String> {
+  if !running {
+    if let Some(window) = app.get_webview_window("task-status") { let _ = window.close(); }
+    return Ok(());
+  }
+  if app.get_webview_window("task-status").is_some() { return Ok(()); }
+  let window = tauri::WebviewWindowBuilder::new(&app, "task-status",
+      tauri::WebviewUrl::App("index.html?task-toast".into()))
+    .title("Wingent task status").inner_size(300.0, 74.0)
+    .decorations(false).transparent(true).shadow(false).skip_taskbar(true)
+    .always_on_top(true).focused(false).resizable(false)
+    .build().map_err(|e| e.to_string())?;
+  if let Some(monitor) = window.current_monitor().map_err(|e| e.to_string())? {
+    let size = monitor.size(); let origin = monitor.position(); let scale = monitor.scale_factor();
+    let _ = window.set_position(tauri::PhysicalPosition::new(
+      origin.x + size.width as i32 - (320.0 * scale) as i32,
+      origin.y + size.height as i32 - (140.0 * scale) as i32));
+  }
+  Ok(())
+}
+
+#[tauri::command]
 fn hide_overlay(app: AppHandle) {
   #[cfg(windows)]
   if let Ok(child) = app.state::<BackendProcess>().child.lock() {
@@ -332,6 +354,7 @@ pub fn run() {
       start_ollama,
       open_provider_key_page,
       hide_overlay,
+      set_task_running,
       handoff_computer_focus,
       reveal_overlay,
       set_overlay_expanded
@@ -419,8 +442,8 @@ mod tests {
 
   #[test]
   fn refuses_stale_or_unrelated_loopback_backend() {
-    let current = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"service\":\"wingent\",\"runtime\":\"operator-v26\",\"instance_id\":\"owned\"}";
-    let stale = current.replace("operator-v26", "operator-v25");
+    let current = "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\n\r\n{\"service\":\"wingent\",\"runtime\":\"operator-v27\",\"instance_id\":\"owned\"}";
+    let stale = current.replace("operator-v27", "operator-v26");
     let unrelated = current.replace("wingent", "another-service");
     assert!(matches!(classify_backend_response(current, "owned"), BackendHealth::Ready));
     assert!(matches!(classify_backend_response(current, "orphan"), BackendHealth::Incompatible));

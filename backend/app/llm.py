@@ -2,6 +2,7 @@ import json
 import os
 import asyncio
 import base64
+import re
 from urllib.parse import urlparse
 from typing import AsyncIterator, Protocol
 
@@ -31,6 +32,7 @@ class OllamaClient:
         self.base_url = (base_url or os.getenv('OLLAMA_BASE_URL', 'http://127.0.0.1:11434')).rstrip('/')
         self.model = model or os.getenv('OLLAMA_MODEL', 'qwen3-vl:4b-instruct')
         self.last_availability = None
+        self.context_size = 8192
 
     async def is_available(self) -> bool:
         return (await self.availability(retry=True))['ready']
@@ -85,18 +87,30 @@ class OllamaClient:
         payload = {
             'model': os.getenv('OLLAMA_VISION_MODEL', self.model) if images else self.model,
             'system': system, 'prompt': prompt, 'stream': False, 'format': schema,
-            'options': {'temperature': 0, 'num_predict': 1200, 'num_ctx': 8192},
+            'options': {'temperature': 0, 'num_predict': 1200, 'num_ctx': self.context_size},
+            'keep_alive': '10m',
         }
         if images:
             payload['images'] = [base64.b64encode(image).decode('ascii') for image in images]
-        async with httpx.AsyncClient(timeout=60.0, trust_env=False) as client:
+        async with httpx.AsyncClient(timeout=110.0, trust_env=False) as client:
             response = await client.post(f'{self.base_url}/api/generate', json=payload)
             if response.status_code == 400:
                 try:
                     reason = str(response.json().get('error', '')).lower()
                 except (ValueError, AttributeError):
                     reason = ''
-                if any(word in reason for word in ('schema', 'grammar', 'format')):
+                if 'exceed' in reason and 'context' in reason:
+                    match = re.search(r'request \((\d+) tokens\)', reason)
+                    required = int(match.group(1)) + 1200 if match else 16384
+                    context_size = max(16384, 1 << (required - 1).bit_length())
+                    if context_size <= 32768:
+                        # The rejected inference executed no tools. Retry once
+                        # with output headroom; never silently truncate the goal.
+                        payload['options']['num_ctx'] = context_size
+                        response = await client.post(f'{self.base_url}/api/generate', json=payload)
+                        if not response.is_error:
+                            self.context_size = context_size
+                elif any(word in reason for word in ('schema', 'grammar', 'format')):
                     # Some installed runners reject recursive JSON schemas.
                     # Retry only that rejected inference, never a computer action.
                     payload['format'] = 'json'

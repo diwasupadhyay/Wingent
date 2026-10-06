@@ -40,6 +40,22 @@ def _native_path(value):
         return None
 
 
+def discover_packaged(query):
+    if os.name != 'nt':
+        return []
+    try:
+        result = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command',
+            '[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false); Get-StartApps | Select-Object Name,AppID | ConvertTo-Json -Compress'],
+            capture_output=True, text=True, encoding='utf-8', timeout=8, creationflags=0x08000000)
+        entries = json.loads(result.stdout) if result.returncode == 0 else []
+        return [{'name': entry['Name'], 'path': 'shell:AppsFolder\\' + entry['AppID'], 'source': 'Windows Start apps'}
+                for entry in (entries if isinstance(entries, list) else [entries])
+                if query.casefold().strip() in entry.get('Name', '').casefold()
+                and re.fullmatch(r'[A-Za-z0-9._-]+![A-Za-z0-9._-]+', entry.get('AppID', ''))][:20]
+    except (OSError, ValueError, subprocess.TimeoutExpired):
+        return []
+
+
 def discover_installed(query):
     """Search registered App Paths, Start menu shortcuts and executables on PATH."""
     needle = query.casefold().strip()
@@ -47,6 +63,9 @@ def discover_installed(query):
              if term not in {'app', 'application', 'installed', 'native'}]
     if len(needle) < 2:
         return []
+    packaged = discover_packaged(query)
+    if any(item['name'].casefold() == needle for item in packaged):
+        return packaged  # Avoid filesystem scans when Windows has an exact match.
     candidates = []
     if os.name == 'nt':
         import winreg
@@ -117,7 +136,7 @@ def discover_installed(query):
                     candidates.append((entry.name, str(entry), 'PATH'))
         except OSError:
             continue
-    if os.name == 'nt':
+    if os.name == 'nt' and not candidates:
         install_roots = [Path(os.environ[key]) for key in ('PROGRAMFILES', 'PROGRAMFILES(X86)')
                          if os.environ.get(key)]
         if os.environ.get('LOCALAPPDATA'):
@@ -150,7 +169,7 @@ def discover_installed(query):
         sum(term in (item[0] + '/' + item[1]).casefold() for term in terms),
         item[0].casefold().removesuffix('.exe') == needle,
         item[2] == 'App Paths'), reverse=True)
-    found = []
+    found = packaged
     seen = set()
     for name, value, source in candidates:
         target = _native_path(value)
@@ -173,6 +192,9 @@ class ApplicationSession:
 
     @staticmethod
     def _launch(path):
+        if path.startswith('shell:AppsFolder\\'):
+            process = subprocess.Popen(['explorer.exe', path], shell=False)
+            return process.pid
         process = subprocess.Popen([path], cwd=str(Path(path).parent), shell=False,
                                    stdin=subprocess.DEVNULL, stdout=subprocess.DEVNULL,
                                    stderr=subprocess.DEVNULL)
@@ -185,20 +207,21 @@ class ApplicationSession:
             self.records = {key: value for key, value in self.records.items()
                             if self.clock() - value['at'] < 60}
             for item in self.catalog(query):
-                target = _native_path(item['path'])
+                packaged = bool(re.fullmatch(r'shell:AppsFolder\\[A-Za-z0-9._-]+![A-Za-z0-9._-]+', item['path']))
+                target = item['path'] if packaged else _native_path(item['path'])
                 if target is None:
                     continue
                 discovery_id = uuid4().hex
-                stat = target.stat()
+                stat = None if packaged else target.stat()
                 self.records[discovery_id] = {'path': str(target), 'name': item['name'],
                                               'task_id': task_id, 'at': self.clock(),
-                                              'identity': (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns)}
+                                              'identity': None if packaged else (stat.st_dev, stat.st_ino, stat.st_size, stat.st_mtime_ns)}
                 results.append({'discovery_id': discovery_id, 'name': item['name'],
                                 'path': str(target), 'source': item['source']})
                 if len(results) >= 20:
                     break
         return {'ok': True, 'applications': results, 'truncated': len(results) >= 20,
-                'observation': 'Searched App Paths, Start menu shortcuts, PATH and bounded standard install roots; UWP and other locations may be absent.'}
+                'observation': 'Searched Windows Start apps, App Paths, shortcuts, PATH and bounded install roots.'}
 
     def open(self, discovery_id, path):
         with self.lock:
@@ -207,6 +230,12 @@ class ApplicationSession:
             return {'ok': False, 'effect': 'no_effect', 'reason': 'Discovery is missing, expired or belongs to another task.'}
         if path.casefold() != item['path'].casefold():
             return {'ok': False, 'effect': 'no_effect', 'reason': 'Requested executable does not match discovery.'}
+        if item['identity'] is None:
+            try:
+                pid = self.launcher(item['path'])
+            except OSError:
+                return {'ok': False, 'effect': 'no_effect', 'reason': 'Windows could not launch the discovered packaged app.'}
+            return {'ok': True, 'effect': 'accepted', 'application': item['name'], 'path': item['path'], 'pid': pid}
         target = _native_path(item['path'])
         if target is None or str(target).casefold() != item['path'].casefold():
             return {'ok': False, 'effect': 'no_effect', 'reason': 'Discovered executable changed or disappeared.'}
@@ -227,6 +256,8 @@ class ApplicationSession:
             raise ValueError('Application discovery expired; search again.')
         if params.get('path') and params['path'].casefold() != item['path'].casefold():
             raise ValueError('Application path does not match the discovered executable.')
+        if item['identity'] is None:
+            return {**params, 'path': item['path']}
         target = _native_path(item['path'])
         if target is None:
             raise ValueError('Discovered executable disappeared; search again.')
@@ -241,7 +272,7 @@ def register(registry, session=None):
     registry.capabilities['applications'] = Capability(
         'applications', 'application_search finds native executables from Windows App Paths, Start menu shortcuts, PATH or standard install roots. '
         'application_open requires a fresh discovery_id; the host binds its exact discovered path into user approval. Launch acceptance does not prove '
-        'the app became visible. UWP apps may not be found.')
+        'the app became visible. Windows Start catalogue includes packaged apps.')
     registry.register('application_search', 'Search installed native apps by name in App Paths, Start menu, PATH and install roots without launching.',
                       ToolPermission.SAFE, {}, lambda p: session.search(**p),
                       input_model=SearchApplications, capability='applications', timeout_seconds=10,

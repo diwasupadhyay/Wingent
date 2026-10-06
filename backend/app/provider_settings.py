@@ -1,6 +1,7 @@
 """Session-only provider configuration. Credentials never enter files or responses."""
 import base64
 import json
+import asyncio
 from typing import Literal
 from urllib.parse import urlparse, quote
 
@@ -22,6 +23,19 @@ PRESETS = {
                   'note': 'Paid API usage; Claude app subscriptions are separate.',
                   'key_url': 'https://platform.claude.com/settings/keys'},
 }
+
+# Official free-plan catalogue checked 2026-10-06. Non-agent modalities are
+# displayed but disabled in the UI; they cannot produce operator decisions.
+GROQ_MODELS = [
+    {'id': 'qwen/qwen3.8-27b', 'label': 'Qwen3.8 27B · vision', 'agent': True},
+    {'id': 'openai/gpt-oss-20b', 'label': 'GPT OSS 20B · text only', 'agent': True},
+    {'id': 'openai/gpt-oss-120b', 'label': 'GPT OSS 120B · text only', 'agent': True},
+    *[{'id': name, 'label': name + ' · not an operator model', 'agent': False} for name in (
+        'openai/gpt-oss-safeguard-20b', 'meta-llama/llama-prompt-guard-2-22m',
+        'meta-llama/llama-prompt-guard-2-86m', 'whisper-large-v3', 'whisper-large-v3-turbo',
+        'canopylabs/orpheus-arabic-saudi', 'canopylabs/orpheus-v1-english')],
+]
+PRESETS['groq']['models'] = GROQ_MODELS
 
 
 class ProviderSettings(BaseModel):
@@ -75,6 +89,8 @@ class CloudClient:
             raise ValueError('Enter an API key in Settings.')
         if images and not self.settings.share_screenshots:
             raise ValueError('Cloud screen sharing is off. Enable it in Settings to use vision, or select Local.')
+        if images and self.settings.service == 'groq' and self.model in {'openai/gpt-oss-20b', 'openai/gpt-oss-120b'}:
+            raise ValueError('This Groq model is text-only. Select Qwen3.8 27B for computer vision.')
         if len(images) > 1 or any(len(image) > 6_000_000 for image in images):
             raise ValueError('Computer image context exceeded its limit.')
         encoded = [base64.b64encode(image).decode('ascii') for image in images]
@@ -88,6 +104,8 @@ class CloudClient:
             {'role': 'system', 'content': instruction},
             {'role': 'user', 'content': content if images else prompt}],
             'stream': False, 'response_format': {'type': 'json_object'}}
+        if service == 'groq':
+            payload['max_completion_tokens'] = 1200
         url = base + '/chat/completions'
         headers = {'Authorization': 'Bearer ' + secret}
         if service == 'google':
@@ -108,6 +126,15 @@ class CloudClient:
                        'tool_choice': {'type': 'tool', 'name': 'agent_decision'}}
         async with httpx.AsyncClient(timeout=60, trust_env=False, follow_redirects=False) as client:
             response = await client.post(url, headers=headers, json=payload)
+            if response.status_code == 429:
+                # Only retry an explicitly rejected inference, never an action.
+                try:
+                    delay = float(response.headers.get('retry-after', '0'))
+                except ValueError:
+                    delay = 0
+                if 0 < delay <= 15:
+                    await asyncio.sleep(delay)
+                    response = await client.post(url, headers=headers, json=payload)
         if response.is_error:
             # Provider responses may echo prompts/keys; never surface raw response bodies.
             message = {401: 'API key was rejected.', 403: 'The account cannot access this model.',

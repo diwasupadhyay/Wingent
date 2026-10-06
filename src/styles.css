@@ -172,4 +172,9 @@ input::placeholder { color: rgba(235, 235, 245, 0.43); }
 @keyframes result-in { from { opacity: 0; transform: translateY(-4px); } }
 @keyframes pulse { 50% { opacity: .45; } }
 @keyframes spin { to { transform: rotate(360deg); } }
+.settings-footer { flex-wrap: wrap; }
+.settings-footer > span { flex: 1 1 100%; }
+.run-button { border-radius: 50%; width: 34px; height: 34px; font-size: 20px; font-family: system-ui, sans-serif; box-shadow: none; }
+.task-toast { width: 290px; height: 64px; margin: 4px; border-radius: 16px; border: 1px solid #42424a; background: #202024; color: #f5f5f7; font: 14px system-ui, sans-serif; cursor: pointer; }
+.task-toast small { display: block; margin-top: 5px; color: #aaaab4; font-size: 11px; }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: 1ms !important; transition-duration: 1ms !important; } }

@@ -14,6 +14,20 @@ from app.tools import ToolRegistry, ToolPermission
 from app.working_context import observed_effects
 
 
+@pytest.mark.parametrize('visible, expected', [(True, True), (False, False)])
+def test_typing_goal_requires_exact_observed_editable_text(visible, expected):
+    state = TaskState(goal='Open Notepad and type: Wingent can see, think, and act.', criteria=['Text entered'])
+    state.records.append(ActionRecord(action=Action(tool='computer_action', label='type',
+        arguments={'kind': 'type', 'text': 'Wingent can see, think, and act.'}), dispatched=True,
+        outcome=Outcome(status='accepted', summary='Input sent', data={'post_observation': {
+            'ok': True, 'title': 'Untitled - Notepad', 'controls': [{'role': 'ControlType.Document',
+                'value': 'Wingent can see, think, and act.' if visible else ''}]}})))
+    adapter = OperatorAdapter(ToolRegistry(), state, None)
+    observation = state.observe({'results': []})
+    report = asyncio.run(adapter.verify(state, observation))
+    assert state.verified_by(report, observation) is expected
+
+
 def test_focus_pause_preserves_task_for_resume_without_replaying_input():
     from app.computer_tools import BeginControl, ObserveComputer
     registry = ToolRegistry()

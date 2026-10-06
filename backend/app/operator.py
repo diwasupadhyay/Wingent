@@ -15,13 +15,14 @@ from pydantic import Field, JsonValue, create_model
 from app.capabilities import Arguments
 from app.launch_runtime import LaunchAdapter, action_from_pair
 from app.runtime import AgentRuntime
-from app.task_state import Decision, WorkingPlan
+from app.task_state import Decision, WorkingPlan, Evidence
 from app.working_context import context_results, observed_effects, repeat_problem, source_coverage, with_task_memory
 from app.brain import AgentBrain
 
 
 SYSTEM = """You are a general-purpose local computer operator. Work toward the ORIGINAL goal.
 Choose ONE next action from the installed tool schema, inspect its result, then adapt.
+Respect explicit task order and dependencies: obtain a calculation or source result before opening its output destination.
 YOU choose which tool to use. Never ask the user to select a tool or explain a known tool.
 Do not make a full fixed automation script. Tools are primitives, not limits on task categories.
 Use structured tools/APIs before approved process execution. Ask only for missing information,
@@ -125,11 +126,19 @@ def _ground_window_grant(arguments, records, goal):
                    if record.action.tool == 'observe_windows' and record.outcome.status == 'accepted'), None)
     launch = next(((index, record) for index, record in reversed(list(enumerate(records)))
                    if record.action.tool in {'open_application', 'application_open'} and
-                   record.outcome.status == 'accepted' and isinstance(record.outcome.data.get('pid'), int)), None)
+                   record.outcome.status == 'accepted'), None)
     if not latest or not launch or launch[0] > latest[0]:
         return result
-    matches = [window for window in latest[1].outcome.data.get('windows', [])
-               if window.get('pid') == launch[1].outcome.data['pid']]
+    windows = latest[1].outcome.data.get('windows', [])
+    pid = launch[1].outcome.data.get('pid')
+    matches = [window for window in windows if pid is not None and window.get('pid') == pid]
+    if not matches:
+        # Packaged Windows apps can launch through a short-lived broker PID.
+        # Match an exact process basename; ambiguous windows remain a model decision.
+        name = launch[1].action.arguments.get('application') or launch[1].outcome.data.get('path', '')
+        basename = str(name).replace('\\', '/').rsplit('/', 1)[-1].removesuffix('.exe').casefold()
+        if basename:
+            matches = [w for w in windows if str(w.get('process', '')).casefold().removesuffix('.exe') == basename]
     if len(matches) == 1:
         result['window_id'] = matches[0]['window_id']
         result.setdefault('window_title', matches[0]['title'])
@@ -164,6 +173,17 @@ class OperatorAdapter(LaunchAdapter):
             return Decision(kind='ask', message=self.final_message)
         if self.state.records:
             last = self.state.records[-1]
+            if last.action.tool == 'application_search' and last.outcome.status == 'accepted':
+                apps = last.outcome.data.get('applications', [])
+                query = str(last.action.arguments.get('query', '')).strip().casefold()
+                exact = [app for app in apps if str(app.get('name', '')).casefold().removesuffix('.exe') == query]
+                if (len(exact) == 1 and self.registry.get_tool('application_open') and not any(
+                        record.action.tool == 'application_open' and record.outcome.status == 'accepted' and
+                        str(record.outcome.data.get('path', '')).casefold() == exact[0]['path'].casefold()
+                        for record in self.state.records)):
+                    return Decision(kind='act', action=action_from_pair('application_open', {
+                        'discovery_id': exact[0]['discovery_id'], 'path': exact[0]['path']}),
+                        message='Opening the exact application found in Windows.')
             if (last.action.tool.startswith('browser_') and
                     last.outcome.data.get('browser_control') is False and
                     self.registry.get_tool('computer_begin') is None):
@@ -208,12 +228,14 @@ class OperatorAdapter(LaunchAdapter):
         catalogue = []
         for tool_info in self.registry.manifest():
             schema = tool_info['input_schema']
-            full_fields = not visual or tool_info['capability'] in active_capabilities
+            full_fields = tool_info['capability'] in active_capabilities
             fields = {name: {key: value for key, value in spec.items() if key in {'type', 'anyOf', 'enum', 'default', 'minimum', 'maximum', 'description'}
                              and (key != 'description' or full_fields)}
                       for name, spec in schema.get('properties', {}).items()
                       if full_fields or name in schema.get('required', [])}
-            catalogue.append({'name': tool_info['name'], 'description': tool_info['description'][:150],
+            if tool_info['name'] == 'computer_confirm_action':
+                fields = {'same_arguments_as': 'computer_action'}
+            catalogue.append({'name': tool_info['name'], 'description': tool_info['description'][:100],
                               'permission': tool_info['permission'], 'required': schema.get('required', []),
                               'inputs': fields})
         choices = tuple(t['name'] for t in catalogue) + ('ask', 'finish', 'answer')
@@ -244,7 +266,9 @@ class OperatorAdapter(LaunchAdapter):
         # model's small local context on every decision.
         knowledge = [{'name': c.name, 'guidance': c.guidance} for c in self.registry.capabilities.values()
                      if c.available and c.name in active_capabilities]
-        system = (VISION_SYSTEM if visual else SYSTEM) + '\nInstalled tools: ' + json.dumps(catalogue) + '\nTool guidance: ' + json.dumps(knowledge)
+        system = (VISION_SYSTEM if visual else SYSTEM) + '\nInstalled tools: ' + json.dumps(catalogue, separators=(',', ':'))
+        if not visual:
+            system += '\nTool guidance: ' + json.dumps(knowledge, separators=(',', ':'))
         if self.state.clarifications:
             system += '\nThe user answered your previous question. Apply that answer to the ORIGINAL goal and keep earlier accepted effects. Do not restart them.'
             computer = getattr(self.registry, 'computer_session', None)
@@ -512,10 +536,14 @@ class OperatorAdapter(LaunchAdapter):
                 previous_input = next((record for record in reversed(self.state.records)
                                        if record.action.tool in {'computer_action', 'computer_confirm_action', 'computer_begin'}), None)
                 if previous_input and previous_input.action.tool != 'computer_begin' and previous_input.outcome.status == 'accepted':
-                    prior = {key: value for key, value in previous_input.action.arguments.items()
-                             if key not in {'frame_id', 'button', 'clicks', 'amount', 'duration_ms'}}
+                    try:
+                        prior_args = tool.input_model.model_validate(previous_input.action.arguments).model_dump(exclude_none=True)
+                    except ValueError:
+                        prior_args = previous_input.action.arguments
+                    prior = {key: value for key, value in prior_args.items()
+                             if key not in {'frame_id', 'duration_ms'}}
                     proposed = {key: value for key, value in args.items()
-                                if key not in {'frame_id', 'button', 'clicks', 'amount', 'duration_ms'}}
+                                if key not in {'frame_id', 'duration_ms'}}
                     prior_window = previous_input.outcome.data.get('action_window_id',
                         (previous_input.outcome.data.get('post_observation') or {}).get('window_id'))
                     current_window = frame.get('window_id') if frame else None
@@ -539,6 +567,11 @@ class OperatorAdapter(LaunchAdapter):
             restarted_grant = (tool.name == 'computer_begin' and self.state.clarifications and
                                computer is not None and computer.visual_context(self.state.id) is None)
             problem = None if restarted_grant else repeat_problem(self.state, self.registry, action, proposal.refresh_reason)
+            if problem and not prior_grant and tool.name in {'observe_windows', 'open_application', 'application_open'}:
+                grounded = _ground_window_grant({}, self.state.records, self.state.goal)
+                if grounded.get('window_id') and self.registry.get_tool('computer_begin'):
+                    return Decision(kind='act', action=action_from_pair('computer_begin', grounded),
+                                    message='The application is already open; inspecting its window to continue the task.')
             if problem is None:
                 return Decision(kind='act', action=action, message=proposal.objective)
             if choice_attempt == 0 and self.state.limits.model_calls - self.state.model_calls >= 2:
@@ -557,6 +590,29 @@ class OperatorAdapter(LaunchAdapter):
         if outcome.status == 'accepted':
             outcome.summary = 'Tool returned a result. Goal completion requires independent evidence.'
         return outcome
+
+    async def verify(self, state, observation):
+        report = await super().verify(state, observation)
+        # A narrow text-entry goal can be proven without another model call.
+        # Never use text presence to approve arbitrary multi-step goals.
+        match = re.fullmatch(r'\s*open\s+([\w .-]+?)\s+and\s+type\s*:\s*[“"]?(.+?)[”"]?\s*', state.goal, re.I)
+        if not match or not state.records:
+            return report
+        last = state.records[-1]
+        if last.action.tool != 'computer_action' or last.action.arguments.get('kind') != 'type' or last.outcome.status != 'accepted':
+            return report
+        expected = match.group(2)
+        post = last.outcome.data.get('post_observation', {})
+        if last.action.arguments.get('text') != expected or not post.get('ok'):
+            return report
+        if match.group(1).strip().casefold() not in str(post.get('title', '')).casefold():
+            return report
+        if any(expected in str(c.get('value', '')) and c.get('role') in {'ControlType.Edit', 'ControlType.Document'}
+               for c in post.get('controls', [])):
+            report.evidence.extend(Evidence(criterion=criterion, observation_id=observation.id,
+                detail='Post-input accessibility observation contains the exact requested text in the requested application.')
+                for criterion in state.criteria)
+        return report
 
 
 async def run_operator(registry, state, provider, disconnected, review_actions=False):

@@ -11,7 +11,7 @@ type Approval = { approval_id: string; token: string; task_id: string; tool: str
 type BackendState = 'ready' | 'incompatible' | 'unavailable';
 type CloudService = 'custom' | 'groq' | 'google' | 'openai' | 'anthropic';
 type ProviderSettings = { provider: 'local' | 'cloud'; service: CloudService; model: string; endpoint: string; api_key: string; share_screenshots: boolean };
-type ProviderPreset = { label: string; endpoint: string; model: string; note: string; key_url: string };
+type ProviderPreset = { label: string; endpoint: string; model: string; note: string; key_url: string; models?: { id: string; label: string; agent: boolean }[] };
 
 const API_BASE_URL = import.meta.env.VITE_API_BASE_URL ?? 'http://127.0.0.1:8000';
 const isTauri = () => '__TAURI_INTERNALS__' in window;
@@ -36,6 +36,9 @@ export default function App() {
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  useEffect(() => {
+    if (isTauri()) void invoke('set_task_running', { running: loading }).catch(() => {});
+  }, [loading]);
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
   const [lastPrompt, setLastPrompt] = useState('');
@@ -108,6 +111,24 @@ export default function App() {
       void checkOllama();
     } catch (cause) { setSettingsMessage(cause instanceof Error ? cause.message : 'Could not save settings.'); }
     finally { setSettingsBusy(false); }
+  };
+
+  const testConnection = async (vision = false) => {
+    setSettingsBusy(true);
+    setSettingsMessage('Testing connection…');
+    const controller = new AbortController();
+    const timer = window.setTimeout(() => controller.abort(), vision ? 65000 : 25000);
+    try {
+      const response = await fetch(`${apiBaseUrlRef.current}/api/settings/test${vision ? '?vision=true' : ''}`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(settings), signal: controller.signal,
+      });
+      if (!response.ok) throw new Error('Check the provider, model and API key.');
+      const result = await response.json();
+      setSettingsMessage(result.message);
+    } catch (cause) {
+      setSettingsMessage(cause instanceof Error && cause.name !== 'AbortError' ? cause.message : 'Connection test timed out.');
+    } finally { window.clearTimeout(timer); setSettingsBusy(false); }
   };
 
   const checkOllama = useCallback((): Promise<ModelStatus | null> => {
@@ -468,7 +489,10 @@ export default function App() {
                 {Object.entries(presets).map(([id, preset]) => <option key={id} value={id}>{preset.label}</option>)}
                 <option value='custom'>Custom compatible API</option>
               </select></label>
-              <label>Model<input value={settings.model} placeholder='Vision-capable model ID' onChange={(e) => setSettings({ ...settings, model: e.target.value })} /></label>
+              <label>Model{settings.service === 'groq' && presets.groq?.models ? <select value={settings.model} onChange={(e) => setSettings({ ...settings, model: e.target.value })}>
+                {!presets.groq.models.some(m => m.id === settings.model) && <option value={settings.model}>{settings.model}</option>}
+                {presets.groq.models.map(m => <option key={m.id} value={m.id} disabled={!m.agent}>{m.label}</option>)}
+              </select> : <input value={settings.model} placeholder='Vision-capable model ID' onChange={(e) => setSettings({ ...settings, model: e.target.value })} />}</label>
               {settings.provider === 'cloud' && <>
                 {settings.service === 'custom' && <label>API base URL<input value={settings.endpoint} placeholder='https://your-provider.example/v1' onChange={(e) => { setKeyConfigured(false); setSettings({ ...settings, endpoint: e.target.value }); }} /></label>}
                 <label className={settings.service === 'custom' ? '' : 'settings-wide'}>API key<input type='password' autoComplete='off' value={settings.api_key} placeholder={keyConfigured ? 'Saved for this session · leave blank to keep' : 'Paste your API key'} onChange={(e) => setSettings({ ...settings, api_key: e.target.value })} /></label>
@@ -478,7 +502,9 @@ export default function App() {
             {settings.provider === 'cloud' && <label className='cloud-consent'><input type='checkbox' checked={settings.share_screenshots} onChange={(e) => setSettings({ ...settings, share_screenshots: e.target.checked })} />Send screenshots to this provider for vision. Task text and tool results also leave this PC.</label>}
             </fieldset>
             <div className='settings-footer'><span role={settingsMessage ? 'alert' : undefined}>{settingsMessage || (settings.provider === 'local' ? 'Local inference. Your API key is never needed.' : 'Keys stay in memory until you quit Wingent.')}</span>
-              <button disabled={settingsBusy || !settings.model.trim()} onClick={() => void saveSettings()}>{settingsBusy ? 'Saving…' : 'Save'}</button></div>
+              <button disabled={settingsBusy || !settings.model.trim()} title='Sends a tiny text request; provider charges may apply. No screenshot is sent.' onClick={() => void testConnection()}>Test connection</button>
+              <button disabled={settingsBusy || !settings.model.trim()} title='Tests a generated color image, never your screen. Uses provider quota.' onClick={() => void testConnection(true)}>Test vision</button>
+              <button disabled={settingsBusy || !settings.model.trim()} onClick={() => void saveSettings()}>Save</button></div>
           </section>
         )}
         {expanded && !settingsOpen && (

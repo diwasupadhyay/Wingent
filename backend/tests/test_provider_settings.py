@@ -10,6 +10,43 @@ from app.llm import OllamaClient
 from app.provider_settings import CloudClient, ProviderSettings
 
 
+def test_context_overflow_retries_with_headroom_and_remembers_size(monkeypatch):
+    sent = []
+    real_client = httpx.AsyncClient
+    def handle(request):
+        sent.append(json.loads(request.content))
+        if len(sent) == 1:
+            return httpx.Response(400, json={'error': {'message': 'request (8222 tokens) exceeds the available context size (8192 tokens)'}})
+        return httpx.Response(200, json={'response': '{}'})
+    monkeypatch.setattr(httpx, 'AsyncClient', lambda **kw: real_client(transport=httpx.MockTransport(handle), **kw))
+    client = OllamaClient()
+    for _ in range(2):
+        assert asyncio.run(client.structured_images('goal', 'system', {}, [b'image'])) == '{}'
+    assert [r['options']['num_ctx'] for r in sent] == [8192, 16384, 16384]
+    assert sent[0]['images'] == sent[1]['images']
+
+
+def test_connection_and_synthetic_vision_do_not_save_or_capture(monkeypatch):
+    import struct
+    import zlib
+    monkeypatch.setattr(main, 'provider_settings', None)
+    async def structured(self, *args):
+        return '{"ok":true}'
+    async def vision(self, prompt, system, schema, images):
+        image = images[0]
+        size = struct.unpack('>I', image[33:37])[0]
+        rgb = tuple(zlib.decompress(image[41:41 + size])[1:4])
+        return json.dumps({'color': {(255, 0, 0): 'red', (0, 128, 0): 'green', (0, 0, 255): 'blue'}[rgb]})
+    monkeypatch.setattr(CloudClient, 'structured', structured)
+    monkeypatch.setattr(CloudClient, 'structured_images', vision)
+    client = TestClient(main.app)
+    config = {'provider': 'cloud', 'service': 'groq', 'api_key': 'test-only'}
+    for endpoint in ['/api/settings/test', '/api/settings/test?vision=true']:
+        assert client.post(endpoint, json=config).json()['ready'] is True
+        assert main.provider_settings is None
+        assert client.post(endpoint, json=config, headers={'Origin': 'https://evil.example'}).status_code == 403
+
+
 @pytest.mark.parametrize('service', ['groq', 'openai', 'google', 'anthropic'])
 def test_provider_presets_use_official_auth_and_vision_wire_format(monkeypatch, service):
     sent = []

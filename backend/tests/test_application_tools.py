@@ -1,7 +1,32 @@
 from pathlib import Path
+import pytest
 
 from app.application_tools import ApplicationSession, register
 from app.tools import ToolPermission, ToolRegistry, execution_task_id
+
+
+def test_exact_start_app_avoids_filesystem_scan(monkeypatch):
+    from app import application_tools
+    found = [{'name': 'Calculator', 'path': r'shell:AppsFolder\Package_name!App', 'source': 'Windows Start apps'}]
+    monkeypatch.setattr(application_tools, 'discover_packaged', lambda _: found)
+    monkeypatch.setattr(application_tools.os, 'walk', lambda *_: pytest.fail('Unnecessary install scan'))
+    assert application_tools.discover_installed('Calculator') == found
+
+
+def test_packaged_apps_are_bound_to_observed_start_catalogue():
+    path = r'shell:AppsFolder\Microsoft.WindowsCalculator_8wekyb3d8bbwe!App'
+    calls = []
+    session = ApplicationSession(catalog=lambda _: [{'name': 'Calculator', 'path': path, 'source': 'Windows Start apps'}],
+                                 launcher=lambda target: (calls.append(target), 123)[1])
+    token = execution_task_id.set('packaged-test')
+    try:
+        item = session.search('Calculator')['applications'][0]
+        assert session.prepare_open({'discovery_id': item['discovery_id']})['path'] == path
+        assert session.open(item['discovery_id'], path)['ok']
+        assert not session.open(item['discovery_id'], path)['ok']
+        assert calls == [path]
+    finally:
+        execution_task_id.reset(token)
 
 
 def test_legacy_notepad_launch_uses_direct_process_and_reports_window(monkeypatch):

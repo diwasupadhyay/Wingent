@@ -21,6 +21,11 @@ class AgentBrain:
         if frame:
             metadata = {key: value for key, value in frame.items() if key != 'image'}
             context = json.loads(prompt)
+            # The same UI tree was also embedded in observer facts, duplicating
+            # it alongside action results and the image on every decision.
+            context.pop('untrusted_observations', None)
+            for item in context.get('action_history', []):
+                item.pop('result_sha256', None)
             # Old control trees are historical, not actionable. Preserve their
             # record IDs/results in task memory but avoid feeding many stale
             # trees alongside the actual latest image on every model call.
@@ -42,5 +47,5 @@ class AgentBrain:
                 system += ('\nNo editable input target is established in this window. '
                            'First click the intended field, unless a focused Edit/Document control is present. '
                            'Do not propose type yet; typing without a target is rejected by the host.')
-            return await self.provider.structured_images(json.dumps(context), system, schema, [frame['image']])
+            return await self.provider.structured_images(json.dumps(context, separators=(',', ':')), system, schema, [frame['image']])
         return await self.provider.structured(prompt, system, schema)

@@ -1,5 +1,7 @@
 import json
 import os
+import asyncio
+import httpx
 from typing import AsyncGenerator
 
 from fastapi import FastAPI, Request, HTTPException
@@ -38,7 +40,7 @@ app = FastAPI(title='Wingent', version='0.1.0')
 
 @app.exception_handler(RequestValidationError)
 async def validation_error(request, exc):
-    if request.url.path == '/api/settings':
+    if request.url.path.startswith('/api/settings'):
         return JSONResponse(status_code=422, content={'detail': 'Invalid settings. Check provider, model, HTTPS endpoint and API key.'})
     return await request_validation_exception_handler(request, exc)
 app.add_middleware(
@@ -86,9 +88,7 @@ def provider_presets():
     return PRESETS
 
 
-@app.post('/api/settings')
-def set_settings(settings: ProviderSettings, request: Request):
-    global provider_settings
+def resolve_settings(settings: ProviderSettings, request: Request):
     origin = request.headers.get('origin')
     if origin and origin not in {'http://localhost:5173', 'http://127.0.0.1:5173', 'tauri://localhost',
                                  'http://tauri.localhost', 'https://tauri.localhost'}:
@@ -100,8 +100,55 @@ def set_settings(settings: ProviderSettings, request: Request):
             settings = settings.model_copy(update={'api_key': previous.api_key})
         else:
             raise HTTPException(status_code=422, detail='Enter an API key for this provider.')
-    provider_settings = settings.model_copy(deep=True)
+    return settings.model_copy(deep=True)
+
+
+@app.post('/api/settings')
+def set_settings(settings: ProviderSettings, request: Request):
+    global provider_settings
+    provider_settings = resolve_settings(settings, request)
     return provider_settings.public()
+
+
+@app.post('/api/settings/test')
+async def test_settings(settings: ProviderSettings, request: Request, vision: bool = False):
+    settings = resolve_settings(settings, request)
+    try:
+        async with asyncio.timeout(60 if vision else 20):
+            if vision:
+                # Synthetic pixels only: never capture/send the user's desktop.
+                import secrets
+                import struct
+                import zlib
+                color = secrets.choice(['red', 'green', 'blue'])
+                rgb = {'red': b'\xff\x00\x00', 'green': b'\x00\x80\x00', 'blue': b'\x00\x00\xff'}[color]
+                def chunk(kind, data):
+                    return struct.pack('>I', len(data)) + kind + data + struct.pack('>I', zlib.crc32(kind + data))
+                pixels = b'\x89PNG\r\n\x1a\n' + chunk(b'IHDR', struct.pack('>IIBBBBB', 128, 128, 8, 2, 0, 0, 0))
+                pixels += chunk(b'IDAT', zlib.compress((b'\0' + rgb * 128) * 128)) + chunk(b'IEND', b'')
+                provider = (OllamaClient(model=settings.model) if settings.provider == 'local' else
+                            CloudClient(settings.model_copy(update={'share_screenshots': True})))
+                raw = await provider.structured_images('What solid color is the image: red, green or blue?',
+                    'Report the image color in JSON. Do not guess without seeing the image.',
+                    {'type': 'object', 'properties': {'color': {'type': 'string'}}, 'required': ['color']},
+                    [pixels])
+                ready = str(json.loads(raw).get('color', '')).strip().lower() == color
+                return {'ready': ready, 'message': 'Vision test passed: synthetic image recognized. Desktop operation still needs testing.' if ready else 'Vision test failed: image color was not recognized.'}
+            if settings.provider == 'local':
+                return await OllamaClient(model=settings.model).availability()
+            raw = await CloudClient(settings).structured('Return {"ok":true}.', 'Connection test. Return only JSON.',
+                {'type': 'object', 'properties': {'ok': {'type': 'boolean'}}, 'required': ['ok'], 'additionalProperties': False})
+            if json.loads(raw).get('ok') is not True:
+                raise ValueError('Unexpected model response.')
+        return {'ready': True, 'message': 'Connected. API key and selected model work. Vision was not tested.'}
+    except (TimeoutError, httpx.TimeoutException):
+        return {'ready': False, 'message': 'Connection test timed out. Check provider status and try again.'}
+    except httpx.RequestError:
+        return {'ready': False, 'message': 'Could not reach the provider. Check your network and endpoint.'}
+    except RuntimeError as exc:
+        return {'ready': False, 'message': str(exc)}
+    except (ValueError, TypeError, AttributeError):
+        return {'ready': False, 'message': 'Provider responded, but did not return the expected JSON. Check model compatibility.'}
 
 
 def sse_event(event: str, payload: dict[str, object]) -> str:
@@ -160,7 +207,7 @@ async def command(request: Request, command_request: CommandRequest) -> Streamin
         except (KeyError, ValueError) as exc:
             raise HTTPException(status_code=409, detail=str(exc)) from exc
     else:
-        state = TaskState(goal=prompt, criteria=[prompt], limits=Limits(model_calls=12, seconds=180.0))
+        state = TaskState(goal=prompt, criteria=[prompt], limits=Limits(model_calls=12, seconds=360.0, operation_seconds=120.0))
 
     async def event_stream() -> AsyncGenerator[str, None]:
         yield sse_event('status', {'stage': 'planning', 'message': 'Planning request'})
