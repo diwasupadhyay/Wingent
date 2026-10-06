@@ -36,6 +36,21 @@ GROQ_MODELS = [
         'canopylabs/orpheus-arabic-saudi', 'canopylabs/orpheus-v1-english')],
 ]
 PRESETS['groq']['models'] = GROQ_MODELS
+PRESETS['google']['models'] = [
+    {'id': model, 'label': label, 'agent': True} for model, label in (
+        ('gemini-3.8-flash', 'Gemini 3.8 Flash'),
+        ('gemini-3.7-flash', 'Gemini 3.7 Flash'),
+        ('gemini-3.6-flash', 'Gemini 3.6 Flash'),
+        ('gemini-3.5-flash', 'Gemini 3.5 Flash'),
+        ('gemini-3.5-flash-lite', 'Gemini 3.5 Flash-Lite · faster/lower cost'),
+        ('gemini-3.1-flash-lite', 'Gemini 3.1 Flash-Lite'),
+        ('gemini-3.1-pro-preview', 'Gemini 3.1 Pro · preview'),
+        ('gemini-3-flash-preview', 'Gemini 3 Flash · preview'),
+        ('gemini-2.5-flash', 'Gemini 2.5 Flash · legacy access'),
+        ('gemini-2.5-flash-lite', 'Gemini 2.5 Flash-Lite · legacy access'),
+        ('gemini-2.5-pro', 'Gemini 2.5 Pro · legacy access'),
+    )
+]
 
 
 class ProviderSettings(BaseModel):
@@ -132,13 +147,19 @@ class CloudClient:
                     delay = float(response.headers.get('retry-after', '0'))
                 except ValueError:
                     delay = 0
-                if 0 < delay <= 15:
+                if 0 < delay <= 60:
                     await asyncio.sleep(delay)
                     response = await client.post(url, headers=headers, json=payload)
+            elif response.status_code in {502, 503, 504}:
+                # Retry inference once, without replaying any computer input.
+                await asyncio.sleep(2)
+                response = await client.post(url, headers=headers, json=payload)
         if response.is_error:
             # Provider responses may echo prompts/keys; never surface raw response bodies.
             message = {401: 'API key was rejected.', 403: 'The account cannot access this model.',
-                       404: 'Model or API endpoint was not found.', 429: 'Rate limit or account quota reached. Wait or check your provider quota.'}.get(
+                       404: 'Model or API endpoint was not found.',
+                       429: 'Provider rate limit or account quota reached. Screenshot tasks use many tokens. Wait for quota reset, select another available model, or use local Ollama. Retrying the whole task can repeat earlier actions.',
+                       503: 'The provider is temporarily unavailable or overloaded; one retry failed. Try another model in Settings or wait. This is not an API-key validation error.'}.get(
                            response.status_code, 'Check model access and JSON/vision support in Settings.')
             raise RuntimeError(f'Cloud provider returned HTTP {response.status_code}. {message}')
         try:

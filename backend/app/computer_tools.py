@@ -77,6 +77,28 @@ class ComputerSession:
         self.lock = threading.RLock()
         self.tasks = {}
 
+    def open_search(self):
+        owner = execution_task_id.get()
+        with self.lock:
+            if not owner or any(key != owner and not value['cancelled'].is_set() for key, value in self.tasks.items()):
+                raise ValueError('Another task owns computer control or task identity is missing.')
+            # Reserve ownership before any input so Stop also covers search startup.
+            cancelled = threading.Event()
+            previous = self.tasks.get(owner)
+            self.tasks[owner] = {'cancelled': cancelled, 'frame': None}
+            try:
+                window_id = self.platform.open_search(cancelled.is_set)
+                if cancelled.is_set():
+                    raise ValueError('Windows Search opening was cancelled.')
+                return self.begin(window_id=window_id, scope='window', purpose='Inspect Windows Search before choosing an application')
+            except Exception:
+                if previous and not cancelled.is_set():
+                    previous['frame'] = None
+                    self.tasks[owner] = previous
+                else:
+                    self.tasks.pop(owner, None)
+                raise
+
     def prepare_begin(self, params):
         window = next((w for w in self.platform.list_visible_windows() if w['hwnd'] == params['window_id']), None)
         if not window:
@@ -300,6 +322,9 @@ def register(registry, session=None):
                     'needs_user_attention': focus_blocked,
                     'limitation': 'Observation failed; window focus may have changed, but no application input was sent.'}
     registry.computer_session = session
+    registry.register('computer_open_search', 'Open Windows Search (Win+S) and observe its actual screen. Then type the app name and choose an observed result; never blind Enter.',
+                      ToolPermission.SAFE, {}, lambda p: observe_safely(session.open_search, p),
+                      input_model=Arguments, capability='computer', timeout_seconds=30, cancel_task=session.cancel)
     registry.capabilities['computer'] = Capability('computer',
         'The computer is a general environment. Use observe_windows then computer_begin to obtain task-scoped '
         'control of a selected window. This sends fresh window screenshots to the local LLM. '

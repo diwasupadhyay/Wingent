@@ -14,6 +14,40 @@ from app.tools import ToolRegistry, ToolPermission
 from app.working_context import observed_effects
 
 
+def test_packaged_app_grant_uses_unique_observed_title_not_explorer_pid():
+    from app.operator import _ground_window_grant
+    launch = ActionRecord(action=Action(tool='application_open', arguments={}, label='Open'),
+        outcome=Outcome(status='accepted', summary='Launched', data={'application': 'Calculator',
+            'pid': 900, 'path': r'shell:AppsFolder\Microsoft.WindowsCalculator!App'}), dispatched=True)
+    window = {'window_id': 42, 'pid': 123, 'title': 'Calculator', 'process': 'CalculatorApp.exe'}
+    observed = ActionRecord(action=Action(tool='observe_windows', arguments={}, label='Observe'),
+        outcome=Outcome(status='accepted', summary='Seen', data={'windows': [window,
+            {'window_id': 99, 'pid': 900, 'title': 'Documents', 'process': 'explorer.exe'}]}), dispatched=True)
+    assert _ground_window_grant({}, [launch, observed], 'Calculate')['window_id'] == 42
+    observed.outcome.data['windows'].append({**window, 'window_id': 43})
+    assert 'window_id' not in _ground_window_grant({}, [launch, observed], 'Calculate')
+
+
+def test_active_control_is_not_regranted_instead_of_input():
+    from app.computer_tools import BeginControl, ComputerAction
+    registry = ToolRegistry()
+    registry.register('observe_windows', 'Observe', ToolPermission.SAFE, {}, lambda p: {}, input_model=Arguments)
+    registry.register('computer_begin', 'Begin', ToolPermission.SAFE, {}, lambda p: {}, input_model=BeginControl)
+    registry.register('computer_action', 'Input', ToolPermission.SAFE, {}, lambda p: {}, input_model=ComputerAction)
+    registry.computer_session = SimpleNamespace(visual_context=lambda _: {
+        'window_id': 42, 'frame_id': 'fresh', 'scope': 'window', 'input_targeted': True, 'image': b'pixels'})
+    state = TaskState(goal='Calculate', criteria=['Result'])
+    calls = []
+    class Provider:
+        async def structured_images(self, *args):
+            calls.append(1)
+            return json.dumps({'tool': 'computer_begin', 'arguments': {'window_id': 42, 'purpose': 'Calculate'}}) if len(calls) == 1 else json.dumps({
+                'tool': 'computer_action', 'arguments': {'frame_id': 'fresh', 'kind': 'type', 'text': '247*38'}})
+    decision = asyncio.run(OperatorAdapter(registry, state, BudgetedProvider(Provider(), state)).decide(state.context()))
+    assert decision.action.tool == 'computer_action'
+    assert len(calls) == 2
+
+
 @pytest.mark.parametrize('visible, expected', [(True, True), (False, False)])
 def test_typing_goal_requires_exact_observed_editable_text(visible, expected):
     state = TaskState(goal='Open Notepad and type: Wingent can see, think, and act.', criteria=['Text entered'])
@@ -128,7 +162,7 @@ def test_unique_launched_window_fills_grant_without_extra_model_call():
     assert decision.kind == 'act'
     assert decision.action.arguments == {'window_id': 7, 'purpose': state.goal, 'scope': 'window',
                                          'window_title': 'Untitled', 'process': 'notepad.exe'}
-    assert len(calls) == 1
+    assert len(calls) == 0  # Unique observed handoff needs no inference.
 
 
 def test_ambiguous_launched_windows_are_not_chosen_by_host():

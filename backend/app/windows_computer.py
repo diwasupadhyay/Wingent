@@ -224,6 +224,26 @@ def key_event(key, up=False, unicode=False):
                                                (4 if unicode else 0) | (2 if up else 0) | extended, 0, 0)))
 
 
+def open_search(cancelled=lambda: False):
+    """Open OS search, never type or execute a guessed result."""
+    if cancelled():
+        raise ValueError('Windows Search opening was cancelled.')
+    try:
+        send([key_event(KEYS['win']), key_event(KEYS['s'])])
+    finally:
+        send([key_event(KEYS['s'], True), key_event(KEYS['win'], True)])
+    deadline = time.monotonic() + 3
+    while time.monotonic() < deadline:
+        if cancelled():
+            raise ValueError('Windows Search opening was cancelled.')
+        current = foreground_window_id()
+        for window in list_visible_windows():
+            if window['hwnd'] == current and window['process'].casefold() in {'searchhost.exe', 'searchapp.exe', 'searchui.exe'}:
+                return current
+        time.sleep(.1)
+    raise ValueError('Windows Search did not become the observed foreground window. No text was sent.')
+
+
 def move_pointer(api, x, y, duration_ms, check):
     """Smooth, cancellable native pointer motion; no extra decorative circles."""
     point = wintypes.POINT()

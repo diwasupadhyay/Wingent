@@ -58,6 +58,7 @@ export default function App() {
     ? 'Wingent connected to the wrong backend instance. Restart this EXE.'
     : 'Wingent service is unavailable. Restart Wingent if this persists.';
   const expanded = settingsOpen || loading || Boolean(content) || Boolean(error) || (backendReady !== null && backendReady !== 'ready');
+  const modelOptions = presets[settings.service]?.models;
 
   const openSettings = async () => {
     if (loading) return;
@@ -311,8 +312,8 @@ export default function App() {
             : 'Wingent backend is not ready. Restart Wingent and try again.');
         }
       }
-      // Keep planning/errors visible. The computer_begin handoff hides the
-      // overlay only when the agent actually needs the target application's focus.
+      // The non-activating toast keeps progress reachable without covering apps.
+      if (isTauri()) await invoke('hide_overlay');
       const response = await fetch(`${apiBaseUrlRef.current}/api/command`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -496,9 +497,9 @@ export default function App() {
                 {Object.entries(presets).map(([id, preset]) => <option key={id} value={id}>{preset.label}</option>)}
                 <option value='custom'>Custom compatible API</option>
               </select></label>
-              <label>Model{settings.service === 'groq' && presets.groq?.models ? <select value={settings.model} onChange={(e) => setSettings({ ...settings, model: e.target.value })}>
-                {!presets.groq.models.some(m => m.id === settings.model) && <option value={settings.model}>{settings.model}</option>}
-                {presets.groq.models.map(m => <option key={m.id} value={m.id} disabled={!m.agent}>{m.label}</option>)}
+              <label>Model{settings.provider === 'cloud' && modelOptions ? <select value={settings.model} onChange={(e) => setSettings({ ...settings, model: e.target.value })}>
+                {!modelOptions.some(m => m.id === settings.model) && <option value={settings.model}>{settings.model}</option>}
+                {modelOptions.map(m => <option key={m.id} value={m.id} disabled={!m.agent}>{m.label}</option>)}
               </select> : <input value={settings.model} placeholder='Vision-capable model ID' onChange={(e) => setSettings({ ...settings, model: e.target.value })} />}</label>
               {settings.provider === 'cloud' && <>
                 {settings.service === 'custom' && <label>API base URL<input value={settings.endpoint} placeholder='https://your-provider.example/v1' onChange={(e) => { setKeyConfigured(false); setSettings({ ...settings, endpoint: e.target.value }); }} /></label>}

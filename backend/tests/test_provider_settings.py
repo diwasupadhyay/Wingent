@@ -10,6 +10,22 @@ from app.llm import OllamaClient
 from app.provider_settings import CloudClient, ProviderSettings
 
 
+@pytest.mark.parametrize('status,delay', [(503, 2), (429, 20)])
+def test_cloud_transient_retry_is_bounded(monkeypatch, status, delay):
+    sent, sleeps = [], []
+    real_client = httpx.AsyncClient
+    def handle(request):
+        sent.append(request)
+        return httpx.Response(status, headers={'retry-after': str(delay)})
+    async def sleep(seconds):
+        sleeps.append(seconds)
+    monkeypatch.setattr(httpx, 'AsyncClient', lambda **kw: real_client(transport=httpx.MockTransport(handle), **kw))
+    monkeypatch.setattr(asyncio, 'sleep', sleep)
+    with pytest.raises(RuntimeError, match=str(status)):
+        asyncio.run(CloudClient(ProviderSettings(provider='cloud', service='google', api_key='test')).structured('goal', 'system', {}))
+    assert len(sent) == 2 and sleeps == [delay]
+
+
 def test_context_overflow_retries_with_headroom_and_remembers_size(monkeypatch):
     sent = []
     real_client = httpx.AsyncClient

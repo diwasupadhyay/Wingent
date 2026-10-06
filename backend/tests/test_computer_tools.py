@@ -59,6 +59,21 @@ def test_action_looks_again_and_cannot_replay_frame(granted):
     assert len(desktop.calls) == 1
 
 
+def test_search_observes_before_any_typing_and_respects_cancellation(granted):
+    session, desktop, _ = granted
+    desktop.open_search = lambda cancelled: 1
+    assert session.open_search()['frame_id']
+    assert not desktop.calls
+    def cancelled_search(cancelled):
+        session.cancel('owner')
+        assert cancelled()
+        return 1
+    desktop.open_search = cancelled_search
+    with pytest.raises(ValueError, match='cancelled'):
+        session.open_search()
+    assert session.visual_context('owner') is None
+
+
 def test_cannot_begin_control_of_agent_overlay():
     desktop = Desktop()
     desktop.list_visible_windows = lambda: [dict(hwnd=1, pid=10, executable='app.exe', process='app.exe', title='Wingent')]

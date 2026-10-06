@@ -21,6 +21,9 @@ from app.brain import AgentBrain
 
 
 SYSTEM = """You are a general-purpose local computer operator. Work toward the ORIGINAL goal.
+For visible application launches, prefer computer_open_search when available: see Windows Search,
+type the app name, inspect the results, then select the actual matching app. Direct application tools
+remain alternatives when UI search is unavailable. Never press Enter on an unobserved search result.
 Choose ONE next action from the installed tool schema, inspect its result, then adapt.
 Respect explicit task order and dependencies: obtain a calculation or source result before opening its output destination.
 YOU choose which tool to use. Never ask the user to select a tool or explain a known tool.
@@ -131,14 +134,21 @@ def _ground_window_grant(arguments, records, goal):
         return result
     windows = latest[1].outcome.data.get('windows', [])
     pid = launch[1].outcome.data.get('pid')
-    matches = [window for window in windows if pid is not None and window.get('pid') == pid]
+    packaged = str(launch[1].outcome.data.get('path', '')).startswith('shell:AppsFolder\\')
+    matches = [window for window in windows if not packaged and pid is not None and window.get('pid') == pid]
     if not matches:
         # Packaged Windows apps can launch through a short-lived broker PID.
         # Match an exact process basename; ambiguous windows remain a model decision.
         name = launch[1].action.arguments.get('application') or launch[1].outcome.data.get('path', '')
         basename = str(name).replace('\\', '/').rsplit('/', 1)[-1].removesuffix('.exe').casefold()
         if basename:
-            matches = [w for w in windows if str(w.get('process', '')).casefold().removesuffix('.exe') == basename]
+            matches = [w for w in windows if str(w.get('process', '')).replace('\\', '/').rsplit('/', 1)[-1].casefold().removesuffix('.exe') == basename]
+    if not matches:
+        # Packaged apps are started by Explorer, not by their eventual app PID.
+        # Bind only a unique exact observed title, never an invented HWND.
+        display_name = str(launch[1].outcome.data.get('application', '')).strip().casefold()
+        if display_name:
+            matches = [w for w in windows if str(w.get('title', '')).strip().casefold() == display_name]
     if len(matches) == 1:
         result['window_id'] = matches[0]['window_id']
         result.setdefault('window_title', matches[0]['title'])
@@ -223,6 +233,15 @@ class OperatorAdapter(LaunchAdapter):
                             message='Checking which application window actually appeared.')
         computer = getattr(self.registry, 'computer_session', None)
         visual = computer.visual_context(self.state.id) if computer else None
+        if (computer and not visual and self.state.records and
+                self.state.records[-1].action.tool == 'observe_windows' and
+                self.state.records[-1].outcome.status == 'accepted' and
+                self.registry.get_tool('computer_begin')):
+            grounded = _ground_window_grant({}, self.state.records, self.state.goal)
+            if grounded.get('window_id'):
+                grounded = self.registry.get_tool('computer_begin').input_model.model_validate(grounded).model_dump(exclude_none=True)
+                return Decision(kind='act', action=action_from_pair('computer_begin', grounded),
+                                message='Inspecting the uniquely matched application window.')
         active_capabilities = {tool.capability for record in self.state.records
                                if (tool := self.registry.get_tool(record.action.tool)) is not None}
         catalogue = []
@@ -369,11 +388,29 @@ class OperatorAdapter(LaunchAdapter):
                         argument_system += '\nPrevious arguments failed validation. Return the exact input schema.'
             computer = getattr(self.registry, 'computer_session', None)
             if computer and tool.name == 'computer_begin' and self.registry.get_tool('observe_windows'):
+                current_frame = computer.visual_context(self.state.id)
+                if (current_frame and args['window_id'] == current_frame.get('window_id') and
+                        args.get('scope', 'window') == current_frame.get('scope', 'window')):
+                    if choice_attempt == 0:
+                        system += ('\nControl of that window is already active. Do NOT call computer_begin again. '
+                                   'Use computer_action with the current frame_id to perform the remaining work, '
+                                   'or computer_observe if the screen needs refreshing.')
+                        continue
+                    self.final_message = 'The model repeatedly requested control of an already-controlled window instead of acting.'
+                    return Decision(kind='finish', message=self.final_message)
                 latest_windows = next((record for record in reversed(self.state.records)
                                        if record.action.tool == 'observe_windows' and
                                        record.outcome.status == 'accepted'), None)
                 observed_ids = {window.get('window_id') for window in
                                 (latest_windows.outcome.data.get('windows', []) if latest_windows else [])}
+                # A successful computer observation can contain newer dialogs
+                # and app windows than the original observe_windows snapshot.
+                recent_computer = next((r for r in reversed(self.state.records)
+                    if r.action.tool.startswith('computer_') and r.outcome.status == 'accepted'), None)
+                if recent_computer:
+                    latest_data = recent_computer.outcome.data.get('post_observation', recent_computer.outcome.data)
+                    if latest_data.get('ok'):
+                        observed_ids.update(w.get('window_id') for w in latest_data.get('windows', []))
                 if args['window_id'] not in observed_ids:
                     if choice_attempt == 0 and self.state.limits.model_calls - self.state.model_calls >= 2:
                         system += ('\nThat computer grant was NOT attempted: its window_id is not in the latest '
