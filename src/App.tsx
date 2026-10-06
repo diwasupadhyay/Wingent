@@ -36,8 +36,12 @@ export default function App() {
   const [approvalBusy, setApprovalBusy] = useState(false);
   const [approvalError, setApprovalError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const toastUpdates = useRef<Promise<unknown>>(Promise.resolve());
   useEffect(() => {
-    if (isTauri()) void invoke('set_task_running', { running: loading }).catch(() => {});
+    if (isTauri()) {
+      toastUpdates.current = toastUpdates.current.catch(() => {}).then(() =>
+        invoke('set_task_running', { running: loading })).catch(() => {});
+    }
   }, [loading]);
   const [error, setError] = useState<string | null>(null);
   const [errorCode, setErrorCode] = useState<string | null>(null);
@@ -189,7 +193,9 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (isTauri()) void invoke('set_overlay_expanded', { expanded, settings: settingsOpen });
+    if (isTauri()) void invoke('set_overlay_expanded', { expanded, settings: settingsOpen }).catch(() => {
+      setError('Could not resize the command window. Restart Wingent.');
+    });
   }, [expanded, settingsOpen]);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
@@ -305,7 +311,8 @@ export default function App() {
             : 'Wingent backend is not ready. Restart Wingent and try again.');
         }
       }
-      if (isTauri()) await invoke('hide_overlay');
+      // Keep planning/errors visible. The computer_begin handoff hides the
+      // overlay only when the agent actually needs the target application's focus.
       const response = await fetch(`${apiBaseUrlRef.current}/api/command`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },

@@ -255,7 +255,9 @@ fn reveal_overlay(app: AppHandle) {
 }
 
 #[tauri::command]
-fn set_task_running(app: AppHandle, running: bool) -> Result<(), String> {
+async fn set_task_running(app: AppHandle, running: bool) -> Result<(), String> {
+  // WebView2 creation in a synchronous IPC handler deadlocks Windows' UI
+  // thread. Keep this command async, even though the builder is synchronous.
   if !running {
     if let Some(window) = app.get_webview_window("task-status") { let _ = window.close(); }
     return Ok(());
@@ -439,6 +441,16 @@ pub fn run() {
 #[cfg(test)]
 mod tests {
   use super::{classify_backend_response, BackendHealth};
+
+  #[test]
+  fn toast_creation_command_must_run_asynchronously() {
+    // Compile-time regression guard: a synchronous handler returns Result,
+    // not Future, and can deadlock WebView2 before the task even starts.
+    fn requires_future<F, R>(_handler: F)
+    where F: Fn(tauri::AppHandle, bool) -> R,
+          R: std::future::Future<Output = Result<(), String>> {}
+    requires_future(super::set_task_running);
+  }
 
   #[test]
   fn refuses_stale_or_unrelated_loopback_backend() {
