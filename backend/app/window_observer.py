@@ -11,7 +11,7 @@ from app.tools import ToolPermission
 
 def is_agent_window(window):
     """The command overlay is never an application input target."""
-    return window.get('title', '').casefold() == 'wingent' and window.get('process', '').casefold() in {'app.exe', 'wingent.exe'}
+    return window.get('title', '').casefold().startswith('wingent') and window.get('process', '').casefold() in {'app.exe', 'wingent.exe'}
 
 
 def foreground_window_id():
@@ -39,12 +39,15 @@ def list_visible_windows(limit=40):
                                                      wintypes.LPWSTR, ctypes.POINTER(wintypes.DWORD)]
     kernel32.CloseHandle.argtypes = [wintypes.HANDLE]
     windows = []
+    foreground = foreground_window_id()
 
     def inspect(hwnd, unused):
         if not user32.IsWindowVisible(hwnd):
             return True
         title_length = min(user32.GetWindowTextLengthW(hwnd), 300)
-        if title_length < 1:
+        # Windows Search can own an untitled foreground window. Its verified
+        # process identity remains useful even without a caption.
+        if title_length < 1 and int(hwnd) != foreground:
             return True
         title = ctypes.create_unicode_buffer(title_length + 1)
         user32.GetWindowTextW(hwnd, title, len(title))

@@ -2,7 +2,8 @@ import json
 
 from fastapi.testclient import TestClient
 
-from app.main import app, detect_deterministic_tools, requests_unsupported_browser_automation
+from app.main import app
+from app.routing import detect_deterministic_tools, requests_unsupported_browser_automation
 from app.tools import ToolPermission, ToolRegistry
 
 client = TestClient(app)
@@ -155,8 +156,17 @@ def test_mixed_browser_task_is_not_partially_executed(monkeypatch):
     assert executed == []
 
 
-def test_supported_actions_run_without_model(monkeypatch):
+def test_app_launch_request_uses_operator_not_legacy_commands(monkeypatch):
     executed = []
+
+    async def available(*args):
+        return True
+
+    async def decide(*args):
+        return '{"tool":"ask","message":"Waiting for visible Windows Search."}'
+
+    monkeypatch.setattr('app.main.OllamaClient.is_available', available)
+    monkeypatch.setattr('app.main.OllamaClient.structured', decide)
 
     def record_execution(name, params):
         executed.append((name, params))
@@ -165,8 +175,8 @@ def test_supported_actions_run_without_model(monkeypatch):
     monkeypatch.setattr('app.main.registry.execute', record_execution)
     response = client.post('/api/command', json={'prompt': 'Open Chrome and open https://example.com'})
 
-    assert 'event: final' in response.text
-    assert executed == [('open_url', {'url': 'https://example.com', 'browser': 'chrome'})]
+    assert 'event: clarification' in response.text
+    assert executed == []
 
 
 def test_unknown_step_cancels_entire_deterministic_plan():

@@ -236,7 +236,15 @@ class ComputerSession:
                 return {'ok': False, 'effect': 'no_effect', 'reason': 'Screen changed before input; inspect the fresh frame.',
                         'post_observation': observation}
             task['frame'] = None  # Never replay the same frame after a possible effect.
-            self.platform.dispatch(window['hwnd'], frame['rect'], params, task['cancelled'].is_set)
+            try:
+                self.platform.dispatch(window['hwnd'], frame['rect'], params, task['cancelled'].is_set)
+            except native.InputNotDispatched as exc:
+                try:
+                    observation = self.observe()
+                except (ValueError, RuntimeError, OSError) as observe_error:
+                    observation = {'ok': False, 'reason': str(observe_error)}
+                return {'ok': False, 'effect': 'no_effect', 'reason': str(exc),
+                        'post_observation': observation}
             if params['kind'] in {'click', 'invoke'} or params['kind'] in {'hotkey', 'press'} and params.get('keys', [])[-1:] == ['tab']:
                 task['input_targeted'] = True
             time.sleep(.2)

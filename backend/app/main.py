@@ -15,22 +15,16 @@ from fastapi.exception_handlers import request_validation_exception_handler
 from app.llm import OllamaClient
 from app.model_routing import select_model
 from app.models import CommandRequest
-from app.routing import (
-    detect_deterministic_tools,
-    requests_unsupported_browser_automation,
-)
 from app.tools import ToolRegistry
-from app.executor import execute_plan, while_connected
+from app.executor import while_connected
 from app.launch_runtime import BudgetedProvider
 from app.operator import run_operator
 from app.file_tools import register as register_files
 from app.plugins import load_skills
 from app.task_state import TaskState, Limits
 from app.task_store import TaskStore
-from app.browser_tools import register as register_browser
 from app.window_observer import register as register_windows
 from app.process_tools import register as register_process
-from app.application_tools import register as register_applications
 from app.version import RUNTIME_VERSION
 from app.computer_tools import register as register_computer
 from app.provider_settings import ProviderSettings, CloudClient, PRESETS
@@ -64,8 +58,10 @@ register_windows(registry)
 # use incompatible target IDs and grants and must not compete with this session.
 register_computer(registry)
 register_process(registry)
-register_applications(registry)
-register_browser(registry)
+# Production UI tasks use observed Windows input, not direct app/browser launches.
+# Keep the legacy modules available for compatibility tests, not model dispatch.
+for launch_tool in ('open_application', 'open_url', 'search_web', 'open_folder'):
+    registry.tools.pop(launch_tool, None)
 loaded_skills = load_skills(registry, [name.strip() for name in os.getenv('WINGENT_SKILLS', '').split(',') if name.strip()])
 task_store = TaskStore()
 provider_settings = None
@@ -216,11 +212,6 @@ async def command(request: Request, command_request: CommandRequest) -> Streamin
             return
 
         llm = BudgetedProvider(make_provider(state.goal), state)
-        actions = [] if resuming else detect_deterministic_tools(prompt)
-        if actions:
-            async for event, payload in execute_plan(actions, registry, request.is_disconnected, state=state, review_actions=command_request.review_actions):
-                yield sse_event(event, payload)
-            return
         available = await while_connected(llm.is_available(), request.is_disconnected)
         if not available:
             diagnostic = llm.provider.last_availability or {

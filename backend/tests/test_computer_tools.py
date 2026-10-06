@@ -59,6 +59,42 @@ def test_action_looks_again_and_cannot_replay_frame(granted):
     assert len(desktop.calls) == 1
 
 
+def test_occluded_click_refreshes_without_reporting_unknown_effect(granted):
+    from app.windows_computer import InputNotDispatched
+    session, desktop, frame = granted
+    def blocked(*args):
+        raise InputNotDispatched('Target covered; no click sent')
+    desktop.dispatch = blocked
+    result = session.act(frame_id=frame['frame_id'], kind='click', x=500, y=500)
+    assert result['effect'] == 'no_effect'
+    assert result['post_observation']['ok']
+    assert result['post_observation']['frame_id'] != frame['frame_id']
+    assert not desktop.calls
+
+
+def test_uncertain_input_error_is_not_downgraded_to_no_effect(granted):
+    session, desktop, frame = granted
+    def partial(*args):
+        raise RuntimeError('Partial SendInput')
+    desktop.dispatch = partial
+    with pytest.raises(RuntimeError, match='Partial'):
+        session.act(frame_id=frame['frame_id'], kind='click', x=500, y=500)
+
+
+def test_toast_is_not_an_agent_control_target():
+    from app.window_observer import is_agent_window
+    assert is_agent_window({'title': 'Wingent task status', 'process': 'app.exe'})
+    assert not is_agent_window({'title': 'Calculator', 'process': 'CalculatorApp.exe'})
+
+
+def test_production_ui_has_no_direct_launch_tools():
+    from app.main import registry
+    names = set(registry.tools)
+    assert 'computer_open_search' in names
+    assert not names.intersection({'open_application', 'application_open', 'open_url', 'search_web', 'open_folder'})
+    assert not any(name.startswith('browser_') for name in names)
+
+
 def test_search_observes_before_any_typing_and_respects_cancellation(granted):
     session, desktop, _ = granted
     desktop.open_search = lambda cancelled: 1

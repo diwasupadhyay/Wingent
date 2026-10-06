@@ -11,6 +11,10 @@ from ctypes import wintypes
 from app.window_observer import foreground_window_id, list_visible_windows
 
 
+class InputNotDispatched(ValueError):
+    """Known pre-input rejection: safe to re-observe, not an unknown click."""
+
+
 def user32():
     if os.name != 'nt':
         raise RuntimeError('Computer control requires Windows.')
@@ -232,16 +236,19 @@ def open_search(cancelled=lambda: False):
         send([key_event(KEYS['win']), key_event(KEYS['s'])])
     finally:
         send([key_event(KEYS['s'], True), key_event(KEYS['win'], True)])
-    deadline = time.monotonic() + 3
+    deadline = time.monotonic() + 5
+    foreground_description = 'no observed foreground window'
     while time.monotonic() < deadline:
         if cancelled():
             raise ValueError('Windows Search opening was cancelled.')
         current = foreground_window_id()
         for window in list_visible_windows():
-            if window['hwnd'] == current and window['process'].casefold() in {'searchhost.exe', 'searchapp.exe', 'searchui.exe'}:
-                return current
+            if window['hwnd'] == current:
+                foreground_description = window['process'] + ': ' + window['title'][:120]
+                if window['process'].casefold() in {'searchhost.exe', 'searchapp.exe', 'searchui.exe'}:
+                    return current
         time.sleep(.1)
-    raise ValueError('Windows Search did not become the observed foreground window. No text was sent.')
+    raise ValueError('Windows Search did not become the observed foreground window. No text was sent. Foreground: ' + foreground_description)
 
 
 def move_pointer(api, x, y, duration_ms, check):
@@ -304,14 +311,14 @@ def _dispatch(window_id, rect, action, cancelled):
         api.GetAncestor.argtypes = [wintypes.HWND, wintypes.UINT]
         api.GetAncestor.restype = wintypes.HWND
         if api.GetAncestor(api.WindowFromPoint(wintypes.POINT(x, y)), 2) != window_id:
-            raise ValueError('Pointer target is covered by a different window.')
+            raise InputNotDispatched('Pointer target is covered by a different window. No click or scroll was sent; inspect the new observation or use a grounded keyboard action.')
         if kind == 'drag':
             api.SetCursorPos(x, y)
         else:
             move_pointer(api, x, y, action.get('duration_ms', 300) if kind == 'move' else 160, check)
         check()
         if api.GetAncestor(api.WindowFromPoint(wintypes.POINT(x, y)), 2) != window_id:
-            raise ValueError('Pointer target became covered during movement; no click sent.')
+            raise InputNotDispatched('Pointer target became covered during movement; pointer may have moved but no click or scroll was sent.')
         if kind == 'scroll':
             flag = 0x1000 if action.get('axis') == 'horizontal' else 0x0800
             send([Input(0, InputData(mouse=Mouse(0, 0, action['amount'] * 120 & 0xffffffff, flag, 0, 0)))])
