@@ -12,7 +12,7 @@ from uuid import uuid4
 from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
-from app.task_brain import (GoalPlan, CompletionReview, LaunchMemory, PLAN_SYSTEM,
+from app.task_brain import (GoalPlan, CompletionReview, LaunchMemory,
                             REVIEW_SYSTEM, decode_json, WINDOWS_TARGETS,
                             validate_system_shortcut, normalized_keys, needs_fresh_screen)
 
@@ -52,6 +52,7 @@ class Operations(BaseModel):
     model_config = ConfigDict(extra='forbid')
     screen_state: str = Field(default='', max_length=600)
     next_outcome: str = Field(default='', max_length=600)
+    plan: GoalPlan | None = None
     operations: list[Operation] = Field(min_length=1, max_length=6)
 
 
@@ -73,7 +74,8 @@ def operation_schema():
         variants.append({'type': 'object', 'properties': properties,
                          'required': ['operation', *required], 'additionalProperties': False})
     return {'type': 'object', 'properties': {'screen_state': {'type': 'string'},
-        'next_outcome': {'type': 'string'}, 'operations': {'type': 'array',
+        'next_outcome': {'type': 'string'}, 'plan': GoalPlan.model_json_schema(),
+        'operations': {'type': 'array',
         'minItems': 1, 'maxItems': 6, 'items': {'anyOf': variants}}},
         'required': ['operations'], 'additionalProperties': False}
 
@@ -102,6 +104,9 @@ Return JSON only:
 {"screen_state":"brief visible facts","next_outcome":"next unmet result + values to retain",
  "operations":[{"operation":"..."}]}
 Keep descriptions short; thought is optional (at most ten words). No long narration.
+When plan_requested is true, include plan:{"outcomes":["each requested final result"],
+"approach":["short steps"]} alongside the FIRST actions. Plan from the actual screen;
+do not spend a separate turn planning. Preserve every part of the original objective.
 
 Choose the shortest reliable method:
 - Prefer keyboard entry for text/numbers/arithmetic over clicking individual character
@@ -183,6 +188,9 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
     working_state = {}
     batch_history = []
     stage = 'initializing computer control'
+    first_decision = True
+    model_calls = 0
+    model_seconds = 0.0
     try:
         if desktop_factory is None:
             from vendor.self_operating_computer.operate.utils.operating_system import OperatingSystem
@@ -198,18 +206,6 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
             nonlocal worker
             worker = asyncio.create_task(asyncio.to_thread(function, *args))
             return await connected_call(asyncio.shield(worker), disconnected, stopped)
-
-        if hasattr(provider, 'structured'):
-            stage = 'planning the task'
-            yield 'status', {'stage': 'planning', 'message': 'Identifying the full task and its completion conditions'}
-            async with asyncio.timeout(60):
-                raw_plan = await connected_call(provider.structured(goal, PLAN_SYSTEM,
-                    GoalPlan.model_json_schema()), disconnected, stopped)
-            try:
-                plan = GoalPlan.model_validate(decode_json(raw_plan))
-            except ValueError:
-                pass  # The original goal remains the minimum completion condition.
-            remaining = plan.outcomes[:]
 
         for _ in range(max_rounds):
             if time.monotonic() - started >= seconds:
@@ -230,6 +226,7 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
                                       for key, value in item['action'].items()}
                 recent.append(item)
             prompt = json.dumps({'objective': goal, 'recent_actions': recent,
+                                 'plan_requested': first_decision,
                                  'task_outcomes': plan.outcomes, 'approach': plan.approach,
                                  'remaining_work': remaining, 'launched_applications': launches.launched,
                                  'desktop': desktop_context,
@@ -239,15 +236,24 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
                                  'instruction': 'Inspect this fresh screenshot and continue towards the objective.'},
                                 separators=(',', ':'))
             stage = 'waiting for the model to choose the next action'
-            async with asyncio.timeout(min(120, max(0.1, seconds - (time.monotonic() - started)))):
-                raw = await connected_call(provider.structured_images(prompt, decision_system,
-                    decision_schema, [image]), disconnected, stopped)
+            decision_started = time.monotonic()
+            model_calls += 1
+            try:
+                async with asyncio.timeout(min(120, max(0.1, seconds - (time.monotonic() - started)))):
+                    raw = await connected_call(provider.structured_images(prompt, decision_system,
+                        decision_schema, [image]), disconnected, stopped)
+            finally:
+                model_seconds += time.monotonic() - decision_started
             try:
                 batch = parse_operations(raw)
                 launches.check_batch(batch)
                 decoded = decode_json(raw)
                 if isinstance(decoded, dict):
                     working_state = {key: decoded.get(key, '') for key in ('screen_state', 'next_outcome')}
+                    if first_decision and decoded.get('plan'):
+                        plan = GoalPlan.model_validate(decoded['plan'])
+                        remaining = plan.outcomes[:]
+                first_decision = False
                 fingerprint = json.dumps([{key: value for key, value in action.model_dump().items()
                     if key not in {'thought', 'requires_confirmation'}} for action in batch], sort_keys=True)
                 if batch[0].operation not in {'done', 'ask'} and fingerprint == previous_batch:
@@ -316,9 +322,13 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
                         return
                     approvals.consume(approval.id, task_id, kind, 'soc-1', action)
                     await desktop_call(desktop.wait, 0.4)
-                label = operation.thought or kind
+                label = operation.thought or (
+                    'Keys: ' + '+'.join(operation.keys) if kind in {'press', 'hotkey'} else
+                    f'Type text ({len(operation.content)} characters)' if kind == 'write' else
+                    f'{kind.title()} at {operation.x:.2f}, {operation.y:.2f}' if kind in {'click', 'move'} else kind)
                 stage = 'executing ' + kind
-                yield 'action', {'task_id': task_id, 'index': index, 'label': label, 'arguments': action}
+                yield 'action', {'task_id': task_id, 'index': index, 'label': label, 'arguments': action,
+                                 'decision_calls': model_calls, 'decision_seconds': round(model_seconds, 1)}
                 yield 'step', {'index': index, 'state': 'running'}
                 yield 'status', {'stage': 'executing', 'message': label}
                 try:
@@ -378,8 +388,10 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
         yield 'error', {'task_id': task_id, 'code': 'task_timeout',
             'stage': stage, 'attempted_actions': index,
             'elapsed_seconds': round(time.monotonic() - started, 1),
+            'decision_calls': model_calls, 'decision_seconds': round(model_seconds, 1),
             'message': f'Timed out while {stage}. {index} action(s) were attempted; '
-                       'earlier effects may remain. Inspect the current screen before retrying.'}
+                       f'{model_calls} decision call(s) took {model_seconds:.1f}s. '
+                       'Earlier effects may remain. Inspect the current screen before retrying.'}
     except Exception as exc:
         yield 'error', {'task_id': task_id, 'message': str(exc) or type(exc).__name__}
     finally:

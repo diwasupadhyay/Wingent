@@ -189,7 +189,9 @@ def test_model_timeout_reports_stage_and_prior_action_count(error):
     assert payload['code'] == 'task_timeout'
     assert payload['attempted_actions'] == 1
     assert 'waiting for the model' in payload['message']
-    assert 'earlier effects may remain' in payload['message']
+    assert 'earlier effects may remain' in payload['message'].lower()
+    assert payload['decision_calls'] == 2
+    assert payload['decision_seconds'] >= 0
 
 
 def test_prompt_prefers_whole_keyboard_input_and_has_one_action_contract():
@@ -199,6 +201,37 @@ def test_prompt_prefers_whole_keyboard_input_and_has_one_action_contract():
     assert 'SIMULTANEOUS key chords' in prompt
     assert '4 possible' not in prompt
     assert len(prompt) < 4000
+
+
+def test_first_visual_decision_plans_and_batches_without_text_only_call():
+    desktop = Desktop(None)
+    class Provider:
+        async def structured(self, *args):
+            raise AssertionError('A separate planning call adds needless startup latency')
+        async def structured_images(self, prompt, system, schema, frames):
+            if 'goal_complete' in schema['properties']:
+                return review_response()
+            context = json.loads(prompt)
+            if desktop.frames == 1:
+                assert context['plan_requested'] is True
+                return json.dumps({'plan': {'outcomes': ['Requested page visible'],
+                                           'approach': ['Navigate using the address field']},
+                    'operations': [{'operation': 'press', 'keys': ['ctrl', 'l']},
+                                   {'operation': 'write', 'content': 'https://example.com'},
+                                   {'operation': 'press', 'keys': ['enter']}]})
+            assert context['plan_requested'] is False
+            assert context['task_outcomes'] == ['Requested page visible']
+            return '[{"operation":"done","summary":"Requested page visible"}]'
+    async def run():
+        return [e async for e in run_self_operating('Navigate to the requested page', Provider(),
+            connected, ApprovalStore(), desktop_factory=lambda stop: desktop)]
+    events = asyncio.run(run())
+    actions = [payload for event, payload in events if event == 'action']
+    assert len(actions) == 3
+    assert all(action['decision_calls'] == 1 for action in actions)
+    assert actions[1]['label'] == 'Type text (19 characters)'
+    assert desktop.calls == [('press', ['ctrl', 'l']), ('write', 'https://example.com'), ('press', ['enter'])]
+    assert events[-1][1]['outcome'] == 'completed'
 
 
 def test_provider_schema_advertises_all_supported_actions():
