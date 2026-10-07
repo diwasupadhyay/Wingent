@@ -92,6 +92,7 @@ Choose ONE registered tool or finish/ask. The attached image is the latest appro
 Check what changed after the previous action, then choose the shortest useful next step.
 The computer is the environment; tools for specific apps are optional accelerators, not limits.
 Open other applications through computer_open_search and observed UI results, never by shell commands or executable launches.
+If the requested app is already the observed current window, work in it; do not open Search.
 If a pointer target is covered and no input was dispatched, inspect the refreshed screen and use another grounded target or keyboard navigation.
 For multi-window work use computer_begin with scope="desktop" once. Routine focus handoff is automatic unless Review is enabled.
 move positions the pointer without clicking; hover waits for a tooltip. press taps a sequence of keys;
@@ -100,7 +101,9 @@ The observed pointer coordinates describe where the cursor actually is; do not a
 Use computer_observe with no arguments to see a new foreground dialog; with an observed window_id to switch apps.
 When a control is not actionable through UI Automation, use screenshot-grounded clicks instead of repeating invoke.
 Use observed UI Automation targets with invoke when actionable, otherwise normalized screenshot coordinates.
-Click the field before typing unless a focused Edit/Document control is observed. Never reuse a stale frame ID.
+Click the field before typing unless a focused Edit/Document control is observed. For an observed
+input field, click_then_type can click and type in one proposal; the host re-observes and checks
+the target between them. Never reuse a stale frame ID.
 If the goal is already visibly satisfied, finish now; a second click can undo or repeat work.
 A dispatched input or changed screen alone does not prove goal completion. Report uncertainty honestly.
 Use computer_confirm_action for sending, deletion, purchases, installation, terminal execution or other consequential effects.
@@ -160,6 +163,15 @@ def _ground_window_grant(arguments, records, goal):
     return result
 
 
+def _mentioned_visible_window(goal, windows):
+    """Only reuse an unambiguous window whose full observed title is in the goal."""
+    words = ' '.join(goal.casefold().split())
+    matches = [window for window in windows
+               if len(title := ' '.join(str(window.get('title', '')).casefold().split())) >= 5
+               and title in words and window.get('window_id')]
+    return matches[0] if len(matches) == 1 else None
+
+
 class OperatorAdapter(LaunchAdapter):
     def __init__(self, registry, state, provider, review_actions=False):
         super().__init__([], with_task_memory(registry, state), state, provider, review_actions)
@@ -176,6 +188,21 @@ class OperatorAdapter(LaunchAdapter):
 
     async def decide(self, context):
         user_context = '\n'.join([self.state.goal, *(item['answer'] for item in self.state.clarifications)])
+        if (not self.state.records and self.registry.get_tool('observe_windows') and
+                re.search(r'\b(open|launch|start|type|click|enter|press|play|window|app|screen)\b',
+                          self.state.goal, re.I)):
+            return Decision(kind='act', action=action_from_pair('observe_windows', {}),
+                            message='Checking whether the requested application is already visible.')
+        if (len(self.state.records) == 1 and self.state.records[0].action.tool == 'observe_windows'
+                and self.state.records[0].outcome.status == 'accepted'
+                and self.registry.get_tool('computer_begin')):
+            target = _mentioned_visible_window(
+                self.state.goal, self.state.records[0].outcome.data.get('windows', []))
+            if target:
+                return Decision(kind='act', action=action_from_pair('computer_begin', {
+                    'window_id': target['window_id'], 'window_title': target['title'],
+                    'purpose': self.state.goal[:300]}),
+                    message='The requested application is already visible; inspecting it directly.')
         goal_terms = set(re.findall(r'[a-z0-9]{3,}', user_context.casefold()))
         generic_app_terms = {'app', 'application', 'program', 'open', 'launch', 'start',
                              'run', 'for', 'the', 'any', 'please', 'installed', 'some', 'with'}
@@ -187,6 +214,12 @@ class OperatorAdapter(LaunchAdapter):
             return Decision(kind='ask', message=self.final_message)
         if self.state.records:
             last = self.state.records[-1]
+            if (last.action.tool in {'computer_action', 'computer_confirm_action'} and
+                    last.outcome.status == 'accepted' and
+                    not last.outcome.data.get('post_observation', {}).get('ok') and
+                    self.registry.get_tool('computer_observe')):
+                return Decision(kind='act', action=action_from_pair('computer_observe', {}),
+                                message='Input was dispatched; checking its result without replaying it.')
             if last.action.tool == 'application_search' and last.outcome.status == 'accepted':
                 apps = last.outcome.data.get('applications', [])
                 query = str(last.action.arguments.get('query', '')).strip().casefold()
@@ -260,8 +293,17 @@ class OperatorAdapter(LaunchAdapter):
                                 message='Inspecting the uniquely matched application window.')
         active_capabilities = {tool.capability for record in self.state.records
                                if (tool := self.registry.get_tool(record.action.tool)) is not None}
+        search_active = visual and str(visual.get('process', '')).casefold() in {
+            'searchhost.exe', 'searchapp.exe', 'searchui.exe'}
+        current_app_requested = visual and _mentioned_visible_window(self.state.goal, [{
+            'window_id': visual.get('window_id'), 'title': visual.get('title', '')}])
+        input_started = any(r.action.tool in {'computer_action', 'computer_confirm_action'}
+                            for r in self.state.records)
         catalogue = []
         for tool_info in self.registry.manifest():
+            if tool_info['name'] == 'computer_open_search' and (
+                    search_active or current_app_requested and not input_started):
+                continue
             schema = tool_info['input_schema']
             full_fields = tool_info['capability'] in active_capabilities
             fields = {name: {key: value for key, value in spec.items() if key in {'type', 'anyOf', 'enum', 'default', 'minimum', 'maximum', 'description'}
@@ -282,7 +324,7 @@ class OperatorAdapter(LaunchAdapter):
                              tool=(Literal[choices], ...), message=(str, Field(default='', max_length=2000)))
         # Keep the latest distinct observations, not just the latest calls. Repeated
         # queries must not evict the source data needed for an unfinished goal.
-        history, recent = context_results(self.state)
+        history, recent = context_results(self.state, compact_computer=bool(visual))
         if visual:
             recent = recent[-3:]
         coverage = source_coverage(self.state)
@@ -313,6 +355,11 @@ class OperatorAdapter(LaunchAdapter):
                            'Old frame IDs and coordinates cannot be reused. Preserve earlier completed work.')
         if recent:
             system += '\nThe last tool has ALREADY RUN. Choose the next unfinished action using its result. Never restart the goal.'
+        if (visual and self.state.records and self.state.records[-1].action.tool == 'computer_open_search'
+                and self.state.records[-1].outcome.status == 'accepted'):
+            system += ('\nWindows Search is ALREADY OPEN. Do not call computer_open_search again. '
+                       'Use the focused Search field to type the requested application name, or select '
+                       'an exact observed result already visible. Do not open an unrelated app.')
         latest_browser = next((record for record in reversed(self.state.records)
                                if record.action.tool.startswith('browser_')), None)
         browser_page = (latest_browser.outcome.data if latest_browser and
@@ -382,6 +429,18 @@ class OperatorAdapter(LaunchAdapter):
                 self.resumable_question = proposal.tool == 'ask'
                 return Decision(kind='ask' if proposal.tool == 'ask' else 'finish', message=proposal.message[:1000])
             tool = self.registry.get_tool(proposal.tool)
+            if (computer and visual and tool.name == 'computer_open_search' and
+                    _mentioned_visible_window(self.state.goal, [{
+                        'window_id': visual.get('window_id'), 'title': visual.get('title', '')}]) and
+                    not any(r.action.tool in {'computer_action', 'computer_confirm_action'}
+                                for r in self.state.records)):
+                if choice_attempt == 0 and self.state.model_calls < self.state.limits.model_calls:
+                    system += ('\nThe requested application is ALREADY the current observed window. '
+                               'Search was NOT opened. Act on this window using its current frame, '
+                               'or explain a real blocker.')
+                    continue
+                self.final_message = 'The requested application is visible, but the model did not act in it.'
+                return Decision(kind='finish', message=self.final_message)
             try:
                 proposed_args = (_ground_window_grant(proposal.arguments, self.state.records, self.state.goal)
                                  if tool.name == 'computer_begin' else proposal.arguments)
@@ -652,11 +711,16 @@ class OperatorAdapter(LaunchAdapter):
         if not match or not state.records:
             return report
         last = state.records[-1]
-        if last.action.tool != 'computer_action' or last.action.arguments.get('kind') != 'type' or last.outcome.status != 'accepted':
+        if last.action.tool == 'computer_observe' and last.outcome.status == 'accepted' and len(state.records) > 1:
+            typed = state.records[-2]
+            post = last.outcome.data
+        else:
+            typed = last
+            post = last.outcome.data.get('post_observation', {})
+        if typed.action.tool != 'computer_action' or typed.action.arguments.get('kind') != 'type' or typed.outcome.status != 'accepted':
             return report
         expected = match.group(2)
-        post = last.outcome.data.get('post_observation', {})
-        if last.action.arguments.get('text') != expected or not post.get('ok'):
+        if typed.action.arguments.get('text') != expected or not post.get('ok'):
             return report
         if match.group(1).strip().casefold() not in str(post.get('title', '')).casefold():
             return report

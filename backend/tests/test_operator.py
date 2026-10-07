@@ -33,6 +33,105 @@ def test_late_search_handoff_uses_fresh_foreground_without_inference():
     assert decision.action.arguments['window_id'] == 42
 
 
+def test_already_visible_requested_app_skips_windows_search_and_model():
+    from app.computer_tools import BeginControl
+    registry = ToolRegistry()
+    registry.register('observe_windows', 'Observe', ToolPermission.SAFE, {}, lambda p: {}, input_model=Arguments)
+    registry.register('computer_begin', 'Begin', ToolPermission.SAFE, {}, lambda p: {}, input_model=BeginControl)
+    state = TaskState(goal='In the Wingent isolated computer evaluation app, enter Hello from Wingent.',
+                      criteria=['Greeting entered'])
+    adapter = OperatorAdapter(registry, state, None)
+    first = asyncio.run(adapter.decide(state.context()))
+    assert first.action.tool == 'observe_windows'
+    state.records.append(ActionRecord(action=first.action, dispatched=True,
+        outcome=Outcome(status='accepted', summary='Observed', data={'windows': [
+            {'window_id': 42, 'title': 'Wingent isolated computer evaluation', 'process': 'powershell.exe'},
+            {'window_id': 90, 'title': 'Search', 'process': 'SearchHost.exe'}]})))
+    second = asyncio.run(adapter.decide(state.context()))
+    assert second.action.tool == 'computer_begin'
+    assert second.action.arguments['window_id'] == 42
+
+
+def test_visible_app_handoff_reaches_input_without_search():
+    from app.computer_tools import ComputerSession, register
+    class Desktop:
+        foreground = 42
+        typed = ''
+        def list_visible_windows(self):
+            return [{'hwnd': 42, 'pid': 7, 'executable': 'fixture.exe',
+                     'process': 'fixture.exe', 'title': 'Wingent isolated computer evaluation'}]
+        def foreground_window_id(self): return self.foreground
+        def focus(self, window_id): self.foreground = window_id
+        def rectangle(self, window_id): return [0, 0, 700, 400]
+        def capture(self, rect): return {'image': b'pixels', 'signature': [0] * 768,
+                                         'width': 700, 'height': 400}
+        def accessibility(self, window_id): return {'controls': [
+            {'id': 'edit', 'name': 'Greeting', 'role': 'ControlType.Edit',
+             'focused': True, 'value': self.typed, 'rect': [10, 10, 400, 40]}]}
+        def dispatch(self, window_id, rect, action, cancelled):
+            assert not cancelled()
+            if action['kind'] == 'type': self.typed = action['text']
+        def pointer_position(self, rect): return {'available': False}
+    desktop = Desktop()
+    registry = ToolRegistry()
+    register(registry, ComputerSession(desktop))
+    registry.register('observe_windows', 'Observe windows', ToolPermission.SAFE, {},
+        lambda _: {'ok': True, 'windows': [{'window_id': 42, 'title': 'Wingent isolated computer evaluation',
+                                            'process': 'fixture.exe', 'is_foreground': True}]},
+        input_model=Arguments)
+    class Provider:
+        async def structured_images(self, prompt, system, schema, images):
+            context = json.loads(prompt)
+            if not any(item['tool'] == 'computer_action' for item in context['action_history']):
+                return json.dumps({'tool': 'computer_action', 'arguments': {
+                    'frame_id': context['current_computer_frame']['frame_id'],
+                    'kind': 'type', 'text': 'Hello from Wingent'}})
+            return '{"tool":"finish","message":"Text entered."}'
+    state = TaskState(goal='In the Wingent isolated computer evaluation app, enter Hello from Wingent.',
+                      criteria=['Greeting entered'])
+    async def scenario():
+        async for event, data in run_operator(registry, state, BudgetedProvider(Provider(), state), connected):
+            if event == 'confirmation_required':
+                registry.approvals.respond(data['approval_id'], data['token'], True)
+    asyncio.run(scenario())
+    assert [record.action.tool for record in state.records] == [
+        'observe_windows', 'computer_begin', 'computer_action', 'computer_observe']
+    assert desktop.typed == 'Hello from Wingent'
+
+
+def test_open_search_is_not_offered_again_while_search_is_current():
+    registry = ToolRegistry()
+    registry.register('computer_open_search', 'Open Search', ToolPermission.SAFE, {},
+                      lambda p: {}, input_model=Arguments)
+    registry.computer_session = SimpleNamespace(visual_context=lambda _: {
+        'window_id': 42, 'title': 'Search', 'process': 'SearchHost.exe',
+        'frame_id': 'fresh', 'input_targeted': True, 'controls': [], 'image': b'pixels'})
+    state = TaskState(goal='Open Calculator', criteria=['Calculator opened'])
+    state.records.append(ActionRecord(action=Action(tool='computer_open_search', label='Search'),
+        dispatched=True, outcome=Outcome(status='accepted', summary='Search visible')))
+    choices = []
+    class Provider:
+        async def structured_images(self, prompt, system, schema, images):
+            choices.extend(schema['properties']['tool']['enum'])
+            return '{"tool":"finish","message":"Waiting"}'
+    asyncio.run(OperatorAdapter(registry, state, BudgetedProvider(Provider(), state)).decide(state.context()))
+    assert 'computer_open_search' not in choices
+
+
+def test_dispatched_input_with_missing_observation_reobserves_without_retyping():
+    from app.computer_tools import ObserveComputer
+    registry = ToolRegistry()
+    registry.register('computer_observe', 'Observe', ToolPermission.SAFE, {},
+                      lambda p: {}, input_model=ObserveComputer)
+    state = TaskState(goal='Open Chrome', criteria=['Chrome opened'])
+    state.records.append(ActionRecord(action=Action(tool='computer_action',
+        arguments={'kind': 'type', 'text': 'Chrome'}, label='Type'), dispatched=True,
+        outcome=Outcome(status='accepted', summary='Input sent',
+            data={'post_observation': {'ok': False, 'reason': 'capture timed out'}})))
+    decision = asyncio.run(OperatorAdapter(registry, state, None).decide(state.context()))
+    assert decision.action.tool == 'computer_observe'
+
+
 def test_packaged_app_grant_uses_unique_observed_title_not_explorer_pid():
     from app.operator import _ground_window_grant
     launch = ActionRecord(action=Action(tool='application_open', arguments={}, label='Open'),
@@ -79,6 +178,22 @@ def test_typing_goal_requires_exact_observed_editable_text(visible, expected):
     observation = state.observe({'results': []})
     report = asyncio.run(adapter.verify(state, observation))
     assert state.verified_by(report, observation) is expected
+
+
+def test_typing_goal_verified_after_separate_observation():
+    state = TaskState(goal='Open Notepad and type: Hello Wingent', criteria=['Text entered'])
+    state.records.append(ActionRecord(action=Action(tool='computer_action', label='type',
+        arguments={'kind': 'type', 'text': 'Hello Wingent'}), dispatched=True,
+        outcome=Outcome(status='accepted', summary='Input sent',
+            data={'post_observation': {'ok': False, 'pending': True}})))
+    state.records.append(ActionRecord(action=Action(tool='computer_observe', label='observe'),
+        dispatched=True, outcome=Outcome(status='accepted', summary='Observed', data={
+            'ok': True, 'title': 'Untitled - Notepad',
+            'controls': [{'role': 'ControlType.Edit', 'value': 'Hello Wingent'}]})))
+    adapter = OperatorAdapter(ToolRegistry(), state, None)
+    observation = state.observe({'results': []})
+    report = asyncio.run(adapter.verify(state, observation))
+    assert state.verified_by(report, observation)
 
 
 def test_focus_pause_preserves_task_for_resume_without_replaying_input():

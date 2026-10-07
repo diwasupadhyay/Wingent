@@ -61,8 +61,12 @@ def test_missing_browser_is_an_error(monkeypatch):
 
 def test_exact_user_command_through_endpoint_and_tool(monkeypatch):
     launched = []
-    monkeypatch.setattr('app.tools.resolve_browser', lambda _: 'C:/Apps/Chrome/chrome.exe')
     monkeypatch.setattr('app.tools.subprocess.Popen', lambda args, **kwargs: launched.append(args))
+    class Provider:
+        async def is_available(self): return True
+        async def structured(self, prompt, system, schema):
+            return '{"tool":"finish","message":"No computer result yet."}'
+    monkeypatch.setattr('app.main.make_provider', lambda goal='': Provider())
     response = TestClient(app).post('/api/command', json={'prompt': 'open chrome and seach github'})
     assert 'event: final' in response.text
-    assert launched == [['C:/Apps/Chrome/chrome.exe', 'https://www.google.com/search?q=github']]
+    assert launched == []  # Production cannot silently run the legacy launch parser.

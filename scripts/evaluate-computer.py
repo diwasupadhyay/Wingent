@@ -1,16 +1,14 @@
 """Opt-in interactive Windows smoke. Only controls windows launched by this run.
 
 Run with PYTHONPATH=backend. Not an unattended CI test: requires the interactive
-desktop. Creates an isolated Tk editor and native Calculator; never touches
+desktop. Creates an isolated WinForms editor; never touches
 pre-existing windows. --model asks the real local vision model for one action.
 """
 import argparse
 import asyncio
 import json
 import subprocess
-import sys
 import time
-import tkinter as tk
 from pathlib import Path
 
 from app import windows_computer as native
@@ -18,25 +16,60 @@ from app.computer_tools import ComputerSession
 from app.tools import execution_task_id
 
 
-def fixture():
-    root = tk.Tk()
-    root.title('Wingent isolated computer evaluation')
-    root.geometry('720x400+100+100')
-    tk.Label(root, text='Enter a short greeting in the box below', font=('Arial', 20)).pack(pady=20)
-    entry = tk.Entry(root, font=('Arial', 22), name='greeting')
-    entry.pack(padx=40, fill='x')
-    status = tk.Label(root, text='Waiting', font=('Arial', 18))
-    status.pack(pady=20)
-    def apply():
-        status.config(text=entry.get())
-        print(json.dumps({'applied': entry.get()}), flush=True)
-    tk.Button(root, text='Apply greeting', command=apply, font=('Arial', 18)).pack()
-    root.mainloop()
+FIXTURE = r'''
+Add-Type -AssemblyName System.Windows.Forms
+$form = New-Object System.Windows.Forms.Form
+$form.Text = 'Wingent isolated computer evaluation'
+$form.Size = New-Object System.Drawing.Size(720,400)
+$form.StartPosition = 'Manual'
+$form.Location = New-Object System.Drawing.Point(100,100)
+$label = New-Object System.Windows.Forms.Label
+$label.Text = 'Enter a short greeting in the box below'
+$label.Location = New-Object System.Drawing.Point(40,30)
+$label.Size = New-Object System.Drawing.Size(630,40)
+$form.Controls.Add($label)
+$entry = New-Object System.Windows.Forms.TextBox
+$entry.Location = New-Object System.Drawing.Point(40,100)
+$entry.Size = New-Object System.Drawing.Size(620,40)
+$entry.Font = New-Object System.Drawing.Font('Arial',18)
+$form.Controls.Add($entry)
+$status = New-Object System.Windows.Forms.Label
+$status.Text = 'Waiting'
+$status.Location = New-Object System.Drawing.Point(40,180)
+$status.Size = New-Object System.Drawing.Size(620,40)
+$form.Controls.Add($status)
+$button = New-Object System.Windows.Forms.Button
+$button.Text = 'Apply greeting'
+$button.Location = New-Object System.Drawing.Point(40,260)
+$button.Size = New-Object System.Drawing.Size(190,45)
+$button.Add_Click({
+    $status.Text = $entry.Text
+    [Console]::Out.WriteLine((ConvertTo-Json -Compress @{applied=$entry.Text}))
+    [Console]::Out.Flush()
+})
+$form.Controls.Add($button)
+[void]$form.ShowDialog()
+'''
+
+
+def fixture_applied(output):
+    """Inspect fixture events as JSON, independent of PowerShell spacing."""
+    for line in output.splitlines():
+        try:
+            event = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(event, dict) and event.get('applied') == 'Hello from Wingent':
+            return True
+    return False
 
 
 def run(model=False, autonomous=False):
+    if native.foreground_window_id() is None and not native.list_visible_windows():
+        raise RuntimeError('No interactive Windows desktop is visible to this process; run this smoke test from the signed-in desktop session.')
     before = {w['hwnd'] for w in native.list_visible_windows()}
-    child = subprocess.Popen([sys.executable, __file__, '--fixture'], stdout=subprocess.PIPE, text=True)
+    child = subprocess.Popen(['powershell.exe', '-NoProfile', '-STA', '-Command', FIXTURE],
+                             stdout=subprocess.PIPE, text=True, creationflags=0x08000000)
     session = ComputerSession()
     token = execution_task_id.set('interactive-smoke')
     try:
@@ -79,7 +112,13 @@ def run(model=False, autonomous=False):
                         else:
                             registry.approvals.respond(data['approval_id'], data['token'], True)
                     if event in {'action', 'step', 'final', 'error', 'clarification'}:
-                        print(json.dumps({'event': event, **data}), flush=True)
+                        # Never print captured controls/screens or full provider
+                        # payloads: a Windows Search pane can contain private data.
+                        summary = {key: data[key] for key in ('index', 'label', 'state', 'outcome')
+                                   if key in data}
+                        if event in {'final', 'error', 'clarification'}:
+                            summary['message'] = str(data.get('message') or data.get('text') or '')[:500]
+                        print(json.dumps({'event': event, **summary}), flush=True)
                     if event == 'step' and data.get('state') in {'accepted', 'failed', 'unknown'} and state.records:
                         record = state.records[-1]
                         print(json.dumps({'arguments': record.action.arguments, 'reason': record.outcome.data.get('reason')}), flush=True)
@@ -87,7 +126,7 @@ def run(model=False, autonomous=False):
             asyncio.run(execute())
             child.terminate()
             output, _ = child.communicate(timeout=5)
-            passed = '"applied": "Hello from Wingent"' in output
+            passed = fixture_applied(output)
             clean_stop = terminal is not None and terminal['event'] == 'final'
             print(json.dumps({'oracle_passed': passed, 'seconds': round(time.monotonic()-started, 2), 'model_calls': state.model_calls,
                               'clean_stop': clean_stop, 'terminal': terminal,
@@ -127,8 +166,7 @@ def run(model=False, autonomous=False):
 
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
-    parser.add_argument('--fixture', action='store_true')
     parser.add_argument('--model', action='store_true')
     parser.add_argument('--autonomous', action='store_true')
     args = parser.parse_args()
-    fixture() if args.fixture else run(args.model, args.autonomous)
+    run(args.model, args.autonomous)

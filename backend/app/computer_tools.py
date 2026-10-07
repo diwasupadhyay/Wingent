@@ -29,7 +29,7 @@ class ObserveComputer(Arguments):
 
 class ComputerAction(Arguments):
     frame_id: str = Field(min_length=1, max_length=64)
-    kind: Literal['click', 'type', 'hotkey', 'press', 'scroll', 'invoke', 'move', 'hover', 'drag', 'wait']
+    kind: Literal['click', 'click_then_type', 'type', 'hotkey', 'press', 'scroll', 'invoke', 'move', 'hover', 'drag', 'wait']
     x: int | None = Field(default=None, ge=0, le=1000, description='Required for click: horizontal position in the screenshot, normalized 0..1000. Not a control ID.')
     y: int | None = Field(default=None, ge=0, le=1000, description='Required for click: vertical position in the screenshot, normalized 0..1000.')
     button: Literal['left', 'right', 'middle'] = 'left'
@@ -47,11 +47,11 @@ class ComputerAction(Arguments):
 
     @model_validator(mode='after')
     def coherent(self):
-        if self.kind in {'click', 'move', 'hover', 'drag'} and (self.x is None or self.y is None):
+        if self.kind in {'click', 'click_then_type', 'move', 'hover', 'drag'} and (self.x is None or self.y is None):
             raise ValueError('Pointer action needs normalized x and y coordinates from the screenshot.')
         if self.kind == 'drag' and (self.end_x is None or self.end_y is None):
             raise ValueError('Drag needs normalized end_x and end_y coordinates.')
-        if self.kind == 'type' and (not self.text or any(ord(c) < 32 and c not in '\n\t' for c in self.text)):
+        if self.kind in {'type', 'click_then_type'} and (not self.text or any(ord(c) < 32 and c not in '\n\t' for c in self.text)):
             raise ValueError('Type needs ordinary Unicode text.')
         if self.keys:
             aliases = {'control': 'ctrl', 'return': 'enter', 'esc': 'escape', 'pgup': 'page_up', 'pgdn': 'page_down', 'pageup': 'page_up', 'pagedown': 'page_down', 'del': 'delete'}
@@ -62,7 +62,7 @@ class ComputerAction(Arguments):
             raise ValueError('Hotkeys allow at most four simultaneous keys; use press for a sequence.')
         if self.kind == 'press' and any(k in {'ctrl', 'alt', 'shift', 'win'} for k in self.keys):
             raise ValueError('Use hotkey for modifier keys; press is for sequential ordinary key taps.')
-        if self.modifiers and self.kind != 'click':
+        if self.modifiers and self.kind not in {'click', 'click_then_type'}:
             raise ValueError('Modifier keys apply only to click. Use hotkey for keyboard chords.')
         if self.kind == 'scroll' and self.amount == 0:
             raise ValueError('Scroll needs a nonzero amount; positive is up.')
@@ -90,7 +90,8 @@ class ComputerSession:
                 window_id = self.platform.open_search(cancelled.is_set)
                 if cancelled.is_set():
                     raise ValueError('Windows Search opening was cancelled.')
-                return self.begin(window_id=window_id, scope='window', purpose='Inspect Windows Search before choosing an application')
+                return self.begin(window_id=window_id, scope='desktop',
+                                  purpose='Inspect Windows Search and follow the requested application')
             except Exception:
                 if previous and not cancelled.is_set():
                     previous['frame'] = None
@@ -142,7 +143,7 @@ class ComputerSession:
             raise ValueError('Foreground changed. Use computer_observe to focus and inspect the granted window again.')
         return current
 
-    def observe(self, window_id=None):
+    def observe(self, window_id=None, *, quick_search=False):
         with self.lock:
             task = self._task()
             explicit = window_id is not None
@@ -163,10 +164,18 @@ class ComputerSession:
             if explicit:
                 self.platform.focus(window_id)
             task['window'] = current
-            try:
-                controls = self.platform.accessibility(window_id)
-            except (RuntimeError, TimeoutError, subprocess.TimeoutExpired) as exc:
-                controls = {'controls': [], 'limitation': 'Accessibility unavailable; use the screenshot. ' + str(exc)[:160]}
+            # SearchHost's UIA tree can stall on changing result panes. After
+            # input, capture its new pixels promptly; a later explicit observe
+            # can request the complete accessibility tree if needed.
+            deferred = (quick_search or not explicit) and current['process'].casefold() in {
+                'searchhost.exe', 'searchapp.exe', 'searchui.exe'}
+            if deferred:
+                controls = {'controls': []}
+            else:
+                try:
+                    controls = self.platform.accessibility(window_id)
+                except (RuntimeError, TimeoutError, subprocess.TimeoutExpired) as exc:
+                    controls = {'controls': [], 'limitation': 'Accessibility unavailable; use the screenshot. ' + str(exc)[:160]}
             if controls.get('password_controls_present'):
                 task['frame'] = None
                 raise ValueError('A password control is visible; direct user interaction is required.')
@@ -180,13 +189,24 @@ class ComputerSession:
             # Preserve the click-established target; never establish one merely
             # because an opaque container reports focus.
             rect = self.platform.rectangle(window_id)
+            before_capture = (self.platform.screen_signature(rect)
+                              if hasattr(self.platform, 'screen_signature') else None)
             pixels = self.platform.capture(rect)
+            # A lightweight native sample is used for the pre-dispatch guard.
+            # The screenshot signature remains available for post-action evidence.
+            guard_signature = (self.platform.screen_signature(rect)
+                               if hasattr(self.platform, 'screen_signature') else pixels['signature'])
+            if before_capture is not None and sum(abs(a - b) > 1 for a, b in zip(
+                    before_capture, guard_signature)) / max(1, len(guard_signature)) > .08:
+                raise ValueError('Screen changed during capture; observe again before input.')
             current = self._identity(task)
             if rect != self.platform.rectangle(window_id):
                 raise ValueError('Window moved during capture; observe again.')
             frame = {'id': uuid4().hex, 'at': self.clock(), 'rect': rect,
-                     'image': pixels['image'], 'signature': pixels['signature'],
-                     'controls': controls.get('controls', []), 'title': current['title'],
+                     'image': pixels['image'], 'signature': guard_signature,
+                     'guard_signature': guard_signature,
+                     'controls': controls.get('controls', []), 'controls_available': not deferred,
+                     'title': current['title'],
                      'width': pixels['width'], 'height': pixels['height']}
             frame['pointer'] = self.platform.pointer_position(rect) if hasattr(self.platform, 'pointer_position') else {'available': False}
             task['frame'] = frame
@@ -198,10 +218,34 @@ class ComputerSession:
                     'process': current['process'], 'screenshot_attached_to_brain': True,
                     'image_size': [frame['width'], frame['height']], 'coordinate_system': 'x,y normalized 0..1000 within this window screenshot',
                     'pointer': frame['pointer'],
-                    'controls': frame['controls'], 'truncated': controls.get('truncated', False)}
+                    'controls': frame['controls'], 'truncated': controls.get('truncated', False),
+                    'accessibility_deferred': deferred}
 
     def act(self, _confirmed=False, **params):
         with self.lock:
+            if params['kind'] == 'click_then_type':
+                # Short reference-style batch: look again between the click and
+                # typing, and never continue into a different window/dialog.
+                if not _confirmed and ('\n' in params['text'] or '\r' in params['text']):
+                    return {'ok': False, 'effect': 'no_effect', 'reason': 'Multiline input needs exact approval before clicking.'}
+                click = self.act(_confirmed=_confirmed, **{
+                    'frame_id': params['frame_id'], 'kind': 'click', 'x': params['x'], 'y': params['y'],
+                    'button': params.get('button', 'left'), 'clicks': params.get('clicks', 1),
+                    'modifiers': params.get('modifiers', [])})
+                if not click.get('ok') or not click.get('post_observation', {}).get('ok'):
+                    return click
+                observation = click['post_observation']
+                if (observation['window_id'] != click['action_window_id'] or
+                        not self._task()['input_targeted']):
+                    return {**click, 'partial': True,
+                            'reason': 'Click was sent, but no editable target was observed; text was not sent.'}
+                typed = self.act(_confirmed=_confirmed, frame_id=observation['frame_id'],
+                                 kind='type', text=params['text'])
+                if not typed.get('ok'):
+                    return {**click, 'partial': True,
+                            'post_observation': typed.get('post_observation', observation),
+                            'reason': 'Click was sent, but typing was not: ' + typed.get('reason', 'input failed')}
+                return {**typed, 'action': 'click_then_type', 'steps': ['click', 'type']}
             task = self._task()
             frame = task['frame']
             if not frame or frame['id'] != params['frame_id'] or self.clock() - frame['at'] > 120:
@@ -224,15 +268,19 @@ class ComputerSession:
                 return {'ok': False, 'effect': 'no_effect', 'reason': 'This input can submit, execute or delete data. Propose computer_confirm_action with these arguments for exact approval.'}
             if params['kind'] == 'type' and not task['input_targeted']:
                 return {'ok': False, 'effect': 'no_effect', 'reason': 'No input field has been targeted. Click the intended field using the screenshot before typing.'}
-            current = self.platform.capture(frame['rect'])
+            current_signature = (self.platform.screen_signature(frame['rect'])
+                                 if hasattr(self.platform, 'screen_signature') else self.platform.capture(frame['rect'])['signature'])
             try:
                 self._identity(task)
             except ValueError as exc:
                 task['frame'] = None
                 return {'ok': False, 'effect': 'no_effect', 'reason': str(exc)}
-            changed = sum(abs(a-b) > 1 for a, b in zip(frame['signature'], current['signature'])) / max(1, len(frame['signature']))
+            changed = sum(abs(a-b) > 1 for a, b in zip(frame['guard_signature'], current_signature)) / max(1, len(frame['guard_signature']))
             if changed > .08:
-                observation = self.observe(window['hwnd'])
+                try:
+                    observation = self.observe(window['hwnd'])
+                except (ValueError, RuntimeError, OSError, subprocess.TimeoutExpired) as exc:
+                    observation = {'ok': False, 'reason': str(exc)[:200]}
                 return {'ok': False, 'effect': 'no_effect', 'reason': 'Screen changed before input; inspect the fresh frame.',
                         'post_observation': observation}
             task['frame'] = None  # Never replay the same frame after a possible effect.
@@ -241,22 +289,30 @@ class ComputerSession:
             except native.InputNotDispatched as exc:
                 try:
                     observation = self.observe()
-                except (ValueError, RuntimeError, OSError) as observe_error:
+                except (ValueError, RuntimeError, OSError, subprocess.TimeoutExpired) as observe_error:
                     observation = {'ok': False, 'reason': str(observe_error)}
                 return {'ok': False, 'effect': 'no_effect', 'reason': str(exc),
                         'post_observation': observation}
             if params['kind'] in {'click', 'invoke'} or params['kind'] in {'hotkey', 'press'} and params.get('keys', [])[-1:] == ['tab']:
                 task['input_targeted'] = True
-            time.sleep(.2)
+            if params['kind'] == 'type':
+                # Dispatch and observation are separate runtime actions. Search
+                # result panes can block UIA/screenshot for longer than the
+                # action deadline even though the keystrokes were already sent.
+                return {'ok': True, 'effect': 'accepted', 'action': 'type',
+                        'action_window_id': window['hwnd'],
+                        'post_observation': {'ok': False, 'pending': True},
+                        'visible_change_observed': None, 'goal_verified': False}
+            time.sleep(.08)
             try:
                 # Desktop scope follows an actual foreground transition (dialog
                 # or app) instead of stealing focus back to the previous window.
-                observation = self.observe()
-            except (ValueError, RuntimeError) as exc:
+                observation = self.observe(quick_search=True)
+            except (ValueError, RuntimeError, OSError, subprocess.TimeoutExpired) as exc:
                 observation = {'ok': False, 'reason': str(exc)}
             after = task['frame'] if observation.get('ok') else None
             visible_change = None if not after else (sum(a != b for a, b in zip(frame['signature'], after['signature'])) > 8 or
-                after['controls'] != frame['controls'])
+                after['controls_available'] and after['controls'] != frame['controls'])
             return {'ok': True, 'effect': 'accepted', 'action': params['kind'],
                     'action_window_id': window['hwnd'],
                     'post_observation': observation, 'visible_change_observed': visible_change,
@@ -301,7 +357,10 @@ class ComputerSession:
                 return None
             return {'frame_id': frame['id'], 'window_id': task['window']['hwnd'],
                     'scope': task['scope'],
-                    'title': frame['title'], 'input_targeted': task['input_targeted'],
+                    'title': frame['title'], 'process': task['window']['process'],
+                    'input_targeted': task['input_targeted'],
+                    'accessibility_deferred': not frame['controls_available'],
+                    'controls': frame['controls'],
                     'pointer': frame.get('pointer', {'available': False}),
                     'image': frame['image']}
 
@@ -330,14 +389,15 @@ def register(registry, session=None):
                     'needs_user_attention': focus_blocked,
                     'limitation': 'Observation failed; window focus may have changed, but no application input was sent.'}
     registry.computer_session = session
-    registry.register('computer_open_search', 'Open Windows Search (Win+S) and observe its actual screen. Then type the app name and choose an observed result; never blind Enter.',
+    registry.register('computer_open_search', 'Open Windows Search (Win+S) with task-scoped desktop control so a selected application can be observed next. Type the app name and choose an observed result; never blind Enter.',
                       ToolPermission.SAFE, {}, lambda p: observe_safely(session.open_search, p),
                       input_model=Arguments, capability='computer', timeout_seconds=30, cancel_task=session.cancel)
     registry.capabilities['computer'] = Capability('computer',
         'The computer is a general environment. Use observe_windows then computer_begin to obtain task-scoped '
         'control of a selected window. This sends fresh window screenshots to the local LLM. '
         'Use UI Automation target IDs with invoke when available, otherwise normalized screenshot coordinates. '
-        'computer_action supports click, type, hotkey, press, scroll, invoke, move, hover and bounded wait across unfamiliar apps. Every action returns a fresh frame. '
+        'computer_action supports click, click_then_type, type, hotkey, press, scroll, invoke, move, hover and bounded wait across unfamiliar apps. Text input is observed in a separate automatic step so slow Search panes cannot make dispatched input unknown. '
+        'click_then_type is a bounded two-input batch for an observed input field: click, inspect fresh focus/window state, then type only if the target remains valid. '
         'move smoothly positions the pointer without clicking; hover also waits for a tooltip. '
         'click supports left/right/middle buttons, clicks=2 for double-click, and modifiers=["ctrl"] or ["shift"] for selection. '
         'press taps keys sequentially (e.g. ["tab","tab","space"]), with presses=1..5 to repeat. hotkey holds a chord simultaneously. '

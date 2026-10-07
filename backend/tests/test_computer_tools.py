@@ -7,6 +7,8 @@ import pytest
 from app.brain import AgentBrain
 from app.computer_tools import ComputerSession, ComputerAction, register
 from app.tools import ToolRegistry, ToolPermission, execution_task_id
+from app.task_state import TaskState, Action, ActionRecord, Outcome
+from app.working_context import context_results
 
 
 class Desktop:
@@ -53,10 +55,114 @@ def test_action_looks_again_and_cannot_replay_frame(granted):
     session, desktop, frame = granted
     action = dict(frame_id=frame['frame_id'], kind='type', text='Hello')
     result = session.act(**action)
-    assert result['post_observation']['frame_id'] != frame['frame_id']
+    assert result['post_observation']['pending'] is True
+    assert session.observe()['frame_id'] != frame['frame_id']
     assert result['goal_verified'] is False
     assert session.act(**action)['effect'] == 'no_effect'
     assert len(desktop.calls) == 1
+
+
+def test_native_signature_avoids_second_full_capture_before_input(granted):
+    session, desktop, frame = granted
+    captures = []
+    original = desktop.capture
+    def counted(rect):
+        captures.append(rect)
+        return original(rect)
+    desktop.capture = counted
+    desktop.screen_signature = lambda rect: desktop.signature[:]
+    session.act(frame_id=frame['frame_id'], kind='type', text='Hello')
+    assert len(captures) == 0  # Input returns before screenshot capture.
+    session.observe()
+    assert len(captures) == 1
+
+
+def test_click_then_type_reobserves_and_types_in_same_window(granted):
+    session, desktop, frame = granted
+    result = session.act(frame_id=frame['frame_id'], kind='click_then_type',
+                         x=500, y=500, text='Hello')
+    assert result['steps'] == ['click', 'type']
+    assert [action['kind'] for action in desktop.calls] == ['click', 'type']
+    assert result['post_observation']['pending'] is True
+    assert session.observe()['frame_id'] != frame['frame_id']
+
+
+def test_click_then_type_stops_when_focus_is_not_editable(granted):
+    session, desktop, frame = granted
+    desktop.accessibility = lambda _: {'controls': [
+        {'id': 'button', 'name': 'Navigation', 'role': 'ControlType.Button', 'focused': True}]}
+    result = session.act(frame_id=frame['frame_id'], kind='click_then_type',
+                         x=500, y=500, text='Hello')
+    assert result['partial'] is True
+    assert [action['kind'] for action in desktop.calls] == ['click']
+
+
+def test_click_then_type_rejects_sensitive_text_before_any_input(granted):
+    session, desktop, frame = granted
+    result = session.act(frame_id=frame['frame_id'], kind='click_then_type',
+                         x=500, y=500, text='Hello\nWorld')
+    assert result['effect'] == 'no_effect'
+    assert desktop.calls == []
+
+
+def test_search_typing_returns_fresh_pixels_without_slow_uia_tree():
+    class SearchDesktop(Desktop):
+        def __init__(self):
+            super().__init__()
+            self.accessibility_calls = 0
+        def list_visible_windows(self):
+            return [dict(hwnd=1, pid=10, executable='SearchHost.exe',
+                         process='SearchHost.exe', title='Search')]
+        def accessibility(self, window_id):
+            self.accessibility_calls += 1
+            return super().accessibility(window_id)
+    desktop = SearchDesktop()
+    session = ComputerSession(desktop)
+    token = execution_task_id.set('search-test')
+    try:
+        first = session.begin(window_id=1, purpose='Search for an application')
+        result = session.act(frame_id=first['frame_id'], kind='type', text='Chrome')
+        assert result['post_observation']['pending'] is True
+        refreshed = session.observe()
+        assert refreshed['accessibility_deferred'] is True
+        assert refreshed['frame_id'] != first['frame_id']
+        assert desktop.accessibility_calls == 1  # Initial observation only.
+        assert session.visual_context('search-test')['accessibility_deferred'] is True
+        assert session.observe(1)['controls']
+        assert desktop.accessibility_calls == 2
+    finally:
+        session.close_task('search-test')
+        execution_task_id.reset(token)
+
+
+def test_post_input_capture_timeout_does_not_make_dispatched_text_unknown(granted):
+    import subprocess
+    session, desktop, frame = granted
+    desktop.screen_signature = lambda rect: [0] * 768
+    desktop.capture = lambda rect: (_ for _ in ()).throw(subprocess.TimeoutExpired('capture', 12))
+    result = session.act(frame_id=frame['frame_id'], kind='type', text='Chrome')
+    assert result['effect'] == 'accepted'
+    assert result['post_observation']['pending'] is True
+    assert [action['text'] for action in desktop.calls] == ['Chrome']
+    with pytest.raises(subprocess.TimeoutExpired):
+        session.observe()
+
+
+def test_native_signature_still_rejects_changed_screen(granted):
+    session, desktop, frame = granted
+    desktop.screen_signature = lambda rect: [9] * 768
+    result = session.act(frame_id=frame['frame_id'], kind='click', x=500, y=500)
+    assert result['effect'] == 'no_effect'
+    assert not desktop.calls
+
+
+def test_observation_rejects_screen_transition_during_capture(granted):
+    session, desktop, _ = granted
+    samples = iter([[0] * 768, [9] * 768])
+    desktop.screen_signature = lambda rect: next(samples)
+    with pytest.raises(ValueError, match='changed during capture'):
+        session.observe(1)
+    assert session.visual_context('owner') is None
 
 
 def test_occluded_click_refreshes_without_reporting_unknown_effect(granted):
@@ -108,6 +214,26 @@ def test_search_observes_before_any_typing_and_respects_cancellation(granted):
     with pytest.raises(ValueError, match='cancelled'):
         session.open_search()
     assert session.visual_context('owner') is None
+
+
+def test_search_grant_can_follow_newly_opened_application():
+    desktop = Desktop()
+    desktop.list_visible_windows = lambda: [
+        dict(hwnd=1, pid=10, executable='SearchHost.exe', process='SearchHost.exe', title='Search'),
+        dict(hwnd=2, pid=20, executable='chrome.exe', process='chrome.exe', title='Google Chrome')]
+    desktop.open_search = lambda cancelled: 1
+    session = ComputerSession(desktop)
+    token = execution_task_id.set('search-transition')
+    try:
+        search = session.open_search()
+        assert search['scope'] == 'desktop'
+        desktop.foreground = 2
+        chrome = session.observe()
+        assert chrome['window_id'] == 2
+        assert chrome['title'] == 'Google Chrome'
+    finally:
+        session.close_task('search-transition')
+        execution_task_id.reset(token)
 
 
 def test_cannot_begin_control_of_agent_overlay():
@@ -279,7 +405,38 @@ def test_brain_attaches_pixels_without_putting_them_in_history(granted):
     asyncio.run(brain.structured('{"goal":"test"}', 'system', {}))
     assert calls[0][2] == [b'pixels']
     assert 'image' not in calls[0][0]['current_computer_frame']
+    assert {item['name'] for item in calls[0][0]['current_computer_frame']['controls']} == {'Submit', 'Text'}
+    assert calls[0][0]['current_computer_frame']['controls'][0]['focused'] is True
     assert 'untrusted' in calls[0][1]
+
+
+def test_brain_compacts_unactionable_ui_panes_but_keeps_focus(granted):
+    session, _, _ = granted
+    session.tasks['owner']['frame']['controls'] = [
+        {'id': str(i), 'role': 'ControlType.Pane', 'value': 'noise' * 100}
+        for i in range(60)] + [
+        {'id': 'edit', 'role': 'ControlType.Edit', 'focused': True, 'name': 'Search box'}]
+    seen = []
+    class Provider:
+        async def structured_images(self, prompt, system, schema, images):
+            seen.append(json.loads(prompt)['current_computer_frame'])
+            return '{}'
+    brain = AgentBrain(Provider(), SimpleNamespace(computer_session=session), SimpleNamespace(id='owner'))
+    asyncio.run(brain.structured('{}', 'system', {}))
+    assert [item['id'] for item in seen[0]['controls']] == ['edit']
+    assert seen[0]['controls_omitted'] == 60
+
+
+def test_visual_context_omits_duplicate_control_trees_without_losing_record(granted):
+    state = TaskState(goal='Type in an app', criteria=['Text appears'])
+    state.records.append(ActionRecord(action=Action(tool='computer_action', arguments={'kind': 'type'}, label='type'),
+        outcome=Outcome(status='accepted', summary='Input sent', data={
+            'ok': True, 'post_observation': {'ok': True, 'frame_id': 'new', 'controls': [{'name': 'Edit'}]}}),
+        dispatched=True))
+    history, recent = context_results(state, compact_computer=True)
+    assert recent[-1]['result']['post_observation'] == {'ok': True, 'frame_id': 'new'}
+    assert history[0]['result_chars'] > len(json.dumps(recent[-1]['result']))
+    assert 'controls' in context_results(state)[1][-1]['result']['post_observation']
 
 
 def test_noncomputer_argument_repair_skips_repeated_vision_call(granted):

@@ -87,7 +87,7 @@ def source_coverage(state):
     return result
 
 
-def context_results(state):
+def context_results(state, compact_computer=False):
     """Keep a small complete history index plus the latest distinct result bodies."""
     history, recent, seen = [], [], set()
     for index, record in enumerate(state.records, 1):
@@ -106,11 +106,20 @@ def context_results(state):
         if key in seen:
             continue
         seen.add(key)
-        data, args = encoded_result(record), json.dumps(record.action.arguments, ensure_ascii=False)
+        result_data = record.outcome.data
+        if compact_computer and record.action.tool.startswith('computer_'):
+            # The live frame carries the current controls and image. Repeating
+            # stale UI trees here consumes context and can misground a click.
+            result_data = {key: value for key, value in result_data.items() if key != 'controls'}
+            if isinstance(result_data.get('post_observation'), dict):
+                result_data['post_observation'] = {
+                    key: value for key, value in result_data['post_observation'].items()
+                    if key != 'controls'}
+        data, args = json.dumps(result_data, ensure_ascii=False, sort_keys=True), json.dumps(record.action.arguments, ensure_ascii=False)
         # A retrieved JSON chunk can grow when its quotes/backslashes are encoded
         # again. Keep that latest chunk intact instead of asking to recall a recall.
         allowance = min(8500 if record.action.tool == 'task_read_result' else 4500, max(0, body_budget))
-        result = record.outcome.data if len(data) <= allowance else {
+        result = result_data if len(data) <= allowance else {
             'truncated_in_context': True, 'excerpt': data[:allowance],
             'retrieve_with': {'tool': 'task_read_result', 'record_id': index + 1, 'offset': 0}}
         body_budget -= min(len(data), allowance)

@@ -2,7 +2,7 @@ import json
 
 from fastapi.testclient import TestClient
 
-from app.main import app
+from app.main import app, registry as api_registry
 from app.routing import detect_deterministic_tools, requests_unsupported_browser_automation
 from app.tools import ToolPermission, ToolRegistry
 
@@ -143,7 +143,11 @@ def test_mixed_browser_task_is_not_partially_executed(monkeypatch):
     monkeypatch.setattr('app.main.OllamaClient.structured', clarify)
     monkeypatch.setattr('app.main.OllamaClient.is_available', available)
     executed = []
-    monkeypatch.setattr('app.main.registry.execute', lambda *args, **kwargs: executed.append((args, kwargs)))
+    original_execute = api_registry.execute
+    def record_observation(*args, **kwargs):
+        executed.append((args, kwargs))
+        return original_execute(*args, **kwargs)
+    monkeypatch.setattr('app.main.registry.execute', record_observation)
 
     response = client.post(
         '/api/command',
@@ -153,7 +157,7 @@ def test_mixed_browser_task_is_not_partially_executed(monkeypatch):
     assert response.status_code == 200
     assert 'event: clarification' in response.text
     assert 'No actions were taken' in response.text
-    assert executed == []
+    assert [args[0] for args, _ in executed] == ['observe_windows']
 
 
 def test_app_launch_request_uses_operator_not_legacy_commands(monkeypatch):
@@ -176,7 +180,7 @@ def test_app_launch_request_uses_operator_not_legacy_commands(monkeypatch):
     response = client.post('/api/command', json={'prompt': 'Open Chrome and open https://example.com'})
 
     assert 'event: clarification' in response.text
-    assert executed == []
+    assert executed == [('observe_windows', {})]
 
 
 def test_unknown_step_cancels_entire_deterministic_plan():

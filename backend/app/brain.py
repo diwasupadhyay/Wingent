@@ -20,6 +20,22 @@ class AgentBrain:
         frame = computer.visual_context(self.state.id) if computer else None
         if frame:
             metadata = {key: value for key, value in frame.items() if key != 'image'}
+            controls = metadata.get('controls', [])
+            # Keep actionable/current controls, not a full UIA tree of duplicate
+            # panes and list containers. The host retains the complete tree for
+            # target validation; the model still has the screenshot as fallback.
+            useful = [control for control in controls if control.get('focused') or
+                      control.get('actions') or
+                      (not control.get('role') and control.get('name')) or
+                      control.get('role') in {'ControlType.Edit', 'ControlType.Document',
+                                               'ControlType.Button', 'ControlType.ListItem'}]
+            ordered = [*filter(lambda c: c.get('focused'), useful),
+                       *filter(lambda c: not c.get('focused'), useful)]
+            metadata['controls'] = [{**control,
+                'name': str(control.get('name', ''))[:120],
+                'value': str(control.get('value', ''))[:160]}
+                for control in ordered[:40]]
+            metadata['controls_omitted'] = max(0, len(controls) - len(metadata['controls']))
             context = json.loads(prompt)
             # The same UI tree was also embedded in observer facts, duplicating
             # it alongside action results and the image on every decision.
@@ -47,5 +63,9 @@ class AgentBrain:
                 system += ('\nNo editable input target is established in this window. '
                            'First click the intended field, unless a focused Edit/Document control is present. '
                            'Do not propose type yet; typing without a target is rejected by the host.')
+            if frame.get('accessibility_deferred'):
+                system += ('\nThe Search results were captured promptly after input; accessibility '
+                           'was deferred. Use the screenshot to select a visible result, or '
+                           'computer_observe once if you need fresh control names.')
             return await self.provider.structured_images(json.dumps(context, separators=(',', ':')), system, schema, [frame['image']])
         return await self.provider.structured(prompt, system, schema)

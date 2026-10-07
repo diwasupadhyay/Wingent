@@ -113,7 +113,7 @@ def test_start_menu_shortcut_target_is_discovered_without_execution(tmp_path, mo
                         lambda args, **kwargs: (called.append((args, kwargs)), Result())[1])
     found = discover_installed('Fixture App')
     assert found == [{'name': 'Fixture App', 'path': str(executable.resolve()), 'source': 'Start menu'}]
-    assert called and 'Fixture App.lnk' in called[0][1]['input']
+    assert any('Fixture App.lnk' in kwargs.get('input', '') for _, kwargs in called)
 
 
 def test_standard_install_root_finds_native_app_not_on_path(tmp_path, monkeypatch):

@@ -91,8 +91,9 @@ def test_parameter_normalization_change_invalidates_approval():
 
 
 def test_approval_endpoint_requires_token_and_boolean():
-    tool = api_registry.get_tool('open_url')
-    item = api_registry.approvals.request('test-task', tool.name, tool.revision, {'url': 'https://github.com'})
+    tool = api_registry.get_tool('computer_confirm_action')
+    item = api_registry.approvals.request('test-task', tool.name, tool.revision,
+                                          {'frame_id': 'test-frame', 'kind': 'press', 'keys': ['enter']})
     client = TestClient(app)
     assert client.post(f'/api/approvals/{item.id}', json={'token': 'wrong', 'approve': True}).status_code == 409
     assert client.post(f'/api/approvals/{item.id}', json={'token': item.token, 'approve': 'yes'}).status_code == 422

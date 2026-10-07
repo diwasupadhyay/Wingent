@@ -21,9 +21,18 @@ try {
         Invoke-Checked 'python' @('-m', 'pip', 'install', '-r', 'backend/requirements.txt', 'pyinstaller==6.16.0')
     }
     # Resolve exact executable paths; never stop an unrelated app/port occupant.
-    $owned = Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -in @($appPath, $backendPath) }
+    try {
+        $owned = Get-CimInstance Win32_Process -ErrorAction Stop |
+            Where-Object { $_.ExecutablePath -in @($appPath, $backendPath) }
+    } catch {
+        # Some non-elevated/sandboxed sessions cannot query CIM. Get-Process
+        # still exposes the exact executable path for our own processes.
+        $owned = Get-Process -Name 'app', 'wingent-backend' -ErrorAction SilentlyContinue |
+            Where-Object { $_.Path -in @($appPath, $backendPath) }
+    }
     foreach ($process in $owned) {
-        $current = Get-Process -Id $process.ProcessId -ErrorAction SilentlyContinue
+        $processId = if ($process.ProcessId) { $process.ProcessId } else { $process.Id }
+        $current = Get-Process -Id $processId -ErrorAction SilentlyContinue
         if ($current -and $current.Path -in @($appPath, $backendPath)) {
             Stop-Process -InputObject $current -Force
             $current.WaitForExit(10000) | Out-Null

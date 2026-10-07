@@ -26,26 +26,14 @@ def test_endpoint_runs_two_validated_browser_steps(monkeypatch):
     async def available(*args):
         return True
     async def next_action(_self, prompt, system, schema):
-        context = json.loads(prompt)
-        count = len(context['untrusted_action_results'])
-        steps = [
-            {'tool': 'search_web', 'arguments': {'engine': 'youtube', 'query': 'genai', 'browser': 'chrome'}},
-            {'tool': 'open_url', 'arguments': {'url': 'https://github.com', 'browser': 'chrome'}},
-        ]
-        if context.get('selected_tool'):
-            return json.dumps(steps[count]['arguments'])
-        return json.dumps({'tool': steps[count]['tool'] if count < 2 else 'finish'})
+        calls.append(json.loads(prompt)['original_goal'])
+        return '{"tool":"finish","message":"No screen result yet."}'
     monkeypatch.setattr('app.main.OllamaClient.structured', next_action)
     monkeypatch.setattr('app.main.OllamaClient.is_available', available)
-    monkeypatch.setattr('app.tools.resolve_browser', lambda _: 'chrome.exe')
-    monkeypatch.setattr('app.tools.subprocess.Popen', lambda args, **kwargs: calls.append(args))
     response = TestClient(app).post('/api/command', json={'prompt': PROMPT})
-    assert calls == [
-        ['chrome.exe', 'https://www.youtube.com/results?search_query=genai'],
-        ['chrome.exe', 'https://github.com'],
-    ]
-    assert 'event: action' in response.text
-    assert response.text.count('"state": "accepted"') == 2
+    assert calls == [PROMPT]
+    assert response.text.count('event: action') == 1  # Read-only window observation.
+    assert 'observe_windows' in response.text
     assert 'event: final' in response.text
 
 

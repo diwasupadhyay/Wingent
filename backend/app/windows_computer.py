@@ -84,7 +84,7 @@ def rectangle(window_id):
         api.SetThreadDpiAwarenessContext(old)
 
 
-def powershell(script, payload, timeout=12):
+def powershell(script, payload, timeout=8):
     script = "[Console]::OutputEncoding=[System.Text.UTF8Encoding]::new($false); " + script
     result = subprocess.run(['powershell.exe', '-NoProfile', '-NonInteractive', '-Command', script],
                             input=json.dumps(payload), capture_output=True, text=True,
@@ -105,11 +105,7 @@ try {
  $s=[System.Drawing.Bitmap]::new([int]($b.Width*$scale),[int]($b.Height*$scale))
  $sg=[System.Drawing.Graphics]::FromImage($s); $sg.DrawImage($b,0,0,$s.Width,$s.Height)
  $s.Save($m,[System.Drawing.Imaging.ImageFormat]::Png)
- $signature=@(); for($y=0;$y -lt 24;$y++){for($x=0;$x -lt 32;$x++){
-  $c=$s.GetPixel([int](($x+.5)*$s.Width/32),[int](($y+.5)*$s.Height/24))
-  $signature += [int]([Math]::Floor(($c.R+$c.G+$c.B)/96))
- }}
- @{png=[Convert]::ToBase64String($m.ToArray()); width=$s.Width; height=$s.Height; signature=$signature} | ConvertTo-Json -Compress -Depth 4
+ @{png=[Convert]::ToBase64String($m.ToArray()); width=$s.Width; height=$s.Height} | ConvertTo-Json -Compress -Depth 4
 } finally {if($sg){$sg.Dispose()};if($s){$s.Dispose()};$g.Dispose();$b.Dispose();$m.Dispose()}
 """
 
@@ -161,6 +157,43 @@ def capture(rect):
     if not image.startswith(b'\x89PNG') or len(image) > 6_000_000:
         raise ValueError('Capture is not a bounded PNG.')
     return {**result, 'image': image}
+
+
+def screen_signature(rect):
+    """Cheap pre-input screen check without starting another PowerShell worker.
+
+    The full PNG is still captured after an action for the model. Sampling the
+    same 32x24 grid before dispatch is sufficient to reject a changed screen.
+    """
+    api = user32()
+    api.SetThreadDpiAwarenessContext.argtypes = [ctypes.c_void_p]
+    api.SetThreadDpiAwarenessContext.restype = ctypes.c_void_p
+    old = api.SetThreadDpiAwarenessContext(ctypes.c_void_p(-4))
+    api.GetDC.argtypes = [wintypes.HWND]
+    api.GetDC.restype = wintypes.HDC
+    api.ReleaseDC.argtypes = [wintypes.HWND, wintypes.HDC]
+    gdi = ctypes.WinDLL('gdi32', use_last_error=True)
+    gdi.GetPixel.argtypes = [wintypes.HDC, ctypes.c_int, ctypes.c_int]
+    gdi.GetPixel.restype = wintypes.DWORD
+    dc = api.GetDC(None)
+    if not dc:
+        api.SetThreadDpiAwarenessContext(old)
+        raise RuntimeError('Could not sample the desktop screen.')
+    try:
+        left, top, width, height = rect
+        values = []
+        for y in range(24):
+            sy = top + min(height - 1, int((y + .5) * height / 24))
+            for x in range(32):
+                sx = left + min(width - 1, int((x + .5) * width / 32))
+                color = gdi.GetPixel(dc, sx, sy)
+                if color == 0xffffffff:
+                    raise RuntimeError('Could not read a screen pixel.')
+                values.append(((color & 255) + ((color >> 8) & 255) + ((color >> 16) & 255)) // 96)
+        return values
+    finally:
+        api.ReleaseDC(None, dc)
+        api.SetThreadDpiAwarenessContext(old)
 
 
 def accessibility(window_id, target=None):
@@ -401,4 +434,4 @@ def _dispatch(window_id, rect, action, cancelled):
             send([key_event(code, up, True) for up in (False, True)])
             # Some native edit controls sample VK_PACKET state while draining
             # their queue; batching different characters can repeat the last one.
-            time.sleep(.04)
+            time.sleep(.025)
