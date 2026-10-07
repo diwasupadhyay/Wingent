@@ -24,6 +24,26 @@ def test_operator_uses_reference_json_prompting_instead_of_union_grammar(monkeyp
     assert sent[0]['messages'][-1]['images']
 
 
+def test_operator_history_preserves_input_error_and_original_goal(monkeypatch):
+    sent = []
+    real_client = httpx.AsyncClient
+    def handle(request):
+        sent.append(json.loads(request.content))
+        return httpx.Response(200, json={'message': {'content': '{"operations":[]}'}})
+    monkeypatch.setattr(httpx, 'AsyncClient', lambda **kw: real_client(transport=httpx.MockTransport(handle), **kw))
+    prompt = json.dumps({'objective': 'Type into the selected field', 'recent_actions': [
+        {'action': {'operation': 'write', 'content': 'hello'},
+         'result': 'error; effect uncertain', 'error': 'Focus changed before typing'}],
+        'remaining_work': ['Verify text in destination']})
+    asyncio.run(OllamaClient().structured_images(prompt, 'system',
+        {'properties': {'operations': {'type': 'array'}}}, [b'image']))
+    messages = sent[0]['messages']
+    assert messages[1]['content'] == 'Type into the selected field'
+    result = messages[3]['content'].removeprefix('Execution result: ')
+    assert json.loads(result) == {'result': 'error; effect uncertain', 'error': 'Focus changed before typing'}
+    assert json.loads(messages[-1]['content'])['remaining_work'] == ['Verify text in destination']
+
+
 @pytest.mark.parametrize('status,delay', [(503, 2), (429, 20)])
 def test_cloud_transient_retry_is_bounded(monkeypatch, status, delay):
     sent, sleeps = [], []

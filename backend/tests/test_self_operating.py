@@ -177,6 +177,32 @@ def test_provider_schema_advertises_all_supported_actions():
         Operation.model_json_schema()['properties']['operation']['enum'])
 
 
+def test_decision_prompt_and_schema_are_prepared_once_per_task(monkeypatch):
+    from app import self_operating as engine
+    calls = []
+    original_prompt, original_schema = engine.system_prompt, engine.operation_schema
+    def prompt(goal):
+        calls.append('prompt')
+        return original_prompt(goal)
+    def schema():
+        calls.append('schema')
+        return original_schema()
+    monkeypatch.setattr(engine, 'system_prompt', prompt)
+    monkeypatch.setattr(engine, 'operation_schema', schema)
+    desktop = Desktop(None)
+    class Provider:
+        async def structured_images(self, *args):
+            if desktop.frames == 1:
+                return '[{"operation":"write","content":"hello"}]'
+            return '[{"operation":"ask","summary":"Test ends."}]'
+    async def run():
+        return [e async for e in engine.run_self_operating('Type hello', Provider(), connected,
+            ApprovalStore(), desktop_factory=lambda stop: desktop)]
+    asyncio.run(run())
+    assert desktop.frames == 2
+    assert calls == ['prompt', 'schema']
+
+
 def test_invented_app_shortcut_replans_before_any_input():
     desktop = Desktop(None)
     class Provider:

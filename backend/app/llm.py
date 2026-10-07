@@ -110,7 +110,11 @@ class OllamaClient:
                 for record in history[-8:]:
                     if record.get('action'):
                         messages.append({'role': 'assistant', 'content': json.dumps({'operations': [record['action']]})})
-                        messages.append({'role': 'user', 'content': 'Execution result: ' + record.get('result', 'unknown')})
+                        # Preserve why native input failed; otherwise the model
+                        # sees only "uncertain" and cannot choose a useful repair.
+                        result = {key: value for key, value in record.items() if key != 'action'}
+                        messages.append({'role': 'user', 'content': 'Execution result: ' +
+                                         json.dumps(result, separators=(',', ':'))})
                     else:
                         messages.append({'role': 'user', 'content': json.dumps(record)})
                 latest = json.dumps(context)

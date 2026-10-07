@@ -188,6 +188,11 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
             from vendor.self_operating_computer.operate.utils.operating_system import OperatingSystem
             desktop_factory = OperatingSystem
         desktop = desktop_factory(stopped)
+        # These are invariant for this task. Avoid regenerating Pydantic schemas
+        # and the reference prompt after every screenshot/recovery round.
+        decision_system = system_prompt(goal)
+        decision_schema = operation_schema()
+        review_schema = CompletionReview.model_json_schema()
 
         async def desktop_call(function, *args):
             nonlocal worker
@@ -229,10 +234,11 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
                                  'previous_model_assessment': working_state,
                                  'unchanged_screen_rounds': unchanged,
                                  'recovery': 'If a click did not work, use a different target or keyboard navigation. Never repeat the same unsuccessful click.' if unchanged else '',
-                                 'instruction': 'Inspect this fresh screenshot and continue towards the objective.'})
+                                 'instruction': 'Inspect this fresh screenshot and continue towards the objective.'},
+                                separators=(',', ':'))
             async with asyncio.timeout(min(120, max(0.1, seconds - (time.monotonic() - started)))):
-                raw = await connected_call(provider.structured_images(prompt, system_prompt(goal),
-                    operation_schema(), [image]), disconnected, stopped)
+                raw = await connected_call(provider.structured_images(prompt, decision_system,
+                    decision_schema, [image]), disconnected, stopped)
             try:
                 batch = parse_operations(raw)
                 launches.check_batch(batch)
@@ -268,7 +274,7 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
                         'outcomes': [{'criterion': i, 'requirement': item} for i, item in enumerate(plan.outcomes, 1)]})
                     async with asyncio.timeout(min(120, max(0.1, seconds - (time.monotonic() - started)))):
                         raw_review = await connected_call(provider.structured_images(review_prompt,
-                            REVIEW_SYSTEM, CompletionReview.model_json_schema(), [final_image]), disconnected, stopped)
+                            REVIEW_SYSTEM, review_schema, [final_image]), disconnected, stopped)
                     try:
                         review = CompletionReview.model_validate(decode_json(raw_review))
                     except ValueError:
