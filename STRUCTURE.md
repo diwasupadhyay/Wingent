@@ -1,12 +1,12 @@
 # Wingent structure
 
-Current runtime: `self-operating-v2` (2026-10-07).
+Current runtime: `wingent-desktop-v3` (2026-10-08).
 
 | Path | Responsibility |
 | --- | --- |
 | `backend/app/main.py` | FastAPI/SSE, provider settings and task entry |
 | `backend/app/self_operating.py` | Screenshot/action loop, schemas, batching, recovery and cancellation |
-| `backend/app/task_brain.py` | Goal outcomes, launch memory and visual completion review |
+| `backend/app/task_brain.py` | Goal outcomes, launch memory, Windows shortcut contracts and visual completion review |
 | `backend/app/llm.py`, `provider_settings.py`, `model_routing.py` | Local/cloud models and configuration |
 | `backend/app/approvals.py` | Expiring action-bound approvals |
 | `backend/app/unicode_input.py` | Native Unicode input helper |

@@ -1,4 +1,4 @@
-"""OthersideAI screenshot -> action batch -> screenshot loop, hosted by Wingent.
+"""Wingent screenshot/action loop, inspired by OthersideAI's desktop agent.
 
 Upstream source and MIT license: backend/vendor/self_operating_computer.
 """
@@ -13,7 +13,8 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from vendor.self_operating_computer.operate.models.prompts import get_system_prompt
 from app.task_brain import (GoalPlan, CompletionReview, LaunchMemory, PLAN_SYSTEM,
-                            REVIEW_SYSTEM, decode_json)
+                            REVIEW_SYSTEM, decode_json, WINDOWS_TARGETS,
+                            validate_system_shortcut, normalized_keys, needs_fresh_screen)
 
 
 class Operation(BaseModel):
@@ -22,6 +23,7 @@ class Operation(BaseModel):
     thought: str = Field(default='', max_length=500)
     content: str = Field(default='', max_length=8000)
     keys: list[str] = Field(default_factory=list, max_length=6)
+    system_target: str = Field(default='', max_length=40)
     x: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
     y: float | None = Field(default=None, ge=0, le=1, allow_inf_nan=False)
     amount: int = Field(default=0, ge=-20, le=20)
@@ -35,6 +37,10 @@ class Operation(BaseModel):
             raise ValueError('Mouse actions need x and y screen fractions between 0 and 1.')
         if self.operation in {'press', 'hotkey'} and not self.keys:
             raise ValueError('press requires keys.')
+        if self.operation in {'press', 'hotkey'}:
+            validate_system_shortcut(self.keys, self.system_target)
+        elif self.system_target:
+            raise ValueError('system_target is only for keyboard actions.')
         if self.operation == 'write' and not self.content:
             raise ValueError('write requires non-empty content containing the actual text to type.')
         if self.operation in {'done', 'ask'} and not self.summary.strip():
@@ -54,10 +60,14 @@ def operation_schema():
     # cannot be generated without text simply because an optional default exists.
     fields = Operation.model_json_schema()['properties']
     variants = []
-    for kind, required in {'click': ['x', 'y'], 'write': ['content'],
-                           'press': ['keys'], 'done': ['summary']}.items():
+    for kind, required in {'click': ['x', 'y'], 'move': ['x', 'y'],
+                           'write': ['content'], 'press': ['keys'], 'hotkey': ['keys'],
+                           'scroll': ['amount'], 'wait': ['seconds'],
+                           'ask': ['summary'], 'done': ['summary']}.items():
         properties = {key: {k: v for k, v in fields[key].items() if k not in {'default', 'title'}}
                       for key in [*required, 'thought', 'requires_confirmation']}
+        if kind in {'press', 'hotkey'}:
+            properties['system_target'] = {'type': 'string', 'enum': sorted(set(WINDOWS_TARGETS.values()))}
         if kind == 'write': properties['content']['minLength'] = 1
         properties['operation'] = {'const': kind, 'type': 'string'}
         variants.append({'type': 'object', 'properties': properties,
@@ -91,7 +101,12 @@ Return {"screen_state":"what is actually visible now", "next_outcome":"next unme
 "operations":[...]} containing the operation array above. Describe the current screen
 BEFORE choosing actions, and update the next unmet outcome after each screen change.
 The screenshot is the actual current primary screen; never assume a terminal is open.
-Use Windows Search (win+s, write app name, enter) to launch applications.
+To launch any application: Win+S, inspect Search, type its name, Enter, inspect the app.
+Never invent Win+the first letter of an app name. Win+N opens notifications, not an editor.
+The host stops a batch at Search/app-switch/navigation shortcuts or Enter. Remaining
+actions are NOT queued: inspect the new screen, then choose the next action.
+Before typing check the intended field has focus. If a popup appeared, dismiss it or
+focus the intended field first. Keep results needed in a later app in next_outcome.
 If an application is already in launched_applications, continue working inside it;
 do not repeat its launch. Use Alt+Tab if you need to switch to it.
 The task_outcomes list is the complete goal. Opening an application is only a
@@ -103,6 +118,8 @@ After opening an app or navigating, end the batch to inspect its new screen.
 Mouse coordinates are fractions of the ENTIRE screenshot, from 0 to 1.
 A click visibly moves the pointer before clicking. Use pageup/pagedown or arrow
 keys to scroll. Use Tab to move between fields when clicking does not work.
+Additional operations: move(x,y), scroll(amount: signed notches), wait(seconds:
+0.1 to 5), ask(summary: a genuinely necessary question). All are bounded by the schema.
 Prefer established keyboard shortcuts over guessing small icons: Ctrl+T for a new
 browser tab, Ctrl+L before typing a web address, Alt+Tab to switch applications.
 press.keys is a simultaneous chord, not a sequence. Use write for numbers/text
@@ -120,7 +137,8 @@ Check for completion FIRST on every screenshot. If the requested text/result is
 already visible, return done instead of typing or clicking again.
 For playback, searching is not completion: select a result and check playback.
 Use thought for a short action description, not detailed internal reasoning.
-'''
+''' + '\nWindows shortcuts (declare matching system_target for non-search shortcuts): ' + json.dumps(
+        {'+'.join(keys): target for keys, target in WINDOWS_TARGETS.items()})
 
 
 _desktop_owner = threading.Lock()
@@ -307,10 +325,16 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
                     history.append({'action': action, 'result': 'sent'})
                     launches.record(operation)
                     yield 'step', {'index': index, 'state': 'accepted'}
-                    keys = {key.lower() for key in operation.keys}
+                    keys = set(normalized_keys(operation.keys))
                     settle = 0.8 if keys.intersection({'win', 'winleft', 'windows', 'enter', 'return'}) else 0.2
                     await desktop_call(desktop.wait, settle)
-                    if kind == 'click' and hasattr(desktop, 'context'):
+                    if needs_fresh_screen(operation):
+                        history.append({'observation_required': True,
+                            'instruction': 'Navigation sent. Remaining batch actions were NOT sent. '
+                                           'Inspect the new screen/focused field before continuing.'})
+                        index += 1
+                        break
+                    if kind in {'click', 'press', 'hotkey'} and hasattr(desktop, 'context'):
                         after_click = await desktop_call(desktop.context)
                         before_title = desktop_context.get('active_window')
                         after_title = after_click.get('active_window')

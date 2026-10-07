@@ -6,6 +6,53 @@ import re
 from pydantic import BaseModel, ConfigDict, Field
 
 
+# OS semantics, not application-launch workflows. Non-search system shortcuts
+# require an explicit matching target so an invented Win+initial is not sent.
+WINDOWS_TARGETS = {
+    ('win',): 'start', ('s', 'win'): 'search',
+    ('n', 'win'): 'notifications', ('a', 'win'): 'quick_settings',
+    ('e', 'win'): 'file_explorer', ('i', 'win'): 'settings',
+    ('r', 'win'): 'run', ('d', 'win'): 'desktop',
+    ('tab', 'win'): 'task_view', ('v', 'win'): 'clipboard_history',
+    ('s', 'shift', 'win'): 'screen_capture',
+}
+
+
+def normalized_keys(keys):
+    aliases = {'windows': 'win', 'winleft': 'win', 'winright': 'win',
+               'control': 'ctrl', 'ctrlleft': 'ctrl', 'ctrlright': 'ctrl',
+               'altleft': 'alt', 'altright': 'alt',
+               'shiftleft': 'shift', 'shiftright': 'shift',
+               'return': 'enter', 'escape': 'esc'}
+    return [aliases.get(key.lower(), key.lower()) for key in keys]
+
+
+def validate_system_shortcut(keys, target):
+    chord = tuple(sorted(set(normalized_keys(keys))))
+    if 'win' not in chord:
+        if target:
+            raise ValueError('system_target is only for a Windows-key shortcut.')
+        return
+    expected = WINDOWS_TARGETS.get(chord)
+    if expected is None:
+        raise ValueError('Unsupported Windows shortcut. Do not invent Win+app-initial. '
+                         'Use Win+S, observe Search, then type the application name.')
+    if target != expected and not (not target and expected in {'start', 'search'}):
+        raise ValueError(f'{"+".join(chord)} targets {expected}, not an arbitrary application. '
+                         f'Use system_target="{expected}" only when that is intended; '
+                         'to launch an app use Win+S and observe Search first.')
+
+
+def needs_fresh_screen(action):
+    """Navigation boundaries invalidate the remainder of a predicted batch."""
+    if action.operation in {'press', 'hotkey'}:
+        keys = set(normalized_keys(action.keys))
+        return ('win' in keys or 'enter' in keys or keys in (
+            {'alt', 'tab'}, {'alt', 'shift', 'tab'}, {'ctrl', 't'},
+            {'ctrl', 'n'}, {'ctrl', 'w'}, {'alt', 'f4'}))
+    return action.operation == 'write' and any(key in action.content for key in '\r\n')
+
+
 class GoalPlan(BaseModel):
     model_config = ConfigDict(extra='forbid')
     outcomes: list[str] = Field(min_length=1, max_length=6)
@@ -36,6 +83,8 @@ Preserve every requested step and constraint. Distinguish prerequisites (an app 
 from the requested result inside it. Include exact expected text/numbers when known.
 For flexible choices choose a sensible result; do not ask which one unnecessarily.
 Give a short approach using ordinary screen/mouse/keyboard interaction. No tool calls.
+Windows app launch: Win+S, observe Search, type the app name, Enter, observe the app.
+Never invent Win+first-letter shortcuts. Win+N opens notifications, not an editor.
 Return JSON: {"outcomes":["observable result",...],"approach":["short step",...]}.
 '''
 
@@ -72,8 +121,7 @@ class LaunchMemory:
 
     def record(self, action):
         kind = action.operation
-        aliases = {'windows': 'win', 'winleft': 'win', 'winright': 'win', 'control': 'ctrl'}
-        keys = [aliases.get(key.lower(), key.lower()) for key in action.keys]
+        keys = normalized_keys(action.keys)
         if kind in {'press', 'hotkey'}:
             if set(keys) in ({'win'}, {'win', 's'}, {'win', 'r'}):
                 self.searching, self.query = True, ''

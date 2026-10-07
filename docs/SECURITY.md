@@ -1,12 +1,13 @@
 # Current safety boundaries
 
-Updated: 2026-10-07; applies to `self-operating-v2`, not the removed tool-registry runtime.
+Updated: 2026-10-08; applies to `wingent-desktop-v3`, not the removed tool-registry runtime.
 
 Wingent sends real input with the user's desktop privileges. It is not a sandbox. Use non-sensitive test windows while reliability work is incomplete.
 
 ## Implemented
 
 - Typed action parsing, bounded batches/rounds, single-task input ownership and repeat guards.
+- Windows shortcut/declared-target validation and re-observation after navigation. These are correctness checks, not comprehensive semantic authorization.
 - Stop/disconnect cancellation checks; PyAutoGUI screen-corner fail-safe; held-key release on interruption. Cancellation cannot undo effects.
 - Review mode approves each input action. Otherwise approval depends on the model setting `requires_confirmation`; approval records are action-bound, expiring and single-use.
 - Local Ollama by default. Cloud configuration is explicit and screenshots require opt-in. Keys are session-only. Cloud text/images leave the PC and may incur charges.

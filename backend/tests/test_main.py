@@ -6,7 +6,7 @@ from app import main
 
 def test_health_and_new_engine():
     client = TestClient(main.app)
-    assert client.get('/health').json()['runtime'] == 'self-operating-v2'
+    assert client.get('/health').json()['runtime'] == 'wingent-desktop-v3'
     assert client.get('/api/capabilities').json()['engine'] == 'self-operating-computer'
     assert client.post('/api/command', json={'prompt': '  '}).status_code == 422
 

@@ -2,7 +2,7 @@
 
 Reviewed: 2026-10-06. **Research only; this document does not implement or authorize changes.**
 
-Historical study: the reference-code analysis remains useful, but the Wingent comparison below describes the removed runtime at `4e3b3ca`, not today's architecture or protections. Current source is `self-operating-v2`; use [the new plan](SELF_OPERATING_AGENT_PLAN.md) and [current structure](../STRUCTURE.md). Old source paths below are historical references, not files expected in this checkout.
+Historical study: the reference-code analysis remains useful, but the Wingent comparison below describes the removed runtime at `4e3b3ca`, not today's architecture or protections. Use [the current plan](SELF_OPERATING_AGENT_PLAN.md) and [current structure](../STRUCTURE.md). Old source paths below are historical references, not files expected in this checkout.
 
 ## 1. Scope and evidence
 

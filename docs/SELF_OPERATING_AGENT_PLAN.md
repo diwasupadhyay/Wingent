@@ -49,7 +49,7 @@ Do not create a framework/module for each row unless implementation needs it. A 
 | --- | --- | --- |
 | 0. Documentation alignment | Complete | One current plan, explicit limits, obsolete docs removed |
 | 1. Observation and target grounding | Planned; priority | Correct coordinate/target mapping before further model tuning |
-| 2. Input and app transitions | Open | Focus-aware typing, real shortcuts and context-bound batches |
+| 2. Input and app transitions | In progress; partial regression fix | Focus-aware typing, real shortcuts and context-bound batches |
 | 3. Progress and recovery | Planned | No semantic launch/action cycles; multi-step intent retained |
 | 4. Evidence-based completion | Planned | Fresh evidence covers every requested outcome |
 | 5. Model quality and speed | Planned | Measured latency improvement without lower accuracy |
@@ -73,12 +73,12 @@ Gate: independent fixture records 20/20 intended hits per supported scale/layout
 
 Owners: action schema/driver, loop, overlay handoff if implicated by evidence.
 
-- [ ] Validate Windows shortcut meanings; app names do not define `Win+initial` launch shortcuts. Replan invalid shortcuts without sending them.
+- [x] Validate a supported Windows shortcut vocabulary and declared target; reject invented app-launch chords before input. Contract tests pass; live behavior remains to retest.
 - [ ] Observe after opening Search, switching apps or submitting navigation, before subsequent typing. Recheck the intended field, not just the foreground title.
 - [ ] Search any installed application through observed results; confirm the selected identity. Reuse already-open apps without duplicate launches.
 - [ ] Stop/discard pending batch actions on a new dialog or unexpected focus change. Never silently carry old clicks into a new screen.
 - [ ] Keep keyboard sequences distinct from chords; verify Unicode/punctuation and keyboard-layout behavior.
-- [ ] Align advertised action schema with supported move/scroll/wait primitives; add gestures only with clear contracts.
+- [x] Align advertised action schema with supported move/scroll/wait/ask primitives. Further gestures require separate contracts/tests.
 - [ ] Prefer bounded readiness checks to fixed sleeps. Keep overlay/toast out of input focus and target regions; pause for user interference.
 - [ ] Add host risk checks alongside model flags. Routine navigation stays low-friction; sensitive effects need meaningful confirmation. Test Stop and held-key release.
 
@@ -146,5 +146,6 @@ Next major slice: reproduce target/focus failures with bounded diagnostics, disc
 | Date | Slice | Evidence/status | Remaining |
 | --- | --- | --- | --- |
 | 2026-10-08 | Documentation alignment | Consolidated current baseline, reference lessons and gates; obsolete docs recoverable from Git | Implementation phases open |
+| 2026-10-08 | Phase 2 partial: shortcut/navigation | `wingent-desktop-v3`: reject mismatched Windows chords; end batches at Search/switch/Enter and reobserve; advertise all implemented actions. 76 backend tests pass. Pre-code checkpoint `768bbaf`. | No new live cross-app verification; focus/target grounding and remaining phase gates stay open |
 
 For every future slice append commit, hypothesis, narrow check, actual result, live-test scope and build status. Do not create a new report after every edit or mark phases complete from unit tests alone.

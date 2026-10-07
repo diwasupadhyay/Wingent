@@ -2,6 +2,7 @@ import pytest
 
 from app.task_brain import LaunchMemory, CompletionReview
 from app.self_operating import parse_operations
+import json
 
 
 def test_split_launch_is_remembered_and_repeated_batch_rejected_before_input():
@@ -49,3 +50,25 @@ def test_ascii_uses_real_keys_and_non_ascii_uses_unicode(monkeypatch):
     desktop.write('72*2é')
     assert ''.join(typed) == '72*2'
     assert unicode_units == [ord('é')]
+
+
+@pytest.mark.parametrize('alias', ['win', 'windows', 'winleft', 'winright'])
+@pytest.mark.parametrize('target', ['', 'notepad', 'search'])
+def test_notifications_shortcut_requires_its_actual_target(alias, target):
+    with pytest.raises(ValueError, match='notifications'):
+        parse_operations(json.dumps([{'operation': 'press', 'keys': [alias, 'n'],
+                                      'system_target': target}]))
+
+
+def test_notification_task_can_still_use_correct_shortcut():
+    action = parse_operations('[{"operation":"press","keys":["win","n"],"system_target":"notifications"}]')[0]
+    assert action.system_target == 'notifications'
+
+
+def test_unknown_windows_initial_is_not_treated_as_app_launcher():
+    with pytest.raises(ValueError, match='Unsupported Windows shortcut'):
+        parse_operations('[{"operation":"press","keys":["win","j"]}]')
+
+
+def test_ordinary_app_shortcuts_are_unaffected():
+    assert parse_operations('[{"operation":"press","keys":["ctrl","n"]}]')[0].keys == ['ctrl', 'n']
