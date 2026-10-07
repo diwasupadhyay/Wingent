@@ -1,5 +1,6 @@
 import asyncio
 import json
+import httpx
 
 import pytest
 
@@ -169,6 +170,35 @@ def test_window_change_after_click_reobserves_before_typing():
 def test_long_batch_executes_only_bounded_prefix():
     actions = [{'operation': 'press', 'keys': ['tab']}] * 8
     assert len(parse_operations(json.dumps(actions))) == 6
+
+
+@pytest.mark.parametrize('error', [TimeoutError(), httpx.ReadTimeout('')])
+def test_model_timeout_reports_stage_and_prior_action_count(error):
+    desktop = Desktop(None)
+    class Provider:
+        async def structured_images(self, *args):
+            if desktop.frames == 1:
+                return '[{"operation":"write","content":"hello"}]'
+            raise error
+    async def run():
+        return [e async for e in run_self_operating('Type hello then continue', Provider(),
+            connected, ApprovalStore(), desktop_factory=lambda stop: desktop)]
+    events = asyncio.run(run())
+    event, payload = events[-1]
+    assert event == 'error'
+    assert payload['code'] == 'task_timeout'
+    assert payload['attempted_actions'] == 1
+    assert 'waiting for the model' in payload['message']
+    assert 'earlier effects may remain' in payload['message']
+
+
+def test_prompt_prefers_whole_keyboard_input_and_has_one_action_contract():
+    from app.self_operating import system_prompt
+    prompt = system_prompt('Transfer a computed result to a document')
+    assert 'WHOLE value/expression' in prompt
+    assert 'SIMULTANEOUS key chords' in prompt
+    assert '4 possible' not in prompt
+    assert len(prompt) < 4000
 
 
 def test_provider_schema_advertises_all_supported_actions():

@@ -5,8 +5,9 @@ Copied from OthersideAI/self-operating-computer at commit
 All 33 upstream tracked files are included; `.git` and local secrets are excluded.
 The separate `references/` checkout remains unchanged.
 
-Wingent uses `operate/models/prompts.py` and `operate/utils/operating_system.py`.
-The prompt module no longer imports upstream's interactive API configuration.
+Wingent uses the adapted `operate/utils/operating_system.py` input driver.
+Its active Windows prompt is in `app/self_operating.py`; upstream prompts remain
+as reference source, not concatenated into the production instruction contract.
 The Windows input driver uses the same PyAutoGUI movement, clicks and hotkeys,
 with Unicode typing, cancellation, propagated failures and in-memory screenshots.
 The upstream decorative cursor circle is omitted to reduce click latency.
