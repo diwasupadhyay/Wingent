@@ -97,8 +97,30 @@ class OllamaClient:
             payload['format'] = 'json'
         if images:
             payload['images'] = [base64.b64encode(image).decode('ascii') for image in images]
+        endpoint = '/api/generate'
+        if images and 'operations' in schema.get('properties', {}):
+            # Match upstream's Ollama chat loop: distinguish executed assistant
+            # actions from the latest user observation instead of one flat prompt.
+            endpoint = '/api/chat'
+            messages = [{'role': 'system', 'content': payload.pop('system')}]
+            try:
+                context = json.loads(prompt)
+                history = context.pop('recent_actions', [])
+                messages.append({'role': 'user', 'content': context.get('objective', '')})
+                for record in history[-8:]:
+                    if record.get('action'):
+                        messages.append({'role': 'assistant', 'content': json.dumps({'operations': [record['action']]})})
+                        messages.append({'role': 'user', 'content': 'Execution result: ' + record.get('result', 'unknown')})
+                    else:
+                        messages.append({'role': 'user', 'content': json.dumps(record)})
+                latest = json.dumps(context)
+            except (ValueError, AttributeError, TypeError):
+                latest = prompt
+            messages.append({'role': 'user', 'content': latest, 'images': payload.pop('images')})
+            payload.pop('prompt')
+            payload['messages'] = messages
         async with httpx.AsyncClient(timeout=110.0, trust_env=False) as client:
-            response = await client.post(f'{self.base_url}/api/generate', json=payload)
+            response = await client.post(self.base_url + endpoint, json=payload)
             if response.status_code == 400:
                 try:
                     reason = str(response.json().get('error', '')).lower()
@@ -112,15 +134,18 @@ class OllamaClient:
                         # The rejected inference executed no tools. Retry once
                         # with output headroom; never silently truncate the goal.
                         payload['options']['num_ctx'] = context_size
-                        response = await client.post(f'{self.base_url}/api/generate', json=payload)
+                        response = await client.post(self.base_url + endpoint, json=payload)
                         if not response.is_error:
                             self.context_size = context_size
                 elif any(word in reason for word in ('schema', 'grammar', 'format')):
                     # Some installed runners reject recursive JSON schemas.
                     # Retry only that rejected inference, never a computer action.
                     payload['format'] = 'json'
-                    payload['system'] += '\nReturn JSON matching this schema: ' + json.dumps(schema)
-                    response = await client.post(f'{self.base_url}/api/generate', json=payload)
+                    if 'messages' in payload:
+                        payload['messages'][0]['content'] += '\nReturn JSON matching this schema: ' + json.dumps(schema)
+                    else:
+                        payload['system'] += '\nReturn JSON matching this schema: ' + json.dumps(schema)
+                    response = await client.post(self.base_url + endpoint, json=payload)
             if response.is_error:
                 try:
                     detail = str(response.json().get('error', 'No error detail returned'))[:500]
@@ -132,7 +157,7 @@ class OllamaClient:
             payload = response.json()
             if payload.get('error'):
                 raise RuntimeError(f'Ollama error: {payload["error"]}')
-            return payload.get('response', '')
+            return payload.get('message', {}).get('content', '') if endpoint == '/api/chat' else payload.get('response', '')
 
     async def stream(self, prompt: str) -> AsyncIterator[str]:
         async with httpx.AsyncClient(timeout=60.0, trust_env=False) as client:

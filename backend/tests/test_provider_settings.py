@@ -15,12 +15,13 @@ def test_operator_uses_reference_json_prompting_instead_of_union_grammar(monkeyp
     real_client = httpx.AsyncClient
     def handle(request):
         sent.append(json.loads(request.content))
-        return httpx.Response(200, json={'response': '{"operations":[{"operation":"done","summary":"Seen"}]}'})
+        assert request.url.path == '/api/chat'
+        return httpx.Response(200, json={'message': {'content': '{"operations":[{"operation":"done","summary":"Seen"}]}'}})
     monkeypatch.setattr(httpx, 'AsyncClient', lambda **kw: real_client(transport=httpx.MockTransport(handle), **kw))
     asyncio.run(OllamaClient().structured_images('goal', 'system',
         {'type': 'object', 'properties': {'operations': {'type': 'array'}}}, [b'image']))
     assert sent[0]['format'] == 'json'
-    assert sent[0]['images']
+    assert sent[0]['messages'][-1]['images']
 
 
 @pytest.mark.parametrize('status,delay', [(503, 2), (429, 20)])

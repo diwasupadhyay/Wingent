@@ -23,12 +23,20 @@ class Desktop:
 async def connected(): return False
 
 
+def review_response(complete=True):
+    return json.dumps({'goal_complete': complete, 'checks': [
+        {'criterion': 1, 'satisfied': complete, 'evidence': 'Requested result is visible' if complete else 'Only the app is open'}],
+        'remaining': [] if complete else ['Perform the requested calculation']})
+
+
 def test_reference_keyboard_batch_then_fresh_screen_before_done():
     desktop = Desktop(None)
     images = []
     class Provider:
         async def structured_images(self, prompt, system, schema, frames):
             images.extend(frames)
+            if 'goal_complete' in schema['properties']:
+                return review_response()
             if len(images) == 1:
                 return json.dumps([{'operation': 'press', 'keys': ['win', 's']},
                     {'operation': 'write', 'content': 'Calculator'},
@@ -40,14 +48,14 @@ def test_reference_keyboard_batch_then_fresh_screen_before_done():
             ApprovalStore(), desktop_factory=lambda stop: desktop)]
     events = asyncio.run(run())
     assert desktop.calls == [('press', ['win', 's']), ('write', 'Calculator'), ('press', ['enter'])]
-    assert images == [b'frame-1', b'frame-2']
+    assert images == [b'frame-1', b'frame-2', b'frame-3']
     assert events[-1][0] == 'final'
     assert events[-1][1]['verified'] is False
 
 
 @pytest.mark.parametrize('raw', [
     '[{"operation":"click","x":500,"y":0.2}]',
-    '[{"operation":"write","content":"x"},{"operation":"done","summary":"Done"}]',
+    '[{"operation":"done","summary":"Done"},{"operation":"write","content":"x"}]',
     '[{"operation":"press","keys":[]}]', '[{"operation":"write"}]'])
 def test_invalid_batch_never_dispatched(raw):
     with pytest.raises(ValueError): parse_operations(raw)
@@ -88,6 +96,8 @@ def test_repeated_batch_is_replanned_without_duplicate_typing():
     class Provider:
         calls = 0
         async def structured_images(self, prompt, *args):
+            if 'original_goal' in json.loads(prompt):
+                return review_response()
             self.calls += 1
             if self.calls <= 2:
                 return '[{"operation":"write","content":"Hello"}]'
@@ -99,3 +109,58 @@ def test_repeated_batch_is_replanned_without_duplicate_typing():
     events = asyncio.run(run())
     assert desktop.calls == [('write', 'Hello')]
     assert events[-1][1]['outcome'] == 'completed'
+
+
+def test_premature_completion_returns_to_work_before_reporting_success():
+    desktop = Desktop(None)
+    class Provider:
+        decisions = 0
+        async def structured_images(self, prompt, system, schema, frames):
+            if 'goal_complete' in schema['properties']:
+                return review_response(bool(desktop.calls))
+            self.decisions += 1
+            if self.decisions == 2:
+                assert 'Perform the requested calculation' in prompt
+                return '[{"operation":"write","content":"72*2"},{"operation":"press","keys":["enter"]}]'
+            return '[{"operation":"done","summary":"Finished"}]'
+    async def run():
+        return [e async for e in run_self_operating('Calculate 72 * 2', Provider(), connected,
+            ApprovalStore(), desktop_factory=lambda stop: desktop)]
+    events = asyncio.run(run())
+    assert desktop.calls == [('write', '72*2'), ('press', ['enter'])]
+    assert len([e for e in events if e[0] == 'final']) == 1
+    assert events[-1][1]['verification'] == 'separate_visual_review'
+
+
+def test_repeated_false_completion_never_reports_completed():
+    class Provider:
+        async def structured_images(self, prompt, system, schema, frames):
+            return review_response(False) if 'goal_complete' in schema['properties'] else '[{"operation":"done","summary":"App opened"}]'
+    async def run():
+        return [e async for e in run_self_operating('Open app and do work', Provider(), connected,
+            ApprovalStore(), desktop_factory=Desktop)]
+    events = asyncio.run(run())
+    assert events[-1][1]['outcome'] == 'unverified'
+
+
+def test_window_change_after_click_reobserves_before_typing():
+    desktop = Desktop(None)
+    desktop.context = lambda: {'active_window': 'Chrome profile picker' if desktop.calls else 'Desktop'}
+    class Provider:
+        async def structured_images(self, prompt, *args):
+            if desktop.frames == 1:
+                return '[{"operation":"click","x":0.5,"y":0.9},{"operation":"write","content":"must not type into a new window"}]'
+            assert 'Chrome profile picker' in prompt
+            return '[{"operation":"ask","summary":"Which profile should I use?"}]'
+    async def run():
+        return [e async for e in run_self_operating('Open browser', Provider(), connected,
+            ApprovalStore(), desktop_factory=lambda stop: desktop)]
+    events = asyncio.run(run())
+    assert desktop.calls == [('click', {'x': 0.5, 'y': 0.9})]
+    assert desktop.frames == 2
+    assert events[-1][0] == 'clarification'
+
+
+def test_long_batch_executes_only_bounded_prefix():
+    actions = [{'operation': 'press', 'keys': ['tab']}] * 8
+    assert len(parse_operations(json.dumps(actions))) == 6

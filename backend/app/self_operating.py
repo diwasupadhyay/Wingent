@@ -12,6 +12,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from vendor.self_operating_computer.operate.models.prompts import get_system_prompt
+from app.task_brain import (GoalPlan, CompletionReview, LaunchMemory, PLAN_SYSTEM,
+                            REVIEW_SYSTEM, decode_json)
 
 
 class Operation(BaseModel):
@@ -42,6 +44,8 @@ class Operation(BaseModel):
 
 class Operations(BaseModel):
     model_config = ConfigDict(extra='forbid')
+    screen_state: str = Field(default='', max_length=600)
+    next_outcome: str = Field(default='', max_length=600)
     operations: list[Operation] = Field(min_length=1, max_length=6)
 
 
@@ -58,7 +62,8 @@ def operation_schema():
         properties['operation'] = {'const': kind, 'type': 'string'}
         variants.append({'type': 'object', 'properties': properties,
                          'required': ['operation', *required], 'additionalProperties': False})
-    return {'type': 'object', 'properties': {'operations': {'type': 'array',
+    return {'type': 'object', 'properties': {'screen_state': {'type': 'string'},
+        'next_outcome': {'type': 'string'}, 'operations': {'type': 'array',
         'minItems': 1, 'maxItems': 6, 'items': {'anyOf': variants}}},
         'required': ['operations'], 'additionalProperties': False}
 
@@ -68,23 +73,40 @@ def parse_operations(raw):
     if raw.startswith('```'):
         raw = raw.split('\n', 1)[1].rsplit('```', 1)[0].strip()
     data = json.loads(raw)
-    batch = Operations.model_validate({'operations': data} if isinstance(data, list) else data).operations
-    if any(action.operation in {'done', 'ask'} for action in batch) and len(batch) != 1:
-        raise ValueError('Observe the result before done. done/ask must be the only operation.')
+    data = {'operations': data} if isinstance(data, list) else data
+    if isinstance(data, dict) and isinstance(data.get('operations'), list):
+        # Execute a bounded prefix, then look again instead of spending another
+        # inference merely to make an otherwise useful response shorter.
+        data = {**data, 'operations': data['operations'][:6]}
+    batch = Operations.model_validate(data).operations
+    if any(action.operation in {'done', 'ask'} for action in batch[:-1]):
+        raise ValueError('done/ask must be the last operation; no input can follow it.')
     return batch
 
 
 def system_prompt(goal):
     return get_system_prompt('standard', goal) + '''
 Wingent Windows integration:
-Return a JSON object {"operations": [...]} containing the operation array above.
+Return {"screen_state":"what is actually visible now", "next_outcome":"next unmet goal",
+"operations":[...]} containing the operation array above. Describe the current screen
+BEFORE choosing actions, and update the next unmet outcome after each screen change.
 The screenshot is the actual current primary screen; never assume a terminal is open.
 Use Windows Search (win+s, write app name, enter) to launch applications.
+If an application is already in launched_applications, continue working inside it;
+do not repeat its launch. Use Alt+Tab if you need to switch to it.
+The task_outcomes list is the complete goal. Opening an application is only a
+prerequisite when the user also requested work inside it. Follow remaining_work.
+If the requested app or its startup/profile dialog is visible, continue there.
+Do not switch to its taskbar icon or search for it again: that may hide it or open duplicates.
 Batch up to six predictable keyboard actions (focus, write, enter) into one response.
 After opening an app or navigating, end the batch to inspect its new screen.
 Mouse coordinates are fractions of the ENTIRE screenshot, from 0 to 1.
 A click visibly moves the pointer before clicking. Use pageup/pagedown or arrow
 keys to scroll. Use Tab to move between fields when clicking does not work.
+Prefer established keyboard shortcuts over guessing small icons: Ctrl+T for a new
+browser tab, Ctrl+L before typing a web address, Alt+Tab to switch applications.
+press.keys is a simultaneous chord, not a sequence. Use write for numbers/text
+and separate press operations for sequential keystrokes.
 Only click what is visible. Never invent video URLs, filenames or screen contents.
 Use the screenshot and recorded results to recover from errors. Do not repeat typing
 after an uncertain result without checking for text already entered.
@@ -137,6 +159,12 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
     previous_image = None
     unchanged = 0
     previous_batch = None
+    launches = LaunchMemory()
+    plan = GoalPlan(outcomes=[goal])
+    remaining = [goal]
+    rejected_completions = 0
+    working_state = {}
+    batch_history = []
     try:
         if desktop_factory is None:
             from vendor.self_operating_computer.operate.utils.operating_system import OperatingSystem
@@ -148,11 +176,23 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
             worker = asyncio.create_task(asyncio.to_thread(function, *args))
             return await connected_call(asyncio.shield(worker), disconnected, stopped)
 
+        if hasattr(provider, 'structured'):
+            yield 'status', {'stage': 'planning', 'message': 'Identifying the full task and its completion conditions'}
+            async with asyncio.timeout(60):
+                raw_plan = await connected_call(provider.structured(goal, PLAN_SYSTEM,
+                    GoalPlan.model_json_schema()), disconnected, stopped)
+            try:
+                plan = GoalPlan.model_validate(decode_json(raw_plan))
+            except ValueError:
+                pass  # The original goal remains the minimum completion condition.
+            remaining = plan.outcomes[:]
+
         for _ in range(max_rounds):
             if time.monotonic() - started >= seconds:
                 break
             yield 'status', {'stage': 'observing', 'message': 'Looking at your screen'}
             image = await desktop_call(desktop.screenshot)
+            desktop_context = await desktop_call(desktop.context) if hasattr(desktop, 'context') else {}
             image_hash = hashlib.sha256(image).digest()
             unchanged = unchanged + 1 if image_hash == previous_image else 0
             previous_image = image_hash
@@ -165,6 +205,10 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
                                       for key, value in item['action'].items()}
                 recent.append(item)
             prompt = json.dumps({'objective': goal, 'recent_actions': recent,
+                                 'task_outcomes': plan.outcomes, 'approach': plan.approach,
+                                 'remaining_work': remaining, 'launched_applications': launches.launched,
+                                 'desktop': desktop_context,
+                                 'previous_model_assessment': working_state,
                                  'unchanged_screen_rounds': unchanged,
                                  'recovery': 'If a click did not work, use a different target or keyboard navigation. Never repeat the same unsuccessful click.' if unchanged else '',
                                  'instruction': 'Inspect this fresh screenshot and continue towards the objective.'})
@@ -173,25 +217,59 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
                     operation_schema(), [image]), disconnected, stopped)
             try:
                 batch = parse_operations(raw)
+                launches.check_batch(batch)
+                decoded = decode_json(raw)
+                if isinstance(decoded, dict):
+                    working_state = {key: decoded.get(key, '') for key in ('screen_state', 'next_outcome')}
                 fingerprint = json.dumps([{key: value for key, value in action.model_dump().items()
                     if key not in {'thought', 'requires_confirmation'}} for action in batch], sort_keys=True)
-                if fingerprint == previous_batch:
+                if batch[0].operation not in {'done', 'ask'} and fingerprint == previous_batch:
                     raise ValueError('That exact action batch was already sent. Inspect the screenshot for completion; '
                                      'return done if the goal is visible, otherwise choose a different corrective action.')
+                if batch[0].operation not in {'done', 'ask'} and batch_history[-8:].count(fingerprint) >= 2:
+                    raise ValueError('This action sequence has already run twice. Do not cycle back to it. '
+                                     'Inspect the current app/dialog and choose keyboard navigation or another visible target.')
             except ValueError as exc:
                 failures += 1
                 history.append({'error': 'Invalid action response: ' + str(exc)[:250]})
+                yield 'status', {'stage': 'recovering', 'message': str(exc)[:250]}
                 if failures >= 3:
                     raise RuntimeError('Model returned invalid computer actions three times.') from exc
                 continue
             failures = 0
             previous_batch = fingerprint
+            batch_history.append(fingerprint)
             for operation in batch:
                 action = operation.model_dump(exclude_defaults=True)
                 kind = operation.operation
                 if kind == 'done':
+                    yield 'status', {'stage': 'verifying', 'message': 'Checking every requested result on a fresh screen'}
+                    await desktop_call(desktop.wait, 0.5)
+                    final_image = await desktop_call(desktop.screenshot)
+                    review_prompt = json.dumps({'original_goal': goal,
+                        'outcomes': [{'criterion': i, 'requirement': item} for i, item in enumerate(plan.outcomes, 1)]})
+                    async with asyncio.timeout(min(120, max(0.1, seconds - (time.monotonic() - started)))):
+                        raw_review = await connected_call(provider.structured_images(review_prompt,
+                            REVIEW_SYSTEM, CompletionReview.model_json_schema(), [final_image]), disconnected, stopped)
+                    try:
+                        review = CompletionReview.model_validate(decode_json(raw_review))
+                    except ValueError:
+                        review = None
+                    if review is None or not review.passed(plan.outcomes):
+                        rejected_completions += 1
+                        remaining = (review.remaining or [check.evidence or plan.outcomes[check.criterion - 1]
+                            for check in review.checks if not check.satisfied and 1 <= check.criterion <= len(plan.outcomes)]) if review else []
+                        remaining = remaining or plan.outcomes[:]
+                        history.append({'completion_rejected': True, 'remaining_work': remaining})
+                        yield 'status', {'stage': 'recovering', 'message': 'The goal is not complete; continuing the remaining work'}
+                        if rejected_completions >= 3:
+                            yield 'final', {'outcome': 'unverified', 'verified': False,
+                                'text': 'Could not confirm the full task. Remaining: ' + '; '.join(remaining)}
+                            return
+                        break
                     yield 'final', {'task_id': task_id, 'outcome': 'completed', 'verified': False,
-                        'verification': 'model_visual_assessment', 'text': operation.summary}
+                        'verification': 'separate_visual_review', 'checks': [item.model_dump() for item in review.checks],
+                        'text': operation.summary}
                     return
                 if kind == 'ask':
                     yield 'clarification', {'task_id': task_id, 'text': operation.summary}
@@ -227,8 +305,20 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
                     else:
                         await desktop_call(desktop.wait, operation.seconds)
                     history.append({'action': action, 'result': 'sent'})
+                    launches.record(operation)
                     yield 'step', {'index': index, 'state': 'accepted'}
-                    await desktop_call(desktop.wait, 0.35)
+                    keys = {key.lower() for key in operation.keys}
+                    settle = 0.8 if keys.intersection({'win', 'winleft', 'windows', 'enter', 'return'}) else 0.2
+                    await desktop_call(desktop.wait, settle)
+                    if kind == 'click' and hasattr(desktop, 'context'):
+                        after_click = await desktop_call(desktop.context)
+                        before_title = desktop_context.get('active_window')
+                        after_title = after_click.get('active_window')
+                        if before_title and after_title and before_title != after_title:
+                            history.append({'window_changed': after_title,
+                                            'instruction': 'Inspect the new window before remaining actions.'})
+                            index += 1
+                            break
                 except InterruptedError:
                     raise
                 except Exception as exc:

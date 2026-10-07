@@ -27,19 +27,32 @@ class OperatingSystem:
         screenshot.convert('RGB').save(output, format='PNG')
         return output.getvalue()
 
+    def context(self):
+        # Native window titles are cheap hints; screenshots remain the input
+        # authority. No UIA process or window-grant workflow is involved.
+        return {'active_window': pyautogui.getActiveWindowTitle() or '',
+                'open_windows': [title for title in pyautogui.getAllTitles() if title.strip()][:24]}
+
     def write(self, content):
-        # Unicode input avoids clipboard replacement and keyboard-layout loss.
+        # Real key events are needed by apps that handle keyboard shortcuts
+        # rather than WM_CHAR (including Calculator). Unicode is a fallback.
         from app.unicode_input import type_code_unit
-        encoded = content.encode('utf-16-le')
-        for offset in range(0, len(encoded), 2):
+        for char in content.replace('\r\n', '\n'):
             self.check()
-            code = int.from_bytes(encoded[offset:offset + 2], 'little')
-            if code in (10, 13, 9):
-                self.press(['enter' if code in (10, 13) else 'tab'])
+            if char in '\n\r\t':
+                self.press(['tab' if char == '\t' else 'enter'])
+            elif char.isascii():
+                pyautogui.write(char, _pause=False)
             else:
-                type_code_unit(code)
+                encoded = char.encode('utf-16-le')
+                for offset in range(0, len(encoded), 2):
+                    type_code_unit(int.from_bytes(encoded[offset:offset + 2], 'little'))
+            self.cancelled.wait(0.005)
 
     def press(self, keys):
+        aliases = {'control': 'ctrl', 'return': 'enter', 'escape': 'esc',
+                   'windows': 'win', 'page_down': 'pagedown', 'page_up': 'pageup'}
+        keys = [aliases.get(key.lower(), key.lower()) for key in keys]
         if any(key not in pyautogui.KEYBOARD_KEYS for key in keys):
             raise ValueError('Unknown keyboard key: ' + repr(keys))
         held = []
