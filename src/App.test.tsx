@@ -278,14 +278,17 @@ describe('App', () => {
     expect(screen.getByText('Second probe')).toBeTruthy();
   });
 
-  it('does not offer whole-task retry after partial execution', async () => {
+  it.each(['partial_execution', 'task_timeout', 'provider_error'])('does not replay prior effects after %s', async (code) => {
     mockEvents('event: plan\ndata: {"steps":["First","Second"]}\n\n' +
       'event: step\ndata: {"index":0,"state":"accepted"}\n\n' +
-      'event: error\ndata: {"message":"Second failed","code":"partial_execution"}\n\n');
+      `event: error\ndata: {"message":"Second failed","code":"${code}"}\n\n`);
     runCommand();
     await waitFor(() => expect(screen.getByText('Second failed')).toBeTruthy());
     expect(screen.queryByText('Retry')).toBeNull();
     expect(screen.getByText('Not run')).toBeTruthy();
+    const alert = screen.getByRole('alert');
+    const steps = screen.getByRole('list', { name: 'Task steps' });
+    expect(alert.compareDocumentPosition(steps) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
   });
 
   it('reports a truncated task stream as an error', async () => {

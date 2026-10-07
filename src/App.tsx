@@ -412,7 +412,7 @@ export default function App() {
             setStatus('error');
             setProgress('Error');
             setError(data.message ?? 'Something went wrong.');
-            setErrorCode(data.code ?? null);
+            setErrorCode(launchStarted ? 'partial_execution' : data.code ?? null);
             setSteps((current) => current.map((step) => step.state === 'pending' ? { ...step, state: 'not_run' } : step));
           }
         }
@@ -530,6 +530,7 @@ export default function App() {
                 )}
               </div>
             </div>
+            {error && <div role='alert' className='result-copy result-error'>{error}</div>}
             {approval && (
               <section className='approval-card' aria-label='Action approval'>
                 <div>Approve <strong>{approval.tool}</strong>?</div>
@@ -556,9 +557,9 @@ export default function App() {
                 ))}
               </ol>
             )}
-            {(content || error || (backendReady !== null && backendReady !== 'ready')) && (
-              <div className={`result-copy ${error || (backendReady !== null && backendReady !== 'ready') ? 'result-error' : ''}`}>
-                {error || content || backendProblem}
+            {!error && (content || (backendReady !== null && backendReady !== 'ready')) && (
+              <div className={`result-copy ${backendReady !== null && backendReady !== 'ready' ? 'result-error' : ''}`}>
+                {content || backendProblem}
               </div>
             )}
           </div>
