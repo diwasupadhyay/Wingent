@@ -225,7 +225,7 @@ export default function App() {
     setApprovalBusy(true);
     setApprovalError(null);
     try {
-      if (approve && current.tool.startsWith('computer_') && isTauri()) {
+      if (approve && isTauri()) {
         if (current.tool === 'computer_begin' && typeof current.arguments.window_id === 'number') {
           await invoke('handoff_computer_focus', { windowId: current.arguments.window_id });
         } else {
@@ -405,7 +405,7 @@ export default function App() {
           } else if (name === 'final') {
             terminal = true;
             setStatus(data.outcome === 'unverified' ? 'unverified' : 'done');
-            setProgress(data.outcome === 'unverified' ? 'Result not verified' : data.verified ? 'Goal verified' : 'Response ready');
+            setProgress(data.outcome === 'unverified' ? 'Result not verified' : data.verified ? 'Goal verified' : data.outcome === 'completed' ? 'Task complete' : 'Response ready');
             setContent((current) => current || data.text || current);
           } else if (name === 'error') {
             terminal = true;

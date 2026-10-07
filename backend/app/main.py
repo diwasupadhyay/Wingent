@@ -15,18 +15,9 @@ from fastapi.exception_handlers import request_validation_exception_handler
 from app.llm import OllamaClient
 from app.model_routing import select_model
 from app.models import CommandRequest
-from app.tools import ToolRegistry
-from app.executor import while_connected
-from app.launch_runtime import BudgetedProvider
-from app.operator import run_operator
-from app.file_tools import register as register_files
-from app.plugins import load_skills
-from app.task_state import TaskState, Limits
-from app.task_store import TaskStore
-from app.window_observer import register as register_windows
-from app.process_tools import register as register_process
+from app.approvals import ApprovalStore
+from app.self_operating import run_self_operating, Operations
 from app.version import RUNTIME_VERSION
-from app.computer_tools import register as register_computer
 from app.provider_settings import ProviderSettings, CloudClient, PRESETS
 
 app = FastAPI(title='Wingent', version='0.1.0')
@@ -51,19 +42,7 @@ app.add_middleware(
     allow_methods=['*'],
     allow_headers=['*'],
 )
-registry = ToolRegistry()
-register_files(registry)
-register_windows(registry)
-# One observation/input protocol in production. Legacy desktop/screen adapters
-# use incompatible target IDs and grants and must not compete with this session.
-register_computer(registry)
-register_process(registry)
-# Production UI tasks use observed Windows input, not direct app/browser launches.
-# Keep the legacy modules available for compatibility tests, not model dispatch.
-for launch_tool in ('open_application', 'open_url', 'search_web', 'open_folder'):
-    registry.tools.pop(launch_tool, None)
-loaded_skills = load_skills(registry, [name.strip() for name in os.getenv('WINGENT_SKILLS', '').split(',') if name.strip()])
-task_store = TaskStore()
+approvals = ApprovalStore(ttl=120)
 provider_settings = None
 
 
@@ -166,7 +145,7 @@ class ApprovalResponse(BaseModel):
 @app.post('/api/approvals/{approval_id}')
 async def respond_to_approval(approval_id: str, response: ApprovalResponse):
     try:
-        registry.approvals.respond(approval_id, response.token, response.approve)
+        approvals.respond(approval_id, response.token, response.approve)
     except PermissionError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
     return {'accepted': True}
@@ -174,8 +153,8 @@ async def respond_to_approval(approval_id: str, response: ApprovalResponse):
 
 @app.get('/api/capabilities')
 def capabilities():
-    return {'tools': registry.manifest(), 'loaded_skills': loaded_skills, 'capabilities': [
-        {'name': c.name, 'available': c.available, 'guidance': c.guidance} for c in registry.capabilities.values()]}
+    return {'engine': 'self-operating-computer', 'operations': Operations.model_json_schema(),
+            'capabilities': ['screenshot', 'click', 'write', 'press', 'move', 'scroll']}
 
 
 @app.get('/api/model-status')
@@ -186,24 +165,8 @@ async def model_status():
 @app.post('/api/command')
 async def command(request: Request, command_request: CommandRequest) -> StreamingResponse:
     prompt = command_request.prompt.strip()
-    resuming = command_request.resume_task_id is not None
-    if resuming:
-        try:
-            pending_state = task_store.peek(command_request.resume_task_id)
-        except KeyError as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-        resume_model = make_provider(pending_state.goal)
-        available = await resume_model.is_available()
-        if not available:
-            message = (resume_model.last_availability or {}).get('message', 'Ollama is unavailable.')
-            raise HTTPException(status_code=503, detail=message + ' The task remains resumable.')
-        try:
-            state = task_store.take(command_request.resume_task_id)
-            state.resume(prompt)
-        except (KeyError, ValueError) as exc:
-            raise HTTPException(status_code=409, detail=str(exc)) from exc
-    else:
-        state = TaskState(goal=prompt, criteria=[prompt], limits=Limits(model_calls=12, seconds=360.0, operation_seconds=120.0))
+    if command_request.resume_task_id:
+        raise HTTPException(status_code=409, detail='The computer engine changed. Submit a new task.')
 
     async def event_stream() -> AsyncGenerator[str, None]:
         yield sse_event('status', {'stage': 'planning', 'message': 'Planning request'})
@@ -211,21 +174,19 @@ async def command(request: Request, command_request: CommandRequest) -> Streamin
         if await request.is_disconnected():
             return
 
-        llm = BudgetedProvider(make_provider(state.goal), state)
-        available = await while_connected(llm.is_available(), request.is_disconnected)
+        llm = make_provider(prompt)
+        available = await llm.is_available()
         if not available:
-            diagnostic = llm.provider.last_availability or {
-                'code': 'ollama_unavailable', 'message': f'Ollama model "{llm.provider.model}" is unavailable. Start Ollama and retry.'}
+            diagnostic = llm.last_availability or {
+                'code': 'ollama_unavailable', 'message': f'Model "{llm.model}" is unavailable. Check Settings and retry.'}
             yield sse_event(
                 'error',
                 {'message': diagnostic['message'], 'code': diagnostic['code']},
             )
             return
 
-        async for event, payload in run_operator(registry, state, llm, request.is_disconnected,
-                                                  review_actions=command_request.review_actions):
-            if event == 'clarification' and payload.get('resume_task_id'):
-                task_store.put(state)
+        async for event, payload in run_self_operating(prompt, llm, request.is_disconnected, approvals,
+                                                       review_actions=command_request.review_actions):
             yield sse_event(event, payload)
 
     return StreamingResponse(event_stream(), media_type='text/event-stream')

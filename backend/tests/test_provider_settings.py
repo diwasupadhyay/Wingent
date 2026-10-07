@@ -10,6 +10,19 @@ from app.llm import OllamaClient
 from app.provider_settings import CloudClient, ProviderSettings
 
 
+def test_operator_uses_reference_json_prompting_instead_of_union_grammar(monkeypatch):
+    sent = []
+    real_client = httpx.AsyncClient
+    def handle(request):
+        sent.append(json.loads(request.content))
+        return httpx.Response(200, json={'response': '{"operations":[{"operation":"done","summary":"Seen"}]}'})
+    monkeypatch.setattr(httpx, 'AsyncClient', lambda **kw: real_client(transport=httpx.MockTransport(handle), **kw))
+    asyncio.run(OllamaClient().structured_images('goal', 'system',
+        {'type': 'object', 'properties': {'operations': {'type': 'array'}}}, [b'image']))
+    assert sent[0]['format'] == 'json'
+    assert sent[0]['images']
+
+
 @pytest.mark.parametrize('status,delay', [(503, 2), (429, 20)])
 def test_cloud_transient_retry_is_bounded(monkeypatch, status, delay):
     sent, sleeps = [], []

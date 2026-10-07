@@ -90,6 +90,11 @@ class OllamaClient:
             'options': {'temperature': 0, 'num_predict': 1200, 'num_ctx': self.context_size},
             'keep_alive': '10m',
         }
+        if 'operations' in schema.get('properties', {}):
+            # The upstream operator prompts for JSON and validates afterwards.
+            # Avoid a union grammar steering small vision models into an action
+            # name before they have described the intended operation.
+            payload['format'] = 'json'
         if images:
             payload['images'] = [base64.b64encode(image).decode('ascii') for image in images]
         async with httpx.AsyncClient(timeout=110.0, trust_env=False) as client:
