@@ -1,8 +1,10 @@
 # Wingent
 
-Wingent is a Windows computer agent based on [OthersideAI's self-operating-computer](https://github.com/OthersideAI/self-operating-computer). Give it a goal: it takes a screenshot, asks the vision model for actions, moves the mouse/types/presses keys, and looks again.
+Wingent is a Windows computer agent inspired by [OthersideAI's desktop agent](https://github.com/OthersideAI/self-operating-computer). Give it a goal: it takes a screenshot, asks the vision model for actions, moves the mouse/types/presses keys, and looks again.
 
 It is designed as a general computer operator, not a collection of Chrome, Excel, or other app-specific scripts.
+
+Development status: experimental. Calculator has passed a narrow live check, but search/playback and visual targeting remain unreliable. See the [implementation plan](docs/SELF_OPERATING_AGENT_PLAN.md), [reference study](docs/REFERENCE_AGENT_STUDY.md), and [current safety limits](docs/SECURITY.md).
 
 ## Features
 

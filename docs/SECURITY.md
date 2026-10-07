@@ -1,47 +1,24 @@
-# Security and Permission Boundaries
+# Current safety boundaries
 
-Updated: 2026-10-05. These are implemented boundaries and explicit limitations, not a claim of a secure sandbox.
+Updated: 2026-10-07; applies to `self-operating-v2`, not the removed tool-registry runtime.
 
-## Computer grants
+Wingent sends real input with the user's desktop privileges. It is not a sandbox. Use non-sensitive test windows while reliability work is incomplete.
 
-Default `computer_begin` scope is one window. Starting a requested task permits routine screenshots/input without a separate initial approval; Review mode still asks for each action. Desktop scope permits task-long operation across observed applications and dialogs. Wingent's overlay is excluded from control targets. Consequential actions retain exact approval.
+## Implemented
 
-Frames bind HWND, PID, executable, geometry and capture time. Possible input consumes the frame. Recheck foreground and coarse pixels before dispatch; observe again afterwards. One task owns desktop input at a time. Stop/task end revokes control. A held Escape is checked during dispatch; a brief tap during model reasoning is not a latched global stop. Cancellation cannot undo prior effects.
+- Typed action parsing, bounded batches/rounds, single-task input ownership and repeat guards.
+- Stop/disconnect cancellation checks; PyAutoGUI screen-corner fail-safe; held-key release on interruption. Cancellation cannot undo effects.
+- Review mode approves each input action. Otherwise approval depends on the model setting `requires_confirmation`; approval records are action-bound, expiring and single-use.
+- Local Ollama by default. Cloud configuration is explicit and screenshots require opt-in. Keys are session-only. Cloud text/images leave the PC and may incur charges.
+- Tauri checks its owned backend runtime/instance on a private loopback port.
 
-Enter/Delete/Windows key, multiline text, paste shortcuts, drag and recognized sensitive UIA labels require exact approval. The model must also flag sending, deletion, purchases, installation, terminal execution and other consequential semantics. These mechanical checks are incomplete: a harmless-looking click or shortcut may still have an important effect. This is not a sandbox.
+## Important gaps
 
-Drag is limited to a visible path inside the approved window and releases the button on interruption. Occlusion/focus changes can leave a partial unknown effect; never replay blindly.
+- Model-sensitive-action classification can miss consequential clicks or typing. There is no comprehensive host-enforced semantic policy; normal mode is not guaranteed safe for unattended use.
+- The current driver lacks the former UIA/window-grant/fresh-frame protections. Titles and screenshots are hints, not proof of input ownership or focus.
+- Screenshots may contain personal information; reliable password/private-content redaction is absent.
+- Screen text can contain malicious instructions. Prompt warnings alone are not a complete defense.
+- Completion review is model-based. `verified:false` must not be presented as independently proven success.
+- Secure desktop/UAC, elevation, crash-safe continuation and broad multi-monitor support are not established.
 
-Known UIA password controls block capture. Custom/canvas authentication may not expose them; stop for login/MFA/CAPTCHA rather than bypassing it. Capture can include occluding sensitive windows. Secure/elevated desktop is unsupported.
-
-## Data and model boundary
-
-By default production pixels stay in memory and go only to loopback Ollama. Cloud mode is explicitly selected in Settings; task text/tool results go to the configured HTTPS provider and images require the screenshot-sharing checkbox. Keys are session-only, omitted from API responses and never persisted. No silent cloud fallback or screenshot persistence. Synthetic evaluation screenshots may be saved only in ignored build fixtures. Screen text, files and tool output are untrusted data, never new instructions or authority.
-
-Model proposals cannot grant permissions or certify completion. Typed registered tools, exact target checks and host policy remain authoritative. A model finish or dispatch acknowledgement stays unverified unless fresh trusted evidence covers the goal.
-
-## Approval and execution
-
-Approvals bind task, tool revision and canonical arguments; tokens are single-use and expiring. Revalidate before execution. Tokens are not displayed/logged or retained for resume. Restricted tools cannot become allowed through a model proposal. Review mode also gates safe actions.
-
-Outcomes distinguish accepted, known-no-effect and unknown. Unknown effects stop further dispatch until reconciled; cancellation is not rollback. Finite model/action/time/recovery budgets remain mandatory.
-
-Files require exact-action approval. Existing operations provide nonrecursive listing, host-sized UTF-8 reads and exclusive new-file creation/read-back. They reject links/junctions, remote/device paths and ambiguous names, but path revalidation is not a handle-based adversarial filesystem sandbox. Matching written bytes does not prove semantic correctness.
-
-Native process execution binds executable, arguments, working directory and bounded output/time with approval. Cancellation attempts owned process-tree cleanup; detached descendants and earlier effects are not guaranteed reversible. Native code runs with backend privileges.
-
-## Extensions and sessions
-
-Trusted installed Python skill entry points load only through explicit startup configuration. They are not sandboxed; the model cannot install/import/enable them. Frozen packages must bundle enabled code and metadata.
-
-Browser structured tools use a separate agent-owned profile and do not silently attach to personal cookies/tabs. Their live reliability is distinct from generic desktop control. A desktop grant can visually interact with a selected browser window and must respect the same data/sensitive-action boundary.
-
-Clarification continuation is in-memory, expiring and single-use, not crash-safe. Interrupted resume or in-flight unknown effects require reconciliation before replay.
-
-Tauri owns a per-run backend port and checks runtime/instance identity. Local approval tokens do not protect against malware already controlling the user's session.
-
-## Evaluation and development
-
-Only newly owned windows and isolated files may be auto-approved by test harnesses. Never use broad automatic approval to obtain a passing test. Keep reference clones under ignored `references/` and unchanged; they are not executable dependencies. Record native, model and packaged results separately.
-
-Personal-data scope, downloads, executable skill installation, elevation and consequential system changes require a deliberate decision. Passing a finite evaluation suite is not proof of universal safety.
+The [plan](SELF_OPERATING_AGENT_PLAN.md) schedules host preconditions, risk checks, evidence-based completion and cancellation tests. Ordinary navigation should stay low-friction; destructive changes, sending, purchases, installation and executable commands need meaningful confirmation. Do not remove safeguards to improve demo success rates.

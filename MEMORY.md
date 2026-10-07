@@ -1,29 +1,26 @@
-# Wingent Memory
+# Wingent handoff
 
-Updated: 2026-10-05 (Asia/Calcutta). Current source: `operator-v25`.
+Updated: 2026-10-07. Current runtime: `self-operating-v2`.
 
-## Direction and entry points
+Build a general self-operating Windows computer agent within this project, not a new OS or app-specific workflow collection. Keep the overlay, tray, provider settings and Stop.
 
-A general local-first Windows computer agent: user supplies WHAT, the LLM chooses HOW through observation, controlled tools and replanning. Keep the minimal overlay, tray, Ctrl+Space, approvals and cancellation. Do not hardcode app workflows.
+The sole phase tracker is [SELF_OPERATING_AGENT_PLAN.md](docs/SELF_OPERATING_AGENT_PLAN.md). Read it with [security](docs/SECURITY.md) and the [reference study](docs/REFERENCE_AGENT_STUDY.md) before implementation. This update is documentation-only.
 
-Read [the plan](docs/AGENT_IMPLEMENTATION_PLAN.md), [architecture](docs/ARCHITECTURE.md), [security](docs/SECURITY.md) and [changes](CHANGES.md). [Computer evaluations](docs/evaluations/COMPUTER_OPERATOR.md) distinguish native, model and packaged evidence. [Structure](STRUCTURE.md) maps ownership.
+## Current reality
 
-## Current state
+- `self_operating.py` runs screenshot/model/action batches. `task_brain.py` supplies outcomes, launch memory and separate visual completion review.
+- The adapted vendored PyAutoGUI driver supplies primary-screen capture and input. OCR/UIA target grounding is not active.
+- Calculator `72 * 2` passed one live-model run with independent `144` read-back. Joji playback still fails through inaccurate targeting, lost progress and repeated actions. General autonomy is not reliably working.
+- Visual review remains model judgement, not independent proof; final events can say `completed` with `verified:false`.
+- Previous checks: 56 backend, 21 frontend and 3 Rust passes. Historical evidence only, not rerun for this documentation update.
+- Default model: `qwen3-vl:4b-instruct`. Do not download/switch models silently.
 
-v25 adds session-only Settings (local model or HTTPS Chat Completions compatible cloud endpoint/key), explicit cloud screenshot opt-in, no logo, cleared submission and locked busy input. Cloud keys are never persisted/returned. Local schema/grammar HTTP 400 gets one JSON-mode inference retry; other rejections retain error detail. Lightweight mocked tests only per user request; no live desktop/model tasks during this pass. Do not claim the original manual workflows are verified. References were re-inspected for provider separation and goal/screenshot continuity. Production builds must use `npm run tauri:build -- --no-bundle`, after building the sidecar.
+## Next work
 
-Routine computer_begin now runs without initial approval (Review still gates every action); consequential input retains confirmation. The overlay hides before task dispatch and is excluded from window discovery/control. resolve_known_folder and create_directory support grounded user-folder operations. HTTP errors now include Ollama's error detail. Latest synthetic vision/schema checks passed, but live isolated Notepad focus was denied by Windows; full user workflows and the reported HTTP 400 remain unverified.
+Start Phase 1 observation/target calibration, not another prompt-only patch or hardcoded YouTube routine. Check actual effects across apps. Distinguish native input, autonomous reasoning and packaged behavior. Mark phases complete only against their evidence gates.
 
-Natural tasks use `operator.py`, `AgentRuntime` and `AgentBrain`. The brain receives current approved pixels, original goal and bounded context. Production has one GUI protocol: `computer_begin`, `computer_observe`, `computer_action`, `computer_confirm_action`. Legacy desktop/screen adapters remain in compatibility tests only.
+Old phase statuses belong to a deleted runtime; do not carry them forward. Checkpoints: `e7f5645` before replacement, `0392169` initial replacement, `1d934d5` current code baseline. Deleted docs remain recoverable from Git.
 
-Default window scope is narrow. Explicit desktop scope permits task-long switching among observed apps and following foreground dialogs. Input still targets a fresh foreground-window frame. Sensitive effects need approval. Arbitrary-goal verification is incomplete.
+Leave ignored `references/` unchanged. The licensed SOC copy in `backend/vendor/self_operating_computer/` is intentionally tracked; preserve its license/provenance.
 
-Default installed model: `qwen3-vl:4b-instruct`. Do not download or switch models silently. Study-only clones are in ignored `references/`; never modify or commit them.
-
-## Working discipline
-
-Inspect the worktree; preserve useful changes. Identify the owning path, hypothesis and cheapest disconfirming test. Use isolated owned windows/files for live evaluations. Rebuild both sidecar and EXE after code changes. Only terminate project-owned old processes, never an unknown port occupant.
-
-EXE: `src-tauri/target/release/app.exe`. Tauri owns a private per-run backend port and verifies runtime plus instance identity. An unrelated service on port 8000 is not this EXE. Ollama is a separate local service.
-
-Phases 0-2, bounded 3A/3B and bounded Phase 4 have evidence. Broad Phase 3/5/6/7 gates remain open. A successful click or build is not reliable autonomous completion.
+For future code releases use `scripts/build-release.ps1`. Keep `wingent-backend.exe` beside `src-tauri/target/release/app.exe`. Tauri owns a private backend port and validates runtime/instance identity; never kill an unrelated port occupant.

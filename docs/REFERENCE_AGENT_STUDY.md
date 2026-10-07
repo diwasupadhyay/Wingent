@@ -2,6 +2,8 @@
 
 Reviewed: 2026-10-06. **Research only; this document does not implement or authorize changes.**
 
+Historical study: the reference-code analysis remains useful, but the Wingent comparison below describes the removed runtime at `4e3b3ca`, not today's architecture or protections. Current source is `self-operating-v2`; use [the new plan](SELF_OPERATING_AGENT_PLAN.md) and [current structure](../STRUCTURE.md). Old source paths below are historical references, not files expected in this checkout.
+
 ## 1. Scope and evidence
 
 This study follows the execution paths in the locally cloned repositories, not just their README claims or demonstration videos.
@@ -184,7 +186,7 @@ The interrupt flag is checked between steps, not as a universal cancellation mec
 
 Settings store the API key base64-encoded in a JSON file: encoding is not encryption. Screenshot helpers can write local files; the Assistants adapter uploads images and attempts cleanup later. Its Gemini adapter explicitly lowers configured content-safety thresholds. These are not privacy/safety patterns to carry into Wingent unchanged.
 
-## 5. Comparison with current Wingent
+## 5. Historical comparison with Wingent at 4e3b3ca
 
 | Concern | References | Wingent baseline | Remaining issue |
 | --- | --- | --- | --- |
@@ -198,7 +200,7 @@ Settings store the API key base64-encoded in a JSON file: encoding is not encryp
 | Safety | Mostly prompts or loose dispatch | Typed schemas, task ownership, stale-frame checks and approvals | Preserve safeguards while eliminating redundant grants for ordinary work. |
 | Recovery | Retry parsing, fallback model, next screenshot | Bounded retries, evidence checks and repeat guards | Recovery must distinguish a harmless refresh from repeating an effect. |
 
-Relevant Wingent owners: [brain](../backend/app/brain.py), [operator](../backend/app/operator.py), [runtime](../backend/app/runtime.py), [computer session](../backend/app/computer_tools.py), [native input](../backend/app/windows_computer.py), [provider adapters](../backend/app/provider_settings.py), [task state](../backend/app/task_state.py).
+Historical Wingent owners (recoverable at `4e3b3ca`): `backend/app/brain.py`, `operator.py`, `runtime.py`, `computer_tools.py`, `windows_computer.py`, `provider_settings.py`, and `task_state.py`. Most were removed during the SOC replacement.
 
 The recent failure traces show that an application launch can succeed while the subsequent observation/control decision fails. More mouse functions alone cannot fix that. Conversely, stricter verification can expose incomplete work that a reference implementation might simply label done.
 
