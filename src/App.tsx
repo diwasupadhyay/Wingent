@@ -6,7 +6,7 @@ type Stage = 'idle' | 'planning' | 'observing' | 'verifying' | 'recovering' | 'a
 type OllamaState = 'checking' | 'running' | 'stopped' | 'starting' | 'missing' | 'unresponsive';
 type ModelStatus = { ready: boolean; code: string; message: string; model: string };
 type StepState = 'pending' | 'running' | 'accepted' | 'failed' | 'not_run' | 'unknown';
-type ActionStep = { label: string; state: StepState };
+type ActionStep = { label: string; state: StepState; reason?: string };
 type Approval = { approval_id: string; token: string; task_id: string; tool: string; arguments: Record<string, unknown>; expires_in: number };
 type BackendState = 'ready' | 'incompatible' | 'unavailable';
 type CloudService = 'custom' | 'groq' | 'google' | 'openai' | 'anthropic';
@@ -364,7 +364,7 @@ export default function App() {
           const name = lines.find((line) => line.startsWith('event:'))?.slice(6).trim();
           const raw = lines.find((line) => line.startsWith('data:'))?.slice(5).trim();
           if (!raw) continue;
-          let data: { stage?: string; message?: string; text?: string; code?: string; steps?: string[]; index?: number; state?: StepState; label?: string; outcome?: string; verified?: boolean; resume_task_id?: string; automatic_handoff?: boolean } & Partial<Approval>;
+          let data: { stage?: string; message?: string; text?: string; code?: string; steps?: string[]; index?: number; state?: StepState; reason?: string; label?: string; outcome?: string; verified?: boolean; resume_task_id?: string; automatic_handoff?: boolean } & Partial<Approval>;
           try { data = JSON.parse(raw); } catch { continue; }
           if (name === 'status') {
             setStatus(data.stage === 'executing' ? 'tool_running' : (data.stage as Stage) ?? 'idle');
@@ -383,7 +383,8 @@ export default function App() {
             launchStarted = true;
             const index = data.index;
             const state = data.state;
-            if (typeof index === 'number' && state) setSteps((current) => current.map((step, i) => i === index ? { ...step, state } : step));
+            const reason = typeof data.reason === 'string' ? data.reason : undefined;
+            if (typeof index === 'number' && state) setSteps((current) => current.map((step, i) => i === index ? { ...step, state, reason } : step));
           } else if (name === 'confirmation_required' && data.approval_id && data.token && data.tool && data.arguments) {
             if (data.automatic_handoff === true && data.tool === 'computer_begin' && isTauri() && typeof data.arguments.window_id === 'number') {
               setProgress('Focusing the requested application');
@@ -575,7 +576,7 @@ export default function App() {
                 {steps.map((step, index) => (
                   <li key={index} className={`step-${step.state}`}>
                     <span className='step-state'>{step.state === 'accepted' ? 'Accepted' : step.state === 'not_run' ? 'Not run' : step.state}</span>
-                    <span>{step.label}</span>
+                    <span>{step.label}{step.reason && <small className='step-reason'>{step.reason}</small>}</span>
                   </li>
                 ))}
               </ol>

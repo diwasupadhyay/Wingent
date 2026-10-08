@@ -371,10 +371,12 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
                         return
                     approvals.consume(approval.id, task_id, kind, 'soc-1', action)
                     await desktop_call(desktop.wait, 0.4)
+                observed_target = next((target for target in desktop_context.get('targets', [])
+                                        if target.get('id') == operation.target_id), {})
                 label = operation.thought or (
                     'Keys: ' + '+'.join(operation.keys) if kind in {'press', 'hotkey'} else
                     f'Type text ({len(operation.content)} characters)' if kind == 'write' else
-                    'Click observed control' if operation.target_id else
+                    'Click: ' + (observed_target.get('name') or 'observed control') if operation.target_id else
                     f'{kind.title()} at {operation.x:.2f}, {operation.y:.2f}' if kind in {'click', 'move'} else kind)
                 stage = 'executing ' + kind
                 yield 'action', {'task_id': task_id, 'index': index, 'label': label, 'arguments': action,
@@ -430,7 +432,10 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
                     if type(exc).__name__ == 'FailSafeException':
                         raise InterruptedError('Stopped: pointer moved to a screen corner.') from exc
                     history.append({'action': action, 'result': 'error; effect uncertain', 'error': str(exc)[:250]})
-                    yield 'step', {'index': index, 'state': 'unknown'}
+                    yield 'step', {'index': index, 'state': 'unknown',
+                                   'reason': str(exc)[:250] or type(exc).__name__}
+                    yield 'status', {'stage': 'recovering',
+                                     'message': 'Input outcome uncertain; checking the screen before continuing.'}
                     index += 1
                     break  # Fresh screenshot before further input.
                 index += 1

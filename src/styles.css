@@ -163,6 +163,7 @@ input::placeholder { color: rgba(235, 235, 245, 0.43); }
 .step-accepted .step-state { color: #62dda2; }
 .step-running .step-state { color: #b5aaff; }
 .step-failed .step-state { color: #ffaaa6; }
+.step-reason { display: block; margin-top: 3px; color: #f1b84b; font-size: 11px; }
 .result-meta > span:nth-child(2) { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .result-actions { flex-shrink: 0; }
 

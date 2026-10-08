@@ -187,6 +187,8 @@ def test_failure_observes_before_remaining_actions():
     assert desktop.frames == 2
     assert desktop.calls == []
     assert events[-1][0] == 'clarification'
+    assert any(event == 'step' and payload.get('reason') == 'Input failed after possible partial effect'
+               for event, payload in events)
 
 
 def test_disconnect_stops_before_any_input():

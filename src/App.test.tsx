@@ -315,6 +315,16 @@ describe('App', () => {
     runCommand();
     await waitFor(() => expect(screen.getByText(/connection ended before a result/)).toBeTruthy());
   });
+
+  it('shows the reason for an uncertain input action', async () => {
+    mockEvents('event: action\ndata: {"index":0,"label":"Click: Confirm"}\n\n' +
+      'event: step\ndata: {"index":0,"state":"unknown","reason":"Foreground changed; observe again."}\n\n' +
+      'event: final\ndata: {"outcome":"unverified","text":"Result needs checking."}\n\n');
+    runCommand();
+    await waitFor(() => expect(screen.getByText('Foreground changed; observe again.')).toBeTruthy());
+    expect(screen.getByText('Click: Confirm')).toBeTruthy();
+    expect(screen.queryByText('Retry')).toBeNull();
+  });
   it('renders the minimal local agent command bar', () => {
     render(<App />);
 
