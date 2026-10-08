@@ -4,7 +4,7 @@ import threading
 import time
 import math
 from uuid import uuid4
-from app.accessibility import read_targets
+from app.accessibility import ObservationChangedError, read_targets
 
 import pyautogui
 
@@ -49,11 +49,14 @@ class OperatingSystem:
 
     def screenshot(self):
         self.check()
+        # A failed capture must never leave the previous targets actionable.
+        self.capture_bounds = None
+        self.targets = {}
         before = self.window_state()
         screenshot = pyautogui.screenshot()
         after = self.window_state()
         if before != after:
-            raise RuntimeError('Foreground changed during capture; retry observation.')
+            raise ObservationChangedError('Foreground changed during capture; retry observation.')
         width, height = screenshot.size
         if (width, height) != tuple(pyautogui.size()):
             raise RuntimeError('Screenshot and input dimensions disagree. Check Windows display scaling.')
@@ -67,7 +70,12 @@ class OperatingSystem:
         self.capture_screen_size = (width, height)
         self.targets = {}
         frame_id = uuid4().hex[:8]
-        for item in read_targets(after[0] if after else None):
+        observed_targets = read_targets(after[0] if after else None)
+        self.check()
+        if self.window_state() != after or tuple(pyautogui.size()) != (width, height):
+            self.capture_bounds = None
+            raise ObservationChangedError('Desktop changed during target discovery; retry observation.')
+        for item in observed_targets:
             rect = item.get('rect', [])
             if len(rect) != 4 or not all(isinstance(n, (int, float)) and math.isfinite(n) for n in rect):
                 continue

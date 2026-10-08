@@ -10,6 +10,7 @@ import time
 import httpx
 from uuid import uuid4
 from typing import Literal
+from app.accessibility import ObservationChangedError
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 from app.task_brain import (GoalPlan, CompletionReview, LaunchMemory,
@@ -79,8 +80,16 @@ def operation_schema():
             properties['target_id'] = {'type': 'string', 'maxLength': 32}
             required = []  # Host validates target_id XOR complete coordinates.
         properties['operation'] = {'const': kind, 'type': 'string'}
-        variants.append({'type': 'object', 'properties': properties,
-                         'required': ['operation', *required], 'additionalProperties': False})
+        variant = {'type': 'object', 'properties': properties,
+                   'required': ['operation', *required], 'additionalProperties': False}
+        if kind == 'click':
+            properties['target_id']['minLength'] = 1
+            variant['oneOf'] = [
+                {'required': ['target_id'], 'not': {'anyOf': [{'required': ['x']}, {'required': ['y']}]}},
+                {'required': ['x', 'y'], 'not': {'required': ['target_id']}}]
+            properties['x'] = {'type': 'number', 'minimum': 0, 'maximum': 1}
+            properties['y'] = {'type': 'number', 'minimum': 0, 'maximum': 1}
+        variants.append(variant)
     return {'type': 'object', 'properties': {'screen_state': {'type': 'string'},
         'next_outcome': {'type': 'string'}, 'plan': GoalPlan.model_json_schema(),
         'operations': {'type': 'array',
@@ -221,12 +230,21 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
             worker = asyncio.create_task(asyncio.to_thread(function, *args))
             return await connected_call(asyncio.shield(worker), disconnected, stopped)
 
+        async def capture_screen():
+            for attempt in range(3):
+                try:
+                    return await desktop_call(desktop.screenshot)
+                except ObservationChangedError:
+                    if attempt == 2:
+                        raise
+                    await desktop_call(desktop.wait, 0.1)
+
         for _ in range(max_rounds):
             if time.monotonic() - started >= seconds:
                 break
             stage = 'capturing the screen'
             yield 'status', {'stage': 'observing', 'message': 'Looking at your screen'}
-            image = await desktop_call(desktop.screenshot)
+            image = await capture_screen()
             desktop_context = await desktop_call(desktop.context) if hasattr(desktop, 'context') else {}
             image_hash = hashlib.sha256(image).digest()
             unchanged = unchanged + 1 if image_hash == previous_image else 0
@@ -309,7 +327,7 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
                     stage = 'verifying the final result'
                     yield 'status', {'stage': 'verifying', 'message': 'Checking every requested result on a fresh screen'}
                     await desktop_call(desktop.wait, 0.5)
-                    final_image = await desktop_call(desktop.screenshot)
+                    final_image = await capture_screen()
                     review_prompt = json.dumps({'original_goal': goal,
                         'outcomes': [{'criterion': i, 'requirement': item} for i, item in enumerate(plan.outcomes, 1)]})
                     async with asyncio.timeout(min(120, max(0.1, seconds - (time.monotonic() - started)))):

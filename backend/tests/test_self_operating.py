@@ -33,6 +33,39 @@ def test_observed_target_click_validation():
             Operation(**args)
 
 
+def test_changed_capture_retries_without_model_call_or_input():
+    from app.accessibility import ObservationChangedError
+    desktop = Desktop(None)
+    original = desktop.screenshot
+    attempts = []
+    def capture():
+        attempts.append(True)
+        if len(attempts) < 3:
+            raise ObservationChangedError('Switching windows')
+        return original()
+    desktop.screenshot = capture
+    class Provider:
+        async def structured_images(self, *args):
+            assert len(attempts) == 3
+            assert not desktop.calls
+            return '[{"operation":"ask","summary":"Ready for input"}]'
+    async def run():
+        return [e async for e in run_self_operating('Look', Provider(), connected,
+            ApprovalStore(), desktop_factory=lambda stop: desktop)]
+    assert asyncio.run(run())[-1][0] == 'clarification'
+
+
+def test_click_schema_requires_exactly_one_target_form():
+    variants = operation_schema()['properties']['operations']['items']['anyOf']
+    click = next(v for v in variants if v['properties']['operation']['const'] == 'click')
+    assert click['oneOf'] == [
+        {'required': ['target_id'], 'not': {'anyOf': [{'required': ['x']}, {'required': ['y']}]}},
+        {'required': ['x', 'y'], 'not': {'required': ['target_id']}}]
+    assert click['properties']['target_id']['minLength'] == 1
+    assert click['properties']['x']['type'] == 'number'
+    assert click['properties']['y']['type'] == 'number'
+
+
 def test_new_frame_target_ids_do_not_bypass_repeat_review():
     desktop = Desktop(None)
     desktop.context = lambda: {'targets': [{'id': f'frame-{desktop.frames}',

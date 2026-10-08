@@ -79,3 +79,19 @@ def test_accessibility_unavailable_keeps_visual_fallback(monkeypatch):
     desktop.screenshot()
     assert desktop.targets == {}
     assert desktop.capture_bounds == (0, 0, 1920, 1080)
+
+
+def test_window_switch_during_target_discovery_invalidates_frame(monkeypatch):
+    from app.accessibility import ObservationChangedError
+    desktop, window = driver(monkeypatch)
+    desktop.screenshot()
+    def discover(_):
+        window._hWnd = 99
+        return [{'name': 'Stale', 'rect': [300, 200, 40, 40]}]
+    monkeypatch.setattr('vendor.self_operating_computer.operate.utils.operating_system.read_targets', discover)
+    with pytest.raises(ObservationChangedError, match='target discovery'):
+        desktop.screenshot()
+    assert desktop.capture_bounds is None
+    assert desktop.targets == {}
+    with pytest.raises(RuntimeError, match='Observe the screen'):
+        desktop.move(.5, .5)

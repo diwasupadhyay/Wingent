@@ -4,6 +4,10 @@ import os
 import subprocess
 
 
+class ObservationChangedError(RuntimeError):
+    """The desktop changed while collecting a frame; no input was dispatched."""
+
+
 _SCRIPT = r'''
 $ErrorActionPreference = 'Stop'
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new($false)
@@ -48,6 +52,6 @@ def read_targets(window_id):
         if result.returncode:
             return []
         data = json.loads(result.stdout)
-        return data[:70] if isinstance(data, list) else []
+        return [item for item in data[:70] if isinstance(item, dict)] if isinstance(data, list) else []
     except (OSError, subprocess.TimeoutExpired, ValueError):
         return []  # Opaque or unresponsive apps retain the visual fallback.
