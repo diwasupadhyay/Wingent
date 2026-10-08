@@ -8,13 +8,13 @@ Updated: 2026-10-08. The sole phase tracker. Inspired by the reference agents; i
 
 The user supplies WHAT; the LLM chooses HOW through general computer input. Retain the overlay, tray, providers and Stop. Application APIs/UIA can improve reliability, but vision and keyboard/mouse remain the fallback for unfamiliar software. Human-like operation means deliberate input and reaction to evidence, not decorative cursor motion.
 
-Code baseline: `1d934d5`, runtime `self-operating-v2`. Rollbacks: `0392169` initial adaptation, `e7f5645` before replacement. Old phase completion claims describe a deleted runtime and do not transfer here.
+Current runtime: `wingent-desktop-v3`; latest recovery checkpoint `62be353`. Rollbacks: `0392169` initial adaptation, `e7f5645` before replacement. Old phase completion claims describe a deleted runtime and do not transfer here.
 
 | Area | Actual state |
 | --- | --- |
 | Brain | Goal outcomes, bounded recent history, screenshot/action batches and launch memory |
 | Input | PyAutoGUI primary-screen capture, fractional-coordinate clicks, typing, keys and scrolling |
-| Target grounding | No active OCR/UIA target resolver; visual misclicks remain |
+| Target grounding | Full-screen/window views, frame-local Windows UIA click IDs, coordinate fallback; model misselection and occlusion remain possible |
 | Verification | Separate model screenshot review; not independent proof |
 | Evidence | One Calculator `72 * 2` pass with independent `144` read-back; one isolated fixture pass |
 | Reported failures | Search/playback stops before playing; repeated launches/misclicks; invented `Win+N` app shortcut interrupts Calculator-to-Notepad transfer |
@@ -50,7 +50,7 @@ Do not create a framework/module for each row unless implementation needs it. A 
 | 0. Documentation alignment | Complete | One current plan, explicit limits, obsolete docs removed |
 | 1. Observation and target grounding | In progress; crop/mapping slice tested | Correct coordinate/target mapping before further model tuning |
 | 2. Input and app transitions | In progress; partial regression fix | Focus-aware typing, real shortcuts and context-bound batches |
-| 3. Progress and recovery | Planned | No semantic launch/action cycles; multi-step intent retained |
+| 3. Progress and recovery | In progress; uncertain-input replay and cycle guards tested | No semantic launch/action cycles; multi-step intent retained |
 | 4. Evidence-based completion | Planned | Fresh evidence covers every requested outcome |
 | 5. Model quality and speed | Planned | Measured latency improvement without lower accuracy |
 | 6. General capability extensions | Planned | Extensions share the same policy, cancellation and evidence contracts |
@@ -63,9 +63,9 @@ Owners: `backend/app/self_operating.py` and adapted input driver; introduce obse
 - [ ] Add opt-in bounded frame/target/stage diagnostics; do not save personal screenshots by default or commit them.
 - [ ] Test physical-pixel to resized-image mapping and Windows scaling. Explicitly reject unsupported monitor layouts.
 - [ ] Bind targets to a recent frame/foreground; invalidate after geometry or context changes.
-- [ ] Add generic UIA/OCR boxes or numbered visible regions, retaining visual fallback for opaque/canvas apps.
+- [x] Add generic UIA/OCR boxes or numbered visible regions, retaining visual fallback for opaque/canvas apps. Implemented UIA IDs, not OCR.
 - [ ] Resolve duplicate labels by context/region, not first substring match; request another observation when uncertain.
-- [ ] Use a legible targeted crop when the overview cannot resolve text.
+- [x] Use a legible targeted crop when the overview cannot resolve text. Model-selectable foreground crop implemented; usefulness still depends on model selection.
 
 Gate: independent fixture records 20/20 intended hits per supported scale/layout, including duplicate labels and moved windows. Record native coordinate tests separately from model-selected targets. Do not assume failures are all model quality: check focus, geometry, loading and image legibility first.
 
@@ -158,3 +158,10 @@ For every future slice append commit, hypothesis, narrow check, actual result, l
 - Native isolated input fixture passed. The real local model completed Calculator `72 * 9`; an independent UIA display oracle read `648`. Search navigation used observed target clicks; arithmetic used keyboard batching. One malformed model response recovered. This does not independently validate individual keypad clicks.
 - Read-only Calculator capture exposed all ten digit buttons and Equals; capture plus discovery measured 2.06 seconds. Model decisions remained substantially slower (first four calls total 55.9 seconds), so no overall speed improvement claim yet.
 - Phases 1/3/5 remain partial: varied-app/scaling target accuracy, occlusion safety, model benchmarks and cross-app task gates are still open. Build qualification is separate from these checks.
+
+### Calibration and recovery evidence (2026-10-08)
+
+- Added `scripts/evaluate-targets.py`: independent 20-button fixture with duplicate labels, tested in full-screen and cropped coordinates. No model, screenshots saved, or personal application input is required. Run with `$env:PYTHONPATH='backend'; python scripts/evaluate-targets.py`.
+- First live attempt stopped after one hit because foreground identity/geometry changed. No mapping success claimed for that run. Repeat passed all 40 ordered hits at primary resolution 1920x1080. Other scaling/layouts and model-selected targeting remain untested.
+- Checkpoints `4d8ef42`, `f2bd78d`, `d027299`, `62be353`: bounded capture retries, scroll/same-title switch boundaries, visible input errors, and uncertain-effect replanning instead of replay/completion review. Latest backend suite: 105 passing; latest UI suite: 25 passing. Recovery gates still require live multi-app fault scenarios.
+- No full phase is newly complete: native mapping on one display is only part of Phase 1. Next gate is model-selected target accuracy, moved/occluded controls, and repeated cross-app handoffs—not additional decorative input motion.
