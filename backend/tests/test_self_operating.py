@@ -24,6 +24,51 @@ class Desktop:
 async def connected(): return False
 
 
+def test_scroll_discards_click_from_old_layout():
+    desktop = Desktop(None)
+    desktop.scroll = lambda amount: desktop.calls.append(('scroll', amount))
+    class Provider:
+        async def structured_images(self, *args):
+            if desktop.frames == 1:
+                return '[{"operation":"scroll","amount":-3},{"operation":"click","x":0.5,"y":0.5}]'
+            return '[{"operation":"ask","summary":"New screen observed"}]'
+    async def run():
+        return [e async for e in run_self_operating('Scroll', Provider(), connected,
+            ApprovalStore(), desktop_factory=lambda stop: desktop)]
+    asyncio.run(run())
+    assert desktop.calls == [('scroll', -3)]
+    assert desktop.frames == 2
+
+
+def test_same_title_window_switch_discards_pending_typing():
+    desktop = Desktop(None)
+    desktop.context = lambda: {'active_window': 'Untitled', 'window_id': 2 if desktop.calls else 1}
+    class Provider:
+        async def structured_images(self, *args):
+            if desktop.frames == 1:
+                return '[{"operation":"click","x":0.5,"y":0.5},{"operation":"write","content":"Wrong window"}]'
+            return '[{"operation":"ask","summary":"Switched windows"}]'
+    async def run():
+        return [e async for e in run_self_operating('Switch', Provider(), connected,
+            ApprovalStore(), desktop_factory=lambda stop: desktop)]
+    asyncio.run(run())
+    assert desktop.calls == [('click', {'x': .5, 'y': .5})]
+
+
+def test_repeated_waits_do_not_trigger_completion_review():
+    desktop = Desktop(None)
+    class Provider:
+        async def structured_images(self, prompt, system, schema, frames):
+            assert 'goal_complete' not in schema['properties']
+            return '[{"operation":"wait","seconds":0.1}]'
+    async def run():
+        return [e async for e in run_self_operating('Wait for loading', Provider(), connected,
+            ApprovalStore(), desktop_factory=lambda stop: desktop, max_rounds=4)]
+    events = asyncio.run(run())
+    assert desktop.frames == 4
+    assert events[-1][1]['outcome'] == 'unverified'
+
+
 def test_observed_target_click_validation():
     assert Operation(operation='click', target_id='frame-1').target_id == 'frame-1'
     for args in ({'operation': 'click', 'target_id': 'frame-1', 'x': .2, 'y': .3},

@@ -45,6 +45,8 @@ def validate_system_shortcut(keys, target):
 
 def needs_fresh_screen(action):
     """Navigation boundaries invalidate the remainder of a predicted batch."""
+    if action.operation in {'scroll', 'observe'}:
+        return True
     if action.operation in {'press', 'hotkey'}:
         keys = set(normalized_keys(action.keys))
         return ('win' in keys or 'enter' in keys or keys in (

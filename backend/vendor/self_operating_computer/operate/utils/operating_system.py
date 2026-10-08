@@ -98,7 +98,9 @@ class OperatingSystem:
 
     def context(self):
         # Titles and read-only accessibility targets supplement the screenshot.
+        window = self.window_state()
         return {'active_window': pyautogui.getActiveWindowTitle() or '',
+                'window_id': window[0] if window else None,
                 'coordinate_system': 'x,y fractions 0..1 of the supplied screenshot (possibly a foreground crop)',
                 'screenshot_region': self.capture_bounds,
                 'scope': self.capture_scope,

@@ -144,7 +144,7 @@ Choose the shortest reliable method:
 - Launch an app through Win+S, observe Search, type its name, Enter, observe the app.
   Never invent Win+app-initial shortcuts. Win+N opens notifications, not an editor.
 - Reuse open apps; switch with Alt+Tab rather than launching repeatedly.
-- Search/app-switch/navigation shortcuts and Enter END the batch: remaining actions
+- Search/app-switch/navigation shortcuts, scrolling and Enter END the batch: remaining actions
   are NOT sent. Inspect the new screen before choosing more actions.
 - After an uncertain effect, inspect before retrying; avoid duplicate text or clicks.
 
@@ -302,13 +302,14 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
                                         if item.get('action') and item.get('result') == 'sent'), None)
                 repeats_last_effect = previous_effect is not None and previous_effect == effect_fields(
                     batch[0].model_dump(exclude_defaults=True))
-                if batch[0].operation not in {'done', 'ask'} and (fingerprint == previous_batch or repeats_last_effect):
+                repeatable = all(action.operation in {'done', 'ask', 'wait', 'observe'} for action in batch)
+                if not repeatable and (fingerprint == previous_batch or repeats_last_effect):
                     # The previous action may already have achieved the goal.
                     # Review its actual result before replaying or declaring an
                     # invalid-output failure. A failed review returns to work.
                     batch = [Operation(operation='done', summary='Requested outcomes assessed on a fresh screenshot.')]
                     history.append({'repeat_blocked': True, 'instruction': 'Do not replay the previous action; check its result.'})
-                elif batch[0].operation not in {'done', 'ask'} and batch_history[-8:].count(fingerprint) >= 2:
+                elif not repeatable and batch_history[-8:].count(fingerprint) >= 2:
                     batch = [Operation(operation='done', summary='Requested outcomes assessed on a fresh screenshot.')]
             except ValueError as exc:
                 failures += 1
@@ -416,7 +417,9 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
                         after_click = await desktop_call(desktop.context)
                         before_title = desktop_context.get('active_window')
                         after_title = after_click.get('active_window')
-                        if before_title and after_title and before_title != after_title:
+                        identity_changed = ('window_id' in desktop_context and 'window_id' in after_click
+                                            and desktop_context['window_id'] != after_click['window_id'])
+                        if identity_changed or (before_title and after_title and before_title != after_title):
                             history.append({'window_changed': after_title,
                                             'instruction': 'Inspect the new window before remaining actions.'})
                             index += 1
