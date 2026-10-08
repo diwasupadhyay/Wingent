@@ -28,7 +28,7 @@ while ($queue.Count -gt 0 -and $seen -lt 180 -and $output.Count -lt 70) {
             if ($role -match 'Button|Edit|MenuItem|ListItem|Hyperlink|TabItem|CheckBox|ComboBox|RadioButton') {
                 $name = $c.Name
                 if ($name.Length -gt 100) { $name = $name.Substring(0,100) }
-                $output += @{name=$name; role=$role; rect=@($r.X,$r.Y,$r.Width,$r.Height)}
+                $output += @{name=$name; role=$role; rect=@($r.X,$r.Y,$r.Width,$r.Height); runtime_id=($node.GetRuntimeId() -join '.')}
             }
         }
         $child = $walker.GetFirstChild($node)

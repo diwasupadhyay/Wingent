@@ -7,6 +7,28 @@ from app.llm import OllamaClient
 from app.model_routing import select_model
 
 
+def test_explicit_thinking_control_is_forwarded(monkeypatch):
+    monkeypatch.setenv('OLLAMA_THINK', 'false')
+    def handle(request):
+        assert json.loads(request.content)['think'] is False
+        return httpx.Response(200, json={'response': '{}'})
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr('app.llm.httpx.AsyncClient', lambda **kwargs: real_client(
+        transport=httpx.MockTransport(handle), **kwargs))
+    assert asyncio.run(OllamaClient().structured('test', 'test', {})) == '{}'
+
+
+def test_thinking_only_response_is_explicit_without_exposing_trace(monkeypatch):
+    import pytest
+    real_client = httpx.AsyncClient
+    monkeypatch.setattr('app.llm.httpx.AsyncClient', lambda **kwargs: real_client(
+        transport=httpx.MockTransport(lambda request: httpx.Response(200,
+            json={'response': '', 'thinking': 'private trace'})), **kwargs))
+    with pytest.raises(RuntimeError, match='thinking without an action') as error:
+        asyncio.run(OllamaClient().structured('test', 'test', {}))
+    assert 'private trace' not in str(error.value)
+
+
 def test_new_local_default_is_configurable(monkeypatch):
     monkeypatch.delenv('OLLAMA_MODEL', raising=False)
     monkeypatch.delenv('OLLAMA_COMPLEX_MODEL', raising=False)

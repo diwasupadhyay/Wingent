@@ -22,8 +22,10 @@ they are **not enabled in Wingent's command bar**. Their old pinned requirements
 are not installed by Wingent's build. The command bar uses vision coordinates and
 bounded, read-only Windows accessibility targets with frame-local IDs. Clicking a
 target still moves the real pointer; it does not invoke application-specific scripts.
-The active driver defaults to the full primary screen, with optional foreground
-cropping selected by the model. It maps normalized image coordinates back to the
+The active driver defaults to foreground cropping, with explicit full-primary-screen
+overview available. It draws numbered accessible targets in model images, rechecks
+their identity/name/bounds before clicks, and reobserves after every click.
+It maps normalized image coordinates back to the
 captured physical region and rejects changed foreground/geometry before input.
 
 Rollback point before the replacement: `e7f5645`.

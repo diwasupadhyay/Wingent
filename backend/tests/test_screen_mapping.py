@@ -11,6 +11,7 @@ def driver(monkeypatch):
     monkeypatch.setattr(pyautogui, 'size', lambda: (1920, 1080))
     monkeypatch.setattr(pyautogui, 'screenshot', lambda: Image.new('RGB', (1920, 1080), 'white'))
     desktop = OperatingSystem()
+    desktop.observe('screen')
     monkeypatch.setattr('vendor.self_operating_computer.operate.utils.operating_system.read_targets', lambda _: [])
     monkeypatch.setattr(desktop, 'check', lambda: None)
     return desktop, window
@@ -57,7 +58,7 @@ def test_typing_stops_if_focus_changes_mid_input(monkeypatch):
     assert written == ['a']
 
 
-def test_full_screen_is_default_and_observed_target_maps_exactly(monkeypatch):
+def test_explicit_full_screen_and_observed_target_maps_exactly(monkeypatch):
     desktop, _ = driver(monkeypatch)
     monkeypatch.setattr('vendor.self_operating_computer.operate.utils.operating_system.read_targets',
         lambda _: [{'name': 'Example control', 'role': 'ControlType.Button', 'rect': [310, 220, 80, 40]}])
@@ -74,11 +75,52 @@ def test_full_screen_is_default_and_observed_target_maps_exactly(monkeypatch):
         desktop.mouse({'target_id': target_id})
 
 
+def test_auto_view_focuses_small_foreground_window(monkeypatch):
+    desktop, _ = driver(monkeypatch)
+    desktop.capture_scope = 'auto'
+    desktop.screenshot()
+    assert desktop.capture_bounds == (200, 100, 800, 500)
+
+
 def test_accessibility_unavailable_keeps_visual_fallback(monkeypatch):
     desktop, _ = driver(monkeypatch)
     desktop.screenshot()
     assert desktop.targets == {}
     assert desktop.capture_bounds == (0, 0, 1920, 1080)
+
+
+def test_changed_control_in_same_window_is_not_clicked(monkeypatch):
+    desktop, _ = driver(monkeypatch)
+    source = {'runtime_id': '1.2', 'name': 'Submit', 'role': 'Button', 'rect': [310, 220, 80, 40]}
+    monkeypatch.setattr('vendor.self_operating_computer.operate.utils.operating_system.read_targets', lambda _: [source.copy()])
+    desktop.screenshot()
+    target_id = next(iter(desktop.targets))
+    source['rect'] = [410, 220, 80, 40]
+    monkeypatch.setattr(pyautogui, 'click', lambda **kwargs: pytest.fail('Stale control must not be clicked'))
+    with pytest.raises(RuntimeError, match='moved, changed, or disappeared'):
+        desktop.mouse({'target_id': target_id})
+
+
+def test_model_image_has_numbered_markers(monkeypatch):
+    import io
+    desktop, _ = driver(monkeypatch)
+    monkeypatch.setattr('vendor.self_operating_computer.operate.utils.operating_system.read_targets',
+        lambda _: [{'name': 'Target', 'role': 'Button', 'rect': [310, 220, 80, 40]}])
+    image = Image.open(io.BytesIO(desktop.screenshot())).convert('RGB')
+    assert next(iter(desktop.targets.values()))['marker'] == '1'
+    assert image.getextrema() != ((255, 255), (255, 255), (255, 255))
+
+
+def test_copied_target_coordinates_also_revalidate(monkeypatch):
+    desktop, _ = driver(monkeypatch)
+    source = {'runtime_id': '1.2', 'name': 'Submit', 'role': 'Button', 'rect': [310, 220, 80, 40]}
+    monkeypatch.setattr('vendor.self_operating_computer.operate.utils.operating_system.read_targets', lambda _: [source.copy()])
+    desktop.screenshot()
+    target = next(iter(desktop.targets.values()))
+    source['rect'] = [410, 220, 80, 40]
+    monkeypatch.setattr(pyautogui, 'click', lambda **kwargs: pytest.fail('Must revalidate copied coordinates'))
+    with pytest.raises(RuntimeError, match='moved, changed, or disappeared'):
+        desktop.mouse({'x': target['x'], 'y': target['y']})
 
 
 @pytest.mark.parametrize('gesture', [{'button': 'right'}, {'clicks': 2}])

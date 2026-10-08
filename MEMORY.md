@@ -9,7 +9,7 @@ The sole phase tracker is [SELF_OPERATING_AGENT_PLAN.md](docs/SELF_OPERATING_AGE
 ## Current reality
 
 - `self_operating.py` runs screenshot/model/action batches. `task_brain.py` supplies outcomes, launch memory and separate visual completion review.
-- The adapted vendored PyAutoGUI driver supplies full-primary-screen capture and input, with optional foreground cropping. Bounded Windows UIA observation supplies frame-local click targets; opaque controls retain vision-coordinate fallback. OCR is not active.
+- The adapted PyAutoGUI driver automatically crops the foreground window; explicit full-primary-screen observation remains available. Numbered UIA targets are drawn only in model images and revalidated before clicking. Opaque controls retain coordinate fallback. OCR is not active. Every click now ends its batch for fresh observation.
 - Calculator `72 * 2` passed one live-model run with independent `144` read-back. Joji playback still fails through inaccurate targeting, lost progress and repeated actions. General autonomy is not reliably working.
 - Visual review remains model judgement, not independent proof; final events can say `completed` with `verified:false`.
 - Latest backend checks: 76 passing. Shortcut validation rejects invented app-launch chords; navigation ends the predicted batch for re-observation. Calculator-to-Notepad transfer still needs live retesting. Previous frontend/Rust checks are historical until rerun.

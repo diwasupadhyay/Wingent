@@ -171,3 +171,12 @@ For every future slice append commit, hypothesis, narrow check, actual result, l
 - Implemented `click` button selection (left/right/middle) and left double-click for both observed IDs and visual coordinates. Host validation rejects invalid counts and incompatible gestures. Non-left/double clicks force a new observation before remaining batch input.
 - 114 backend tests pass, including gesture forwarding through target IDs, schema/host rejection, and context-menu batch invalidation. No new model-specific or app-specific workflow was introduced.
 - This advances Phase 2 input support; live context-menu/double-click model selection, sensitive-effect policy, and multi-app acceptance gates remain open. Full phase completion is not claimed.
+
+### Target selection investigation — 2026-10-09
+
+- Implemented numbered accessible targets in model screenshots; runtime-ID/name/bounds revalidation before target clicks; exact copied target coordinates also use this check. Every click now ends its predicted batch. Default observation crops the foreground; full-screen overview remains explicit.
+- Regression tests reject a control that moves inside the same unchanged window. Markers are image-only, not desktop overlays. Raw coordinate fallback still lacks comprehensive occlusion/semantic-target validation.
+- Live local-model text/Confirm fixture passed both independent submitted text and clean completion with the new markers/click boundaries before the automatic-crop adjustment.
+- Mouse-only Calculator test failed in full-screen view and was stopped after unrelated clicks. With close-up targeting, the model selected valid IDs but chose Eight instead of the needed Seven; independent display read-back was 8, not 648. Completion review correctly rejected success. This is unresolved model target selection, not a passing phase gate.
+- Installed 2B comparison returned empty action output; explicit thinking-off comparison also produced empty output and was stopped. No saved model was switched. Added optional `OLLAMA_THINK` control and a specific error for thinking-only responses, without exposing reasoning traces.
+- Phase 1 remains incomplete. Do not describe the native calibration, passing unit tests, or a single fixture as proof of reliable arbitrary-app model targeting. Larger/different models require a controlled comparison, not an untested download recommendation.

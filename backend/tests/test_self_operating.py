@@ -24,6 +24,22 @@ class Desktop:
 async def connected(): return False
 
 
+def test_left_click_observes_before_typing_even_in_same_window():
+    desktop = Desktop(None)
+    desktop.context = lambda: {'window_id': 7, 'active_window': 'Same window'}
+    class Provider:
+        async def structured_images(self, *args):
+            if desktop.frames == 1:
+                return '[{"operation":"click","x":0.5,"y":0.5},{"operation":"write","content":"old layout"}]'
+            return '[{"operation":"ask","summary":"New layout inspected"}]'
+    async def run():
+        return [e async for e in run_self_operating('Open a menu', Provider(), connected,
+            ApprovalStore(), desktop_factory=lambda stop: desktop)]
+    asyncio.run(run())
+    assert desktop.calls == [('click', {'x': .5, 'y': .5})]
+    assert desktop.frames == 2
+
+
 @pytest.mark.parametrize('gesture', [{'button': 'right'}, {'clicks': 2}, {'button': 'middle'}])
 def test_extended_click_reobserves_before_remaining_input(gesture):
     desktop = Desktop(None)

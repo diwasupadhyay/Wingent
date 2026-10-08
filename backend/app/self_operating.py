@@ -136,9 +136,10 @@ do not spend a separate turn planning. Preserve every part of the original objec
 Choose the shortest reliable method:
 - Prefer exact desktop.targets IDs over guessed coordinates. Match name/role;
   never invent IDs. Use coordinates for opaque/custom controls.
-- Start with the full primary screen. Use observe(scope="window") for a closer
-  foreground view, or observe(scope="screen") to regain desktop overview. Coordinates
-  always refer to the CURRENT screenshot; target IDs expire with each observation.
+- Yellow numbered markers identify desktop.targets; select the matching target_id,
+  not the marker's printed position. Every click ends the batch; inspect again.
+- observe(scope="window") zooms into the foreground; scope="screen" restores overview.
+  Coordinates refer to the CURRENT screenshot; target IDs expire on observation.
 - Prefer keyboard entry for text/numbers/arithmetic over clicking individual character
   or keypad buttons. Once the input surface is focused, write the WHOLE value/expression
   in one operation, then press Enter if needed. Use clicks when keyboard input is
@@ -304,7 +305,7 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
                     if target_id:
                         target = next((target for target in desktop_context.get('targets', [])
                                        if target.get('id') == target_id), None)
-                        effect['target'] = {key: value for key, value in target.items() if key != 'id'} if target else target_id
+                        effect['target'] = {key: value for key, value in target.items() if key not in {'id', 'marker'}} if target else target_id
                     return effect
                 fingerprint = json.dumps([effect_fields(action.model_dump(exclude_defaults=True))
                                           for action in batch], sort_keys=True)
@@ -437,7 +438,7 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
                     keys = set(normalized_keys(operation.keys))
                     # Preserve navigation/click settling, but do not add a full
                     # UI pause after every stable-context character/key batch.
-                    settle = 0.8 if needs_fresh_screen(operation) else (
+                    settle = 0.8 if needs_fresh_screen(operation) and kind != 'click' else (
                         0.2 if kind in {'click', 'scroll'} else 0.03)
                     if kind != 'wait':
                         await desktop_call(desktop.wait, settle)

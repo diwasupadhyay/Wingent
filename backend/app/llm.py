@@ -91,6 +91,11 @@ class OllamaClient:
             'options': {'temperature': 0, 'num_predict': 1200, 'num_ctx': self.context_size},
             'keep_alive': '10m',
         }
+        thinking = os.getenv('OLLAMA_THINK', 'auto').strip().lower()
+        if thinking != 'auto':
+            if thinking not in {'true', 'false', 'low', 'medium', 'high'}:
+                raise ValueError('OLLAMA_THINK must be auto, true, false, low, medium, or high.')
+            payload['think'] = thinking == 'true' if thinking in {'true', 'false'} else thinking
         if 'operations' in schema.get('properties', {}):
             # The upstream operator prompts for JSON and validates afterwards.
             # Avoid a union grammar steering small vision models into an action
@@ -162,7 +167,12 @@ class OllamaClient:
             payload = response.json()
             if payload.get('error'):
                 raise RuntimeError(f'Ollama error: {payload["error"]}')
-            return payload.get('message', {}).get('content', '') if endpoint == '/api/chat' else payload.get('response', '')
+            answer = payload.get('message', {}).get('content', '') if endpoint == '/api/chat' else payload.get('response', '')
+            reasoning_present = bool(payload.get('thinking') or payload.get('message', {}).get('thinking'))
+            if not answer.strip() and reasoning_present:
+                raise RuntimeError('Ollama returned thinking without an action response. '
+                                   'For models that support it, set OLLAMA_THINK=false, or choose an instruct vision model.')
+            return answer
 
     async def stream(self, prompt: str) -> AsyncIterator[str]:
         async with httpx.AsyncClient(timeout=60.0, trust_env=False) as client:
