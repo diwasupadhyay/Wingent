@@ -14,14 +14,16 @@ The upstream decorative cursor circle is omitted to reduce click latency.
 
 `app/self_operating.py` adapts the upstream action-batch loop to streamed UI events
 and Wingent's existing local/cloud providers. It bypasses the former tool planner,
-window grants, UIA discovery and per-action model round trips. Each batch is followed
+window grants and per-action model round trips. Each batch is followed
 by a new screenshot. Completion is explicitly a model visual assessment.
 
 Upstream CLI, voice, OCR, SoM, and legacy SDK integrations are preserved as source;
 they are **not enabled in Wingent's command bar**. Their old pinned requirements
-are not installed by Wingent's build. The command bar uses direct vision coordinates.
-The active driver uses a foreground-window crop on the primary monitor when available,
-with full-primary-screen fallback. It maps normalized image coordinates back to the
+are not installed by Wingent's build. The command bar uses vision coordinates and
+bounded, read-only Windows accessibility targets with frame-local IDs. Clicking a
+target still moves the real pointer; it does not invoke application-specific scripts.
+The active driver defaults to the full primary screen, with optional foreground
+cropping selected by the model. It maps normalized image coordinates back to the
 captured physical region and rejects changed foreground/geometry before input.
 
 Rollback point before the replacement: `e7f5645`.

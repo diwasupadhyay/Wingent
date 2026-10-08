@@ -24,6 +24,32 @@ class Desktop:
 async def connected(): return False
 
 
+def test_observed_target_click_validation():
+    assert Operation(operation='click', target_id='frame-1').target_id == 'frame-1'
+    for args in ({'operation': 'click', 'target_id': 'frame-1', 'x': .2, 'y': .3},
+                 {'operation': 'move', 'target_id': 'frame-1'},
+                 {'operation': 'observe', 'scope': 'other'}):
+        with pytest.raises(ValueError):
+            Operation(**args)
+
+
+def test_new_frame_target_ids_do_not_bypass_repeat_review():
+    desktop = Desktop(None)
+    desktop.context = lambda: {'targets': [{'id': f'frame-{desktop.frames}',
+                                            'name': 'Confirm', 'role': 'Button', 'x': .5, 'y': .5}]}
+    class Provider:
+        async def structured_images(self, prompt, system, schema, frames):
+            if 'goal_complete' in schema['properties']:
+                return review_response()
+            return json.dumps([{'operation': 'click', 'target_id': f'frame-{desktop.frames}'}])
+    async def run():
+        return [e async for e in run_self_operating('Confirm', Provider(), connected,
+            ApprovalStore(), desktop_factory=lambda stop: desktop)]
+    events = asyncio.run(run())
+    assert desktop.calls == [('click', {'target_id': 'frame-1'})]
+    assert events[-1][1]['outcome'] == 'completed'
+
+
 def review_response(complete=True):
     return json.dumps({'goal_complete': complete, 'checks': [
         {'criterion': 1, 'satisfied': complete, 'evidence': 'Requested result is visible' if complete else 'Only the app is open'}],

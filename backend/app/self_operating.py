@@ -19,7 +19,9 @@ from app.task_brain import (GoalPlan, CompletionReview, LaunchMemory,
 
 class Operation(BaseModel):
     model_config = ConfigDict(extra='forbid')
-    operation: Literal['click', 'write', 'press', 'hotkey', 'move', 'scroll', 'wait', 'done', 'ask']
+    operation: Literal['click', 'write', 'press', 'hotkey', 'move', 'scroll', 'wait', 'observe', 'done', 'ask']
+    target_id: str = Field(default='', max_length=32)
+    scope: Literal['screen', 'window'] = 'screen'
     thought: str = Field(default='', max_length=500)
     content: str = Field(default='', max_length=8000)
     keys: list[str] = Field(default_factory=list, max_length=6)
@@ -33,8 +35,10 @@ class Operation(BaseModel):
 
     @model_validator(mode='after')
     def valid_operation(self):
-        if self.operation in {'click', 'move'} and (self.x is None or self.y is None):
+        if self.operation in {'click', 'move'} and (self.x is None or self.y is None) and not (self.operation == 'click' and self.target_id):
             raise ValueError('Mouse actions need x and y screen fractions between 0 and 1.')
+        if self.target_id and (self.operation != 'click' or self.x is not None or self.y is not None):
+            raise ValueError('Use either click target_id or coordinates, not both.')
         if self.operation in {'press', 'hotkey'} and not self.keys:
             raise ValueError('press requires keys.')
         if self.operation in {'press', 'hotkey'}:
@@ -64,12 +68,16 @@ def operation_schema():
     for kind, required in {'click': ['x', 'y'], 'move': ['x', 'y'],
                            'write': ['content'], 'press': ['keys'], 'hotkey': ['keys'],
                            'scroll': ['amount'], 'wait': ['seconds'],
+                           'observe': ['scope'],
                            'ask': ['summary'], 'done': ['summary']}.items():
         properties = {key: {k: v for k, v in fields[key].items() if k not in {'default', 'title'}}
                       for key in [*required, 'thought', 'requires_confirmation']}
         if kind in {'press', 'hotkey'}:
             properties['system_target'] = {'type': 'string', 'enum': sorted(set(WINDOWS_TARGETS.values()))}
         if kind == 'write': properties['content']['minLength'] = 1
+        if kind == 'click':
+            properties['target_id'] = {'type': 'string', 'maxLength': 32}
+            required = []  # Host validates target_id XOR complete coordinates.
         properties['operation'] = {'const': kind, 'type': 'string'}
         variants.append({'type': 'object', 'properties': properties,
                          'required': ['operation', *required], 'additionalProperties': False})
@@ -109,6 +117,12 @@ When plan_requested is true, include plan:{"outcomes":["each requested final res
 do not spend a separate turn planning. Preserve every part of the original objective.
 
 Choose the shortest reliable method:
+- Prefer click(target_id) using an exact ID from desktop.targets to guessing button
+  coordinates. Match the observed name/role; never invent IDs. The same mechanism
+  works in any accessible application. Use coordinates for opaque/custom controls.
+- Start with the full primary screen. Use observe(scope="window") for a closer
+  foreground view, or observe(scope="screen") to regain desktop overview. Coordinates
+  always refer to the CURRENT screenshot; target IDs expire with each observation.
 - Prefer keyboard entry for text/numbers/arithmetic over clicking individual character
   or keypad buttons. Once the input surface is focused, write the WHOLE value/expression
   in one operation, then press Enter if needed. Use clicks when keyboard input is
@@ -221,6 +235,7 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
             recent = []
             for item in history[-12:]:
                 item = {**item}
+                item.pop('effect', None)  # Local repeat guard, not duplicate model context.
                 if 'action' in item:
                     item['action'] = {key: value[:400] if isinstance(value, str) else value
                                       for key, value in item['action'].items()}
@@ -254,14 +269,20 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
                         plan = GoalPlan.model_validate(decoded['plan'])
                         remaining = plan.outcomes[:]
                 first_decision = False
-                fingerprint = json.dumps([{key: value for key, value in action.model_dump().items()
-                    if key not in {'thought', 'requires_confirmation'}} for action in batch], sort_keys=True)
-                previous_action = next((item['action'] for item in reversed(history)
-                                        if item.get('action') and item.get('result') == 'sent'), None)
                 def effect_fields(action):
-                    return {key: value for key, value in action.items()
-                            if key not in {'thought', 'requires_confirmation'}}
-                repeats_last_effect = previous_action is not None and effect_fields(previous_action) == effect_fields(
+                    effect = {key: value for key, value in action.items()
+                              if key not in {'thought', 'requires_confirmation'}}
+                    target_id = effect.pop('target_id', None)
+                    if target_id:
+                        target = next((target for target in desktop_context.get('targets', [])
+                                       if target.get('id') == target_id), None)
+                        effect['target'] = {key: value for key, value in target.items() if key != 'id'} if target else target_id
+                    return effect
+                fingerprint = json.dumps([effect_fields(action.model_dump(exclude_defaults=True))
+                                          for action in batch], sort_keys=True)
+                previous_effect = next((item.get('effect', item['action']) for item in reversed(history)
+                                        if item.get('action') and item.get('result') == 'sent'), None)
+                repeats_last_effect = previous_effect is not None and previous_effect == effect_fields(
                     batch[0].model_dump(exclude_defaults=True))
                 if batch[0].operation not in {'done', 'ask'} and (fingerprint == previous_batch or repeats_last_effect):
                     # The previous action may already have achieved the goal.
@@ -334,6 +355,7 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
                 label = operation.thought or (
                     'Keys: ' + '+'.join(operation.keys) if kind in {'press', 'hotkey'} else
                     f'Type text ({len(operation.content)} characters)' if kind == 'write' else
+                    'Click observed control' if operation.target_id else
                     f'{kind.title()} at {operation.x:.2f}, {operation.y:.2f}' if kind in {'click', 'move'} else kind)
                 stage = 'executing ' + kind
                 yield 'action', {'task_id': task_id, 'index': index, 'label': label, 'arguments': action,
@@ -346,14 +368,17 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
                     elif kind == 'write':
                         await desktop_call(desktop.write, operation.content)
                     elif kind == 'click':
-                        await desktop_call(desktop.mouse, {'x': operation.x, 'y': operation.y})
+                        await desktop_call(desktop.mouse, {'target_id': operation.target_id} if operation.target_id
+                                           else {'x': operation.x, 'y': operation.y})
+                    elif kind == 'observe':
+                        await desktop_call(desktop.observe, operation.scope)
                     elif kind == 'move':
                         await desktop_call(desktop.move, operation.x, operation.y)
                     elif kind == 'scroll':
                         await desktop_call(desktop.scroll, operation.amount)
                     else:
                         await desktop_call(desktop.wait, operation.seconds)
-                    history.append({'action': action, 'result': 'sent'})
+                    history.append({'action': action, 'effect': effect_fields(action), 'result': 'sent'})
                     launches.record(operation)
                     yield 'step', {'index': index, 'state': 'accepted'}
                     keys = set(normalized_keys(operation.keys))
@@ -363,7 +388,7 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
                         0.2 if kind in {'click', 'scroll'} else 0.03)
                     if kind != 'wait':
                         await desktop_call(desktop.wait, settle)
-                    if needs_fresh_screen(operation):
+                    if kind == 'observe' or needs_fresh_screen(operation):
                         history.append({'observation_required': True,
                             'instruction': 'Navigation sent. Remaining batch actions were NOT sent. '
                                            'Inspect the new screen/focused field before continuing.'})

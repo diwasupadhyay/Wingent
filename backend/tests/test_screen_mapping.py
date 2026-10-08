@@ -11,12 +11,14 @@ def driver(monkeypatch):
     monkeypatch.setattr(pyautogui, 'size', lambda: (1920, 1080))
     monkeypatch.setattr(pyautogui, 'screenshot', lambda: Image.new('RGB', (1920, 1080), 'white'))
     desktop = OperatingSystem()
+    monkeypatch.setattr('vendor.self_operating_computer.operate.utils.operating_system.read_targets', lambda _: [])
     monkeypatch.setattr(desktop, 'check', lambda: None)
     return desktop, window
 
 
 def test_crop_coordinates_map_to_physical_screen(monkeypatch):
     desktop, _ = driver(monkeypatch)
+    desktop.observe('window')
     moved = []
     monkeypatch.setattr(pyautogui, 'moveTo', lambda x, y, **kw: moved.append((x, y)))
     desktop.screenshot()
@@ -53,3 +55,27 @@ def test_typing_stops_if_focus_changes_mid_input(monkeypatch):
     with pytest.raises(RuntimeError, match='Foreground'):
         desktop.write('abc')
     assert written == ['a']
+
+
+def test_full_screen_is_default_and_observed_target_maps_exactly(monkeypatch):
+    desktop, _ = driver(monkeypatch)
+    monkeypatch.setattr('vendor.self_operating_computer.operate.utils.operating_system.read_targets',
+        lambda _: [{'name': 'Example control', 'role': 'ControlType.Button', 'rect': [310, 220, 80, 40]}])
+    clicks = []
+    monkeypatch.setattr(pyautogui, 'moveTo', lambda x, y, **kwargs: clicks.append((x, y)))
+    monkeypatch.setattr(pyautogui, 'click', lambda: None)
+    desktop.screenshot()
+    assert desktop.capture_bounds == (0, 0, 1920, 1080)
+    target_id = next(iter(desktop.targets))
+    desktop.mouse({'target_id': target_id})
+    assert clicks == [(350, 240)]
+    desktop.screenshot()
+    with pytest.raises(ValueError, match='current observation'):
+        desktop.mouse({'target_id': target_id})
+
+
+def test_accessibility_unavailable_keeps_visual_fallback(monkeypatch):
+    desktop, _ = driver(monkeypatch)
+    desktop.screenshot()
+    assert desktop.targets == {}
+    assert desktop.capture_bounds == (0, 0, 1920, 1080)

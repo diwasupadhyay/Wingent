@@ -150,3 +150,11 @@ Next major slice: reproduce target/focus failures with bounded diagnostics, disc
 | 2026-10-08 | Phases 1/3/5 partial | Foreground crops with physical-coordinate mapping and changed-window input rejection; installed-model dropdown and explicit vision selection; repeated effects trigger fresh completion review. Native fixture passed. First autonomous run produced the right result but failed stopping; after review recovery, the repeated run passed both independent fixture output and clean completion. 91 backend and 24 UI tests pass. | One fixture is not the varied-app/scaling gate. Calculator-to-Notepad and media playback remain unverified on this revision; no full phase completion claim |
 
 For every future slice append commit, hypothesis, narrow check, actual result, live-test scope and build status. Do not create a new report after every edit or mark phases complete from unit tests alone.
+
+### Latest targeting slice (2026-10-08; checkpoint `68fef47`)
+
+- Hypothesis: generic observed control bounds reduce coordinate guessing without app-specific workflows. Full primary-screen observation is now the default; the model can request a foreground crop.
+- Implemented bounded read-only Windows accessibility discovery, frame-local click IDs, stale-ID rejection, and semantic repeat detection across regenerated IDs. Pointer clicks still use the real mouse. Optional discovery failures preserve vision fallback.
+- Native isolated input fixture passed. The real local model completed Calculator `72 * 9`; an independent UIA display oracle read `648`. Search navigation used observed target clicks; arithmetic used keyboard batching. One malformed model response recovered. This does not independently validate individual keypad clicks.
+- Read-only Calculator capture exposed all ten digit buttons and Equals; capture plus discovery measured 2.06 seconds. Model decisions remained substantially slower (first four calls total 55.9 seconds), so no overall speed improvement claim yet.
+- Phases 1/3/5 remain partial: varied-app/scaling target accuracy, occlusion safety, model benchmarks and cross-app task gates are still open. Build qualification is separate from these checks.

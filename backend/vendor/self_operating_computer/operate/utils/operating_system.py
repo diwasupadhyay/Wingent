@@ -2,6 +2,9 @@
 import io
 import threading
 import time
+import math
+from uuid import uuid4
+from app.accessibility import read_targets
 
 import pyautogui
 
@@ -14,6 +17,15 @@ class OperatingSystem:
         self.capture_bounds = None
         self.capture_window = None
         self.capture_screen_size = None
+        self.capture_scope = 'screen'
+        self.targets = {}
+
+    def observe(self, scope):
+        if scope not in {'screen', 'window'}:
+            raise ValueError('Observation scope must be screen or window.')
+        self.capture_scope = scope
+        self.capture_bounds = None
+        self.targets = {}
 
     def window_state(self):
         window = pyautogui.getActiveWindow()
@@ -46,13 +58,28 @@ class OperatingSystem:
         if (width, height) != tuple(pyautogui.size()):
             raise RuntimeError('Screenshot and input dimensions disagree. Check Windows display scaling.')
         bounds = (0, 0, width, height)
-        if after is not None:
+        if after is not None and self.capture_scope == 'window':
             _, left, top, window_width, window_height = after
             left, top, right, bottom = max(0, left), max(0, top), min(width, left + window_width), min(height, top + window_height)
             if right - left >= 200 and bottom - top >= 120:
                 bounds = (left, top, right, bottom)
         self.capture_bounds, self.capture_window = bounds, after
         self.capture_screen_size = (width, height)
+        self.targets = {}
+        frame_id = uuid4().hex[:8]
+        for item in read_targets(after[0] if after else None):
+            rect = item.get('rect', [])
+            if len(rect) != 4 or not all(isinstance(n, (int, float)) and math.isfinite(n) for n in rect):
+                continue
+            x, y, w, h = rect
+            cx, cy = x + w / 2, y + h / 2
+            left, top, right, bottom = bounds
+            if w <= 0 or h <= 0 or not (left <= cx < right and top <= cy < bottom):
+                continue
+            key = f'{frame_id}-{len(self.targets)}'
+            self.targets[key] = {'id': key, 'name': item.get('name', ''), 'role': item.get('role', ''),
+                                 'x': round((cx-left)/(right-left-1), 6),
+                                 'y': round((cy-top)/(bottom-top-1), 6)}
         screenshot = screenshot.crop(bounds)
         if screenshot.convert('RGB').getextrema() == ((0, 0), (0, 0), (0, 0)):
             raise RuntimeError('Desktop screenshot is black. Unlock Windows and run Wingent in your desktop session.')
@@ -62,11 +89,12 @@ class OperatingSystem:
         return output.getvalue()
 
     def context(self):
-        # Native window titles are cheap hints; screenshots remain the input
-        # authority. No UIA process or window-grant workflow is involved.
+        # Titles and read-only accessibility targets supplement the screenshot.
         return {'active_window': pyautogui.getActiveWindowTitle() or '',
                 'coordinate_system': 'x,y fractions 0..1 of the supplied screenshot (possibly a foreground crop)',
                 'screenshot_region': self.capture_bounds,
+                'scope': self.capture_scope,
+                'targets': list(self.targets.values()),
                 'open_windows': [title for title in pyautogui.getAllTitles() if title.strip()][:24]}
 
     def write(self, content):
@@ -106,6 +134,11 @@ class OperatingSystem:
                 pyautogui.platformModule._keyUp(key)
 
     def mouse(self, detail):
+        if detail.get('target_id'):
+            target = self.targets.get(detail['target_id'])
+            if target is None:
+                raise ValueError('Target is not from the current observation; observe again.')
+            detail = target
         self.click_at_percentage(float(detail['x']), float(detail['y']))
 
     def move(self, x, y):
