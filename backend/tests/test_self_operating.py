@@ -24,6 +24,33 @@ class Desktop:
 async def connected(): return False
 
 
+@pytest.mark.parametrize('gesture', [{'button': 'right'}, {'clicks': 2}, {'button': 'middle'}])
+def test_extended_click_reobserves_before_remaining_input(gesture):
+    desktop = Desktop(None)
+    class Provider:
+        async def structured_images(self, *args):
+            if desktop.frames == 1:
+                return json.dumps([{'operation': 'click', 'x': .4, 'y': .3, **gesture},
+                                   {'operation': 'write', 'content': 'stale context'}])
+            return '[{"operation":"ask","summary":"Observe gesture result"}]'
+    async def run():
+        return [e async for e in run_self_operating('Use menu', Provider(), connected,
+            ApprovalStore(), desktop_factory=lambda stop: desktop)]
+    asyncio.run(run())
+    assert desktop.calls == [('click', {'x': .4, 'y': .3, **gesture})]
+    assert desktop.frames == 2
+
+
+@pytest.mark.parametrize('args', [
+    {'operation': 'click', 'x': .5, 'y': .5, 'clicks': 3},
+    {'operation': 'click', 'x': .5, 'y': .5, 'clicks': True},
+    {'operation': 'click', 'x': .5, 'y': .5, 'button': 'right', 'clicks': 2},
+    {'operation': 'write', 'content': 'test', 'button': 'right'}])
+def test_invalid_click_gestures_rejected(args):
+    with pytest.raises(ValueError):
+        Operation(**args)
+
+
 def test_uncertain_typing_is_not_replayed_or_sent_to_completion_review():
     desktop = Desktop(None)
     def partial_write(content):

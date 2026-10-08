@@ -22,6 +22,8 @@ class Operation(BaseModel):
     model_config = ConfigDict(extra='forbid')
     operation: Literal['click', 'write', 'press', 'hotkey', 'move', 'scroll', 'wait', 'observe', 'done', 'ask']
     target_id: str = Field(default='', max_length=32)
+    button: Literal['left', 'right', 'middle'] = 'left'
+    clicks: int = Field(default=1, ge=1, le=2, strict=True)
     scope: Literal['screen', 'window'] = 'screen'
     thought: str = Field(default='', max_length=500)
     content: str = Field(default='', max_length=8000)
@@ -36,6 +38,10 @@ class Operation(BaseModel):
 
     @model_validator(mode='after')
     def valid_operation(self):
+        if self.operation != 'click' and (self.button != 'left' or self.clicks != 1):
+            raise ValueError('button and clicks are only supported for click actions.')
+        if self.clicks == 2 and self.button != 'left':
+            raise ValueError('Double-click is supported only with the left button.')
         if self.operation in {'click', 'move'} and (self.x is None or self.y is None) and not (self.operation == 'click' and self.target_id):
             raise ValueError('Mouse actions need x and y screen fractions between 0 and 1.')
         if self.target_id and (self.operation != 'click' or self.x is not None or self.y is not None):
@@ -78,6 +84,8 @@ def operation_schema():
         if kind == 'write': properties['content']['minLength'] = 1
         if kind == 'click':
             properties['target_id'] = {'type': 'string', 'maxLength': 32}
+            properties['button'] = {'type': 'string', 'enum': ['left', 'right', 'middle']}
+            properties['clicks'] = {'type': 'integer', 'minimum': 1, 'maximum': 2}
             required = []  # Host validates target_id XOR complete coordinates.
         properties['operation'] = {'const': kind, 'type': 'string'}
         variant = {'type': 'object', 'properties': properties,
@@ -126,9 +134,8 @@ When plan_requested is true, include plan:{"outcomes":["each requested final res
 do not spend a separate turn planning. Preserve every part of the original objective.
 
 Choose the shortest reliable method:
-- Prefer click(target_id) using an exact ID from desktop.targets to guessing button
-  coordinates. Match the observed name/role; never invent IDs. The same mechanism
-  works in any accessible application. Use coordinates for opaque/custom controls.
+- Prefer exact desktop.targets IDs over guessed coordinates. Match name/role;
+  never invent IDs. Use coordinates for opaque/custom controls.
 - Start with the full primary screen. Use observe(scope="window") for a closer
   foreground view, or observe(scope="screen") to regain desktop overview. Coordinates
   always refer to the CURRENT screenshot; target IDs expire with each observation.
@@ -151,6 +158,8 @@ Choose the shortest reliable method:
 Operations (use only fields relevant to the operation):
 write(content); press(keys) / hotkey(keys) are SIMULTANEOUS key chords, not sequences;
 click(x,y) / move(x,y): fractions 0..1 of the ENTIRE screenshot;
+click: target_id OR x,y; button=left/right/middle; clicks=1/2 (2 is left only).
+Right/double-click ends the batch; observe its result.
 scroll(amount): signed notches -20..20; wait(seconds): 0.1..5;
 ask(summary): only genuine ambiguity/login/necessary human decisions;
 done(summary): only when the requested final outcome is visible, not merely app opened.
@@ -408,8 +417,12 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
                     elif kind == 'write':
                         await desktop_call(desktop.write, operation.content)
                     elif kind == 'click':
-                        await desktop_call(desktop.mouse, {'target_id': operation.target_id} if operation.target_id
-                                           else {'x': operation.x, 'y': operation.y})
+                        detail = {'target_id': operation.target_id} if operation.target_id else {'x': operation.x, 'y': operation.y}
+                        if operation.button != 'left':
+                            detail['button'] = operation.button
+                        if operation.clicks != 1:
+                            detail['clicks'] = operation.clicks
+                        await desktop_call(desktop.mouse, detail)
                     elif kind == 'observe':
                         await desktop_call(desktop.observe, operation.scope)
                     elif kind == 'move':

@@ -63,7 +63,7 @@ def test_full_screen_is_default_and_observed_target_maps_exactly(monkeypatch):
         lambda _: [{'name': 'Example control', 'role': 'ControlType.Button', 'rect': [310, 220, 80, 40]}])
     clicks = []
     monkeypatch.setattr(pyautogui, 'moveTo', lambda x, y, **kwargs: clicks.append((x, y)))
-    monkeypatch.setattr(pyautogui, 'click', lambda: None)
+    monkeypatch.setattr(pyautogui, 'click', lambda **kwargs: None)
     desktop.screenshot()
     assert desktop.capture_bounds == (0, 0, 1920, 1080)
     target_id = next(iter(desktop.targets))
@@ -79,6 +79,20 @@ def test_accessibility_unavailable_keeps_visual_fallback(monkeypatch):
     desktop.screenshot()
     assert desktop.targets == {}
     assert desktop.capture_bounds == (0, 0, 1920, 1080)
+
+
+@pytest.mark.parametrize('gesture', [{'button': 'right'}, {'clicks': 2}])
+def test_target_id_keeps_click_gesture(monkeypatch, gesture):
+    desktop, _ = driver(monkeypatch)
+    desktop.screenshot()
+    desktop.targets['test-id'] = {'x': .5, 'y': .5}
+    monkeypatch.setattr(desktop, 'move', lambda *args: None)
+    calls = []
+    monkeypatch.setattr(pyautogui, 'click', lambda **kwargs: calls.append(kwargs))
+    desktop.mouse({'target_id': 'test-id', **gesture})
+    assert calls == [{'button': gesture.get('button', 'left'),
+                      'clicks': gesture.get('clicks', 1),
+                      'interval': .08 if gesture.get('clicks') == 2 else 0}]
 
 
 def test_window_switch_during_target_discovery_invalidates_frame(monkeypatch):

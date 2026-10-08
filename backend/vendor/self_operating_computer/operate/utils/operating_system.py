@@ -144,12 +144,17 @@ class OperatingSystem:
                 pyautogui.platformModule._keyUp(key)
 
     def mouse(self, detail):
+        button, clicks = detail.get('button', 'left'), detail.get('clicks', 1)
+        if button not in {'left', 'right', 'middle'} or type(clicks) is not int or clicks not in (1, 2):
+            raise ValueError('Unsupported click gesture.')
+        if clicks == 2 and button != 'left':
+            raise ValueError('Double-click requires the left button.')
         if detail.get('target_id'):
             target = self.targets.get(detail['target_id'])
             if target is None:
                 raise ValueError('Target is not from the current observation; observe again.')
             detail = target
-        self.click_at_percentage(float(detail['x']), float(detail['y']))
+        self.click_at_percentage(float(detail['x']), float(detail['y']), button=button, clicks=clicks)
 
     def move(self, x, y):
         self.validate_frame()
@@ -160,7 +165,9 @@ class OperatingSystem:
 
     def click_at_percentage(self, x_percentage, y_percentage, **kwargs):
         self.move(x_percentage, y_percentage)
-        pyautogui.click()
+        clicks = kwargs.get('clicks', 1)
+        pyautogui.click(button=kwargs.get('button', 'left'), clicks=clicks,
+                        interval=0.08 if clicks == 2 else 0)
 
     def scroll(self, amount):
         self.validate_frame()

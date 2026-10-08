@@ -165,3 +165,9 @@ For every future slice append commit, hypothesis, narrow check, actual result, l
 - First live attempt stopped after one hit because foreground identity/geometry changed. No mapping success claimed for that run. Repeat passed all 40 ordered hits at primary resolution 1920x1080. Other scaling/layouts and model-selected targeting remain untested.
 - Checkpoints `4d8ef42`, `f2bd78d`, `d027299`, `62be353`: bounded capture retries, scroll/same-title switch boundaries, visible input errors, and uncertain-effect replanning instead of replay/completion review. Latest backend suite: 105 passing; latest UI suite: 25 passing. Recovery gates still require live multi-app fault scenarios.
 - No full phase is newly complete: native mapping on one display is only part of Phase 1. Next gate is model-selected target accuracy, moved/occluded controls, and repeated cross-app handoffs—not additional decorative input motion.
+
+### General input capability extension
+
+- Implemented `click` button selection (left/right/middle) and left double-click for both observed IDs and visual coordinates. Host validation rejects invalid counts and incompatible gestures. Non-left/double clicks force a new observation before remaining batch input.
+- 114 backend tests pass, including gesture forwarding through target IDs, schema/host rejection, and context-menu batch invalidation. No new model-specific or app-specific workflow was introduced.
+- This advances Phase 2 input support; live context-menu/double-click model selection, sensitive-effect policy, and multi-app acceptance gates remain open. Full phase completion is not claimed.
