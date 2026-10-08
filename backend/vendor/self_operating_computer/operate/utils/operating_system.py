@@ -3,6 +3,7 @@ import io
 import threading
 import time
 import math
+import sys
 from uuid import uuid4
 from app.accessibility import ObservationChangedError, read_targets
 
@@ -135,13 +136,20 @@ class OperatingSystem:
         try:
             for key in keys:
                 self.check()
-                pyautogui.keyDown(key)
                 held.append(key)
+                pyautogui.keyDown(key)
             self.wait(0.06)
         finally:
             # Low-level release bypasses the corner fail-safe so no key sticks.
+            original_error = sys.exc_info()[1]
+            release_error = None
             for key in reversed(held):
-                pyautogui.platformModule._keyUp(key)
+                try:
+                    pyautogui.platformModule._keyUp(key)
+                except Exception as exc:
+                    release_error = release_error or exc
+            if release_error is not None and original_error is None:
+                raise release_error
 
     def mouse(self, detail):
         button, clicks = detail.get('button', 'left'), detail.get('clicks', 1)
@@ -166,8 +174,11 @@ class OperatingSystem:
     def click_at_percentage(self, x_percentage, y_percentage, **kwargs):
         self.move(x_percentage, y_percentage)
         clicks = kwargs.get('clicks', 1)
-        pyautogui.click(button=kwargs.get('button', 'left'), clicks=clicks,
-                        interval=0.08 if clicks == 2 else 0)
+        for index in range(clicks):
+            if index:
+                self.wait(0.08)
+            self.validate_frame()
+            pyautogui.click(button=kwargs.get('button', 'left'))
 
     def scroll(self, amount):
         self.validate_frame()

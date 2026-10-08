@@ -90,9 +90,53 @@ def test_target_id_keeps_click_gesture(monkeypatch, gesture):
     calls = []
     monkeypatch.setattr(pyautogui, 'click', lambda **kwargs: calls.append(kwargs))
     desktop.mouse({'target_id': 'test-id', **gesture})
-    assert calls == [{'button': gesture.get('button', 'left'),
-                      'clicks': gesture.get('clicks', 1),
-                      'interval': .08 if gesture.get('clicks') == 2 else 0}]
+    assert calls == [{'button': gesture.get('button', 'left')}] * gesture.get('clicks', 1)
+
+
+def test_stop_between_double_clicks_prevents_second_click(monkeypatch):
+    desktop, _ = driver(monkeypatch)
+    desktop.screenshot()
+    monkeypatch.setattr(desktop, 'move', lambda *args: None)
+    clicks = []
+    def click(**kwargs):
+        clicks.append(kwargs)
+        desktop.cancelled.set()
+    def check():
+        if desktop.cancelled.is_set():
+            raise InterruptedError('Stopped')
+    monkeypatch.setattr(desktop, 'check', check)
+    monkeypatch.setattr(pyautogui, 'click', click)
+    with pytest.raises(InterruptedError):
+        desktop.mouse({'x': .5, 'y': .5, 'clicks': 2})
+    assert len(clicks) == 1
+
+
+def test_partial_key_down_failure_still_releases_key(monkeypatch):
+    desktop, _ = driver(monkeypatch)
+    desktop.screenshot()
+    releases = []
+    def fail(key):
+        raise RuntimeError('Partial key down')
+    monkeypatch.setattr(pyautogui, 'keyDown', fail)
+    monkeypatch.setattr(pyautogui.platformModule, '_keyUp', releases.append)
+    with pytest.raises(RuntimeError, match='Partial key down'):
+        desktop.press(['ctrl', 'a'])
+    assert releases == ['ctrl']
+
+
+def test_key_release_failure_does_not_skip_remaining_modifiers(monkeypatch):
+    desktop, _ = driver(monkeypatch)
+    desktop.screenshot()
+    releases = []
+    monkeypatch.setattr(pyautogui, 'keyDown', lambda key: None)
+    def release(key):
+        releases.append(key)
+        if key == 'a':
+            raise RuntimeError('Release failed')
+    monkeypatch.setattr(pyautogui.platformModule, '_keyUp', release)
+    with pytest.raises(RuntimeError, match='Release failed'):
+        desktop.press(['ctrl', 'shift', 'a'])
+    assert releases == ['a', 'shift', 'ctrl']
 
 
 def test_window_switch_during_target_discovery_invalidates_frame(monkeypatch):
