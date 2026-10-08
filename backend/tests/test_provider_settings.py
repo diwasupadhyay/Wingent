@@ -10,6 +10,21 @@ from app.llm import OllamaClient
 from app.provider_settings import CloudClient, ProviderSettings
 
 
+def test_local_model_catalogue_lists_all_installed_names(monkeypatch):
+    real_client = httpx.AsyncClient
+    def handle(request):
+        assert request.url.path == '/api/tags'
+        return httpx.Response(200, json={'models': [{'name': 'vision:4b'}, {'name': 'text:3b'}, {'name': 'vision:4b'}]})
+    monkeypatch.setattr(httpx, 'AsyncClient', lambda **kw: real_client(transport=httpx.MockTransport(handle), **kw))
+    assert TestClient(main.app).get('/api/local-models').json() == {
+        'available': True, 'models': ['text:3b', 'vision:4b']}
+
+
+def test_explicit_model_selection_overrides_legacy_vision_environment(monkeypatch):
+    monkeypatch.setenv('OLLAMA_VISION_MODEL', 'old-model')
+    assert OllamaClient(model='selected-model').vision_model == 'selected-model'
+
+
 def test_operator_uses_reference_json_prompting_instead_of_union_grammar(monkeypatch):
     sent = []
     real_client = httpx.AsyncClient

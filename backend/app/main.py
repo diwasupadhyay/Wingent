@@ -63,6 +63,24 @@ def provider_presets():
     return PRESETS
 
 
+@app.get('/api/local-models')
+async def local_models():
+    """Read the actual Ollama catalogue; never download models implicitly."""
+    try:
+        async with httpx.AsyncClient(timeout=5, trust_env=False) as client:
+            response = await client.get(OllamaClient().base_url + '/api/tags')
+            response.raise_for_status()
+            entries = response.json()['models']
+            if not isinstance(entries, list):
+                raise ValueError('Invalid catalogue')
+            names = sorted({item.get('name') or item.get('model') for item in entries
+                            if isinstance(item, dict) and isinstance(item.get('name') or item.get('model'), str)})
+        return {'models': names, 'available': True}
+    except (httpx.HTTPError, ValueError, KeyError, TypeError):
+        return {'models': [], 'available': False,
+                'message': 'Could not list installed models. Start Ollama, then Refresh models.'}
+
+
 def resolve_settings(settings: ProviderSettings, request: Request):
     origin = request.headers.get('origin')
     if origin and origin not in {'http://localhost:5173', 'http://127.0.0.1:5173', 'tauri://localhost',

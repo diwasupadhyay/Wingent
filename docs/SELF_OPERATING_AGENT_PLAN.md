@@ -48,7 +48,7 @@ Do not create a framework/module for each row unless implementation needs it. A 
 | Phase | Status | Exit gate |
 | --- | --- | --- |
 | 0. Documentation alignment | Complete | One current plan, explicit limits, obsolete docs removed |
-| 1. Observation and target grounding | Planned; priority | Correct coordinate/target mapping before further model tuning |
+| 1. Observation and target grounding | In progress; crop/mapping slice tested | Correct coordinate/target mapping before further model tuning |
 | 2. Input and app transitions | In progress; partial regression fix | Focus-aware typing, real shortcuts and context-bound batches |
 | 3. Progress and recovery | Planned | No semantic launch/action cycles; multi-step intent retained |
 | 4. Evidence-based completion | Planned | Fresh evidence covers every requested outcome |
@@ -147,5 +147,6 @@ Next major slice: reproduce target/focus failures with bounded diagnostics, disc
 | --- | --- | --- | --- |
 | 2026-10-08 | Documentation alignment | Consolidated current baseline, reference lessons and gates; obsolete docs recoverable from Git | Implementation phases open |
 | 2026-10-08 | Phase 2 partial: shortcut/navigation | `wingent-desktop-v3`: reject mismatched Windows chords; end batches at Search/switch/Enter and reobserve; advertise all implemented actions. 76 backend tests pass. Pre-code checkpoint `768bbaf`. | No new live cross-app verification; focus/target grounding and remaining phase gates stay open |
+| 2026-10-08 | Phases 1/3/5 partial | Foreground crops with physical-coordinate mapping and changed-window input rejection; installed-model dropdown and explicit vision selection; repeated effects trigger fresh completion review. Native fixture passed. First autonomous run produced the right result but failed stopping; after review recovery, the repeated run passed both independent fixture output and clean completion. 91 backend and 24 UI tests pass. | One fixture is not the varied-app/scaling gate. Calculator-to-Notepad and media playback remain unverified on this revision; no full phase completion claim |
 
 For every future slice append commit, hypothesis, narrow check, actual result, live-test scope and build status. Do not create a new report after every edit or mark phases complete from unit tests alone.

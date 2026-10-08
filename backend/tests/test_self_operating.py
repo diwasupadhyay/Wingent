@@ -149,6 +149,51 @@ def test_repeated_false_completion_never_reports_completed():
     assert events[-1][1]['outcome'] == 'unverified'
 
 
+def test_repeated_click_checks_completion_without_clicking_twice():
+    desktop = Desktop(None)
+    class Provider:
+        async def structured_images(self, prompt, system, schema, frames):
+            if 'goal_complete' in schema['properties']:
+                return review_response()
+            return '[{"operation":"click","x":0.5,"y":0.5}]'
+    async def run():
+        return [e async for e in run_self_operating('Confirm the visible result', Provider(),
+            connected, ApprovalStore(), desktop_factory=lambda stop: desktop)]
+    events = asyncio.run(run())
+    assert desktop.calls == [('click', {'x': 0.5, 'y': 0.5})]
+    assert events[-1][1]['outcome'] == 'completed'
+
+
+def test_last_click_of_batch_is_not_replayed_as_single_action():
+    desktop = Desktop(None)
+    class Provider:
+        async def structured_images(self, prompt, system, schema, frames):
+            if 'goal_complete' in schema['properties']:
+                return review_response()
+            if desktop.frames == 1:
+                return '[{"operation":"write","content":"hello"},{"operation":"click","x":0.5,"y":0.5}]'
+            return '[{"operation":"click","x":0.5,"y":0.5}]'
+    async def run():
+        return [e async for e in run_self_operating('Type and submit hello', Provider(),
+            connected, ApprovalStore(), desktop_factory=lambda stop: desktop)]
+    events = asyncio.run(run())
+    assert desktop.calls == [('write', 'hello'), ('click', {'x': 0.5, 'y': 0.5})]
+    assert events[-1][1]['outcome'] == 'completed'
+
+
+def test_repeated_click_with_failed_review_cannot_claim_success():
+    class Provider:
+        async def structured_images(self, prompt, system, schema, frames):
+            return review_response(False) if 'goal_complete' in schema['properties'] else '[{"operation":"click","x":0.5,"y":0.5}]'
+    desktop = Desktop(None)
+    async def run():
+        return [e async for e in run_self_operating('Complete two steps', Provider(),
+            connected, ApprovalStore(), desktop_factory=lambda stop: desktop)]
+    events = asyncio.run(run())
+    assert len(desktop.calls) == 1
+    assert events[-1][1]['outcome'] == 'unverified'
+
+
 def test_window_change_after_click_reobserves_before_typing():
     desktop = Desktop(None)
     desktop.context = lambda: {'active_window': 'Chrome profile picker' if desktop.calls else 'Desktop'}

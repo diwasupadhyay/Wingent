@@ -26,6 +26,8 @@ export default function App() {
   const [settings, setSettings] = useState<ProviderSettings>({ provider: 'local', service: 'custom', model: 'qwen3-vl:4b-instruct', endpoint: '', api_key: '', share_screenshots: false });
   const [presets, setPresets] = useState<Partial<Record<CloudService, ProviderPreset>>>({});
   const [keyConfigured, setKeyConfigured] = useState(false);
+  const [localModels, setLocalModels] = useState<string[]>([]);
+  const [modelListMessage, setModelListMessage] = useState('');
   const [prompt, setPrompt] = useState('');
   const [status, setStatus] = useState<Stage>('idle');
   const [progress, setProgress] = useState('Ready');
@@ -60,6 +62,17 @@ export default function App() {
   const expanded = settingsOpen || loading || Boolean(content) || Boolean(error) || (backendReady !== null && backendReady !== 'ready');
   const modelOptions = presets[settings.service]?.models;
 
+  const refreshLocalModels = async () => {
+    setModelListMessage('Loading installed models...');
+    try {
+      const response = await fetch(`${apiBaseUrlRef.current}/api/local-models`);
+      if (!response.ok) throw new Error();
+      const result = await response.json();
+      setLocalModels(Array.isArray(result.models) ? result.models : []);
+      setModelListMessage(result.available ? 'Use Test vision to check the selected model.' : result.message || 'Start Ollama and refresh.');
+    } catch { setLocalModels([]); setModelListMessage('Could not load models. Start Ollama and refresh.'); }
+  };
+
   const openSettings = async () => {
     if (loading) return;
     setSettingsMessage('');
@@ -77,6 +90,7 @@ export default function App() {
       setProvider(info.provider);
       setActiveService(info.service ?? 'custom');
       setActiveModel(info.model);
+      void refreshLocalModels();
     } catch { setSettingsMessage('Could not load settings. Check the Wingent service.'); }
   };
 
@@ -497,7 +511,10 @@ export default function App() {
                 {Object.entries(presets).map(([id, preset]) => <option key={id} value={id}>{preset.label}</option>)}
                 <option value='custom'>Custom compatible API</option>
               </select></label>
-              <label>Model{settings.provider === 'cloud' && modelOptions ? <select value={settings.model} onChange={(e) => setSettings({ ...settings, model: e.target.value })}>
+              <label>Model{settings.provider === 'local' ? <select value={settings.model} onChange={(e) => setSettings({ ...settings, model: e.target.value })}>
+                {!localModels.includes(settings.model) && <option value={settings.model}>{settings.model} (not in loaded list)</option>}
+                {localModels.map(name => <option key={name} value={name}>{name}</option>)}
+              </select> : modelOptions ? <select value={settings.model} onChange={(e) => setSettings({ ...settings, model: e.target.value })}>
                 {!modelOptions.some(m => m.id === settings.model) && <option value={settings.model}>{settings.model}</option>}
                 {modelOptions.map(m => <option key={m.id} value={m.id} disabled={!m.agent}>{m.label}</option>)}
               </select> : <input value={settings.model} placeholder='Vision-capable model ID' onChange={(e) => setSettings({ ...settings, model: e.target.value })} />}</label>
@@ -506,6 +523,12 @@ export default function App() {
                 <label className={settings.service === 'custom' ? '' : 'settings-wide'}>API key<input type='password' autoComplete='off' value={settings.api_key} placeholder={keyConfigured ? 'Saved for this session · leave blank to keep' : 'Paste your API key'} onChange={(e) => setSettings({ ...settings, api_key: e.target.value })} /></label>
               </>}
             </div>
+            {settings.provider === 'local' && <div className='provider-note'>
+              <span>{modelListMessage}<br />Vision starting point: <code>qwen3-vl:4b-instruct</code>.
+                {' '}For limited memory, compare the smaller 2B variant; larger models may be slower.
+                {' '}Install manually: <code>ollama pull qwen3-vl:4b-instruct</code>. No model guarantees reliable clicks.</span>
+              <button type='button' onClick={() => void refreshLocalModels()}>Refresh models</button>
+            </div>}
             {settings.provider === 'cloud' && presets[settings.service] && <div className='provider-note'><span>{presets[settings.service]?.note}</span><button type='button' onClick={() => void openKeyPage()}>Get API key ↗</button></div>}
             {settings.provider === 'cloud' && <label className='cloud-consent'><input type='checkbox' checked={settings.share_screenshots} onChange={(e) => setSettings({ ...settings, share_screenshots: e.target.checked })} />Send screenshots to this provider for vision. Task text and tool results also leave this PC.</label>}
             </fieldset>

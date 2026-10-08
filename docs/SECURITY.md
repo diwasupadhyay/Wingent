@@ -16,7 +16,7 @@ Wingent sends real input with the user's desktop privileges. It is not a sandbox
 ## Important gaps
 
 - Model-sensitive-action classification can miss consequential clicks or typing. There is no comprehensive host-enforced semantic policy; normal mode is not guaranteed safe for unattended use.
-- The current driver lacks the former UIA/window-grant/fresh-frame protections. Titles and screenshots are hints, not proof of input ownership or focus.
+- The driver checks captured foreground-window identity and geometry before input, but lacks UIA field-level targeting and comprehensive occlusion checks. A stable window is not proof that the correct field is focused.
 - Screenshots may contain personal information; reliable password/private-content redaction is absent.
 - Screen text can contain malicious instructions. Prompt warnings alone are not a complete defense.
 - Completion review is model-based. `verified:false` must not be presented as independently proven success.

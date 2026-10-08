@@ -20,7 +20,9 @@ by a new screenshot. Completion is explicitly a model visual assessment.
 Upstream CLI, voice, OCR, SoM, and legacy SDK integrations are preserved as source;
 they are **not enabled in Wingent's command bar**. Their old pinned requirements
 are not installed by Wingent's build. The command bar uses direct vision coordinates.
-The active driver targets the primary monitor, as upstream PyAutoGUI does.
+The active driver uses a foreground-window crop on the primary monitor when available,
+with full-primary-screen fallback. It maps normalized image coordinates back to the
+captured physical region and rejects changed foreground/geometry before input.
 
 Rollback point before the replacement: `e7f5645`.
 

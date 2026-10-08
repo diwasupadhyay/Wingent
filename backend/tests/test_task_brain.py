@@ -47,6 +47,7 @@ def test_ascii_uses_real_keys_and_non_ascii_uses_unicode(monkeypatch):
     monkeypatch.setattr(unicode_input, 'type_code_unit', unicode_units.append)
     desktop = OperatingSystem()
     monkeypatch.setattr(desktop, 'check', lambda: None)
+    monkeypatch.setattr(desktop, 'validate_frame', lambda: None)
     desktop.write('72*2é')
     assert ''.join(typed) == '72*2'
     assert unicode_units == [ord('é')]

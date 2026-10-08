@@ -256,12 +256,21 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
                 first_decision = False
                 fingerprint = json.dumps([{key: value for key, value in action.model_dump().items()
                     if key not in {'thought', 'requires_confirmation'}} for action in batch], sort_keys=True)
-                if batch[0].operation not in {'done', 'ask'} and fingerprint == previous_batch:
-                    raise ValueError('That exact action batch was already sent. Inspect the screenshot for completion; '
-                                     'return done if the goal is visible, otherwise choose a different corrective action.')
-                if batch[0].operation not in {'done', 'ask'} and batch_history[-8:].count(fingerprint) >= 2:
-                    raise ValueError('This action sequence has already run twice. Do not cycle back to it. '
-                                     'Inspect the current app/dialog and choose keyboard navigation or another visible target.')
+                previous_action = next((item['action'] for item in reversed(history)
+                                        if item.get('action') and item.get('result') == 'sent'), None)
+                def effect_fields(action):
+                    return {key: value for key, value in action.items()
+                            if key not in {'thought', 'requires_confirmation'}}
+                repeats_last_effect = previous_action is not None and effect_fields(previous_action) == effect_fields(
+                    batch[0].model_dump(exclude_defaults=True))
+                if batch[0].operation not in {'done', 'ask'} and (fingerprint == previous_batch or repeats_last_effect):
+                    # The previous action may already have achieved the goal.
+                    # Review its actual result before replaying or declaring an
+                    # invalid-output failure. A failed review returns to work.
+                    batch = [Operation(operation='done', summary='Requested outcomes assessed on a fresh screenshot.')]
+                    history.append({'repeat_blocked': True, 'instruction': 'Do not replay the previous action; check its result.'})
+                elif batch[0].operation not in {'done', 'ask'} and batch_history[-8:].count(fingerprint) >= 2:
+                    batch = [Operation(operation='done', summary='Requested outcomes assessed on a fresh screenshot.')]
             except ValueError as exc:
                 failures += 1
                 history.append({'error': 'Invalid action response: ' + str(exc)[:250]})

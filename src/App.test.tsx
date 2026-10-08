@@ -32,6 +32,25 @@ function runCommand() {
 }
 
 describe('App', () => {
+  it('lists installed local models and saves the chosen model', async () => {
+    const send = vi.fn(async (url: string) => ({ ok: true, json: async () =>
+      url.endsWith('/api/local-models') ? { available: true, models: ['vision:4b', 'other:2b'] } :
+      url.endsWith('/api/provider-presets') ? {} :
+      url.endsWith('/api/settings') ? { provider: 'local', model: 'vision:4b', service: 'custom', endpoint: '', share_screenshots: false } :
+      { ready: true, message: 'Ready', model: 'other:2b' },
+    }));
+    vi.stubGlobal('fetch', send);
+    render(<App />);
+    fireEvent.click(screen.getByLabelText('Settings'));
+    await waitFor(() => expect(screen.getByRole('option', { name: 'other:2b' })).toBeTruthy());
+    fireEvent.change(screen.getByLabelText('Model'), { target: { value: 'other:2b' } });
+    expect(screen.getByText('Refresh models')).toBeTruthy();
+    expect(screen.getByText('ollama pull qwen3-vl:4b-instruct')).toBeTruthy();
+    fireEvent.click(screen.getByText('Save'));
+    await waitFor(() => expect(screen.queryByRole('region', { name: 'Model settings' })).toBeNull());
+    const request = vi.mocked(fetch).mock.calls.find(([, options]) => options?.method === 'POST');
+    expect(JSON.parse(request?.[1]?.body as string).model).toBe('other:2b');
+  });
   it('fills a cloud preset so only a key is needed and sends the chosen provider', async () => {
     const send = vi.fn(async (url: string) => ({ ok: true, json: async () =>
       url.endsWith('/api/provider-presets') ? {
