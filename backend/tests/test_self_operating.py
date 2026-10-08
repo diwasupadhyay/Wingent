@@ -24,6 +24,47 @@ class Desktop:
 async def connected(): return False
 
 
+def test_uncertain_typing_is_not_replayed_or_sent_to_completion_review():
+    desktop = Desktop(None)
+    def partial_write(content):
+        desktop.calls.append(('partial_write', content))
+        raise RuntimeError('Focus changed after partial text')
+    desktop.write = partial_write
+    class Provider:
+        async def structured_images(self, prompt, system, schema, frames):
+            assert 'goal_complete' not in schema['properties']
+            return '[{"operation":"write","content":"Hello"}]'
+    async def run():
+        return [e async for e in run_self_operating('Type Hello', Provider(), connected,
+            ApprovalStore(), desktop_factory=lambda stop: desktop)]
+    events = asyncio.run(run())
+    assert desktop.calls == [('partial_write', 'Hello')]
+    assert desktop.frames == 4
+    assert events[-1][1]['outcome'] == 'unverified'
+    assert 'Focus changed after partial text' in events[-1][1]['text']
+
+
+def test_uncertain_input_can_replan_to_different_action():
+    desktop = Desktop(None)
+    def failed_click(detail):
+        raise RuntimeError('Target moved')
+    desktop.mouse = failed_click
+    class Provider:
+        async def structured_images(self, prompt, system, schema, frames):
+            if desktop.frames <= 2:
+                return '[{"operation":"click","x":0.5,"y":0.5}]'
+            if desktop.frames == 3:
+                assert 'recovery_required' in prompt
+                return '[{"operation":"press","keys":["esc"]}]'
+            return '[{"operation":"ask","summary":"Please check the field"}]'
+    async def run():
+        return [e async for e in run_self_operating('Select field', Provider(), connected,
+            ApprovalStore(), desktop_factory=lambda stop: desktop)]
+    events = asyncio.run(run())
+    assert desktop.calls == [('press', ['esc'])]
+    assert events[-1][0] == 'clarification'
+
+
 def test_scroll_discards_click_from_old_layout():
     desktop = Desktop(None)
     desktop.scroll = lambda amount: desktop.calls.append(('scroll', amount))

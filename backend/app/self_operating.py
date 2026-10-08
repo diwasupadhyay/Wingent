@@ -201,6 +201,7 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
     started = time.monotonic()
     index = 0
     failures = 0
+    uncertain_repeats = 0
     previous_image = None
     unchanged = 0
     previous_batch = None
@@ -298,6 +299,24 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
                     return effect
                 fingerprint = json.dumps([effect_fields(action.model_dump(exclude_defaults=True))
                                           for action in batch], sort_keys=True)
+                last_attempt = next((item for item in reversed(history) if item.get('action')), None)
+                if (last_attempt and last_attempt.get('result') == 'error; effect uncertain'
+                        and last_attempt.get('effect') == effect_fields(batch[0].model_dump(exclude_defaults=True))):
+                    uncertain_repeats += 1
+                    reason = last_attempt.get('error', 'Input outcome uncertain')
+                    history.append({'recovery_required': True,
+                        'instruction': 'The last input raised an error and may have partially taken effect. '
+                                       'Do not replay it or claim completion. Inspect this screen, use a different '
+                                       'grounded method, or ask the user if the effect cannot be resolved.',
+                        'last_error': reason})
+                    if uncertain_repeats >= 3:
+                        yield 'final', {'outcome': 'unverified', 'verified': False,
+                            'text': 'Stopped to avoid repeating uncertain input. Last error: ' + reason}
+                        return
+                    yield 'status', {'stage': 'recovering',
+                                     'message': 'Repeated uncertain input blocked; choosing a different approach.'}
+                    continue
+                uncertain_repeats = 0
                 previous_effect = next((item.get('effect', item['action']) for item in reversed(history)
                                         if item.get('action') and item.get('result') == 'sent'), None)
                 repeats_last_effect = previous_effect is not None and previous_effect == effect_fields(
@@ -431,7 +450,8 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
                 except Exception as exc:
                     if type(exc).__name__ == 'FailSafeException':
                         raise InterruptedError('Stopped: pointer moved to a screen corner.') from exc
-                    history.append({'action': action, 'result': 'error; effect uncertain', 'error': str(exc)[:250]})
+                    history.append({'action': action, 'effect': effect_fields(action),
+                                    'result': 'error; effect uncertain', 'error': str(exc)[:250]})
                     yield 'step', {'index': index, 'state': 'unknown',
                                    'reason': str(exc)[:250] or type(exc).__name__}
                     yield 'status', {'stage': 'recovering',
