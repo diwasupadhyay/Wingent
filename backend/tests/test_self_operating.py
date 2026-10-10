@@ -24,6 +24,25 @@ class Desktop:
 async def connected(): return False
 
 
+@pytest.mark.parametrize('duplicate', [False, True])
+def test_exact_name_resolution_rejects_ambiguity(duplicate):
+    desktop = Desktop(None)
+    targets = [{'id': 'frame-1', 'name': 'Example', 'x': .5, 'y': .5}]
+    if duplicate:
+        targets.append({'id': 'frame-2', 'name': 'Example', 'x': .2, 'y': .2})
+    desktop.context = lambda: {'targets': targets}
+    class Provider:
+        async def structured_images(self, *args):
+            if desktop.frames == 1:
+                return '[{"operation":"click","target_name":"Example"}]'
+            return '[{"operation":"ask","summary":"Test finished"}]'
+    async def run():
+        return [e async for e in run_self_operating('Choose Example', Provider(), connected,
+            ApprovalStore(), desktop_factory=lambda stop: desktop)]
+    asyncio.run(run())
+    assert desktop.calls == ([] if duplicate else [('click', {'target_id': 'frame-1'})])
+
+
 def test_left_click_observes_before_typing_even_in_same_window():
     desktop = Desktop(None)
     desktop.context = lambda: {'window_id': 7, 'active_window': 'Same window'}
@@ -188,8 +207,9 @@ def test_click_schema_requires_exactly_one_target_form():
     variants = operation_schema()['properties']['operations']['items']['anyOf']
     click = next(v for v in variants if v['properties']['operation']['const'] == 'click')
     assert click['oneOf'] == [
-        {'required': ['target_id'], 'not': {'anyOf': [{'required': ['x']}, {'required': ['y']}]}},
-        {'required': ['x', 'y'], 'not': {'required': ['target_id']}}]
+        {'required': ['target_id'], 'not': {'anyOf': [{'required': ['x']}, {'required': ['y']}, {'required': ['target_name']}]}},
+        {'required': ['target_name'], 'not': {'anyOf': [{'required': ['x']}, {'required': ['y']}, {'required': ['target_id']}]}},
+        {'required': ['x', 'y'], 'not': {'anyOf': [{'required': ['target_id']}, {'required': ['target_name']}]}}]
     assert click['properties']['target_id']['minLength'] == 1
     assert click['properties']['x']['type'] == 'number'
     assert click['properties']['y']['type'] == 'number'

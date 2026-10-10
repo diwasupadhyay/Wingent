@@ -22,6 +22,7 @@ class Operation(BaseModel):
     model_config = ConfigDict(extra='forbid')
     operation: Literal['click', 'write', 'press', 'hotkey', 'move', 'scroll', 'wait', 'observe', 'done', 'ask']
     target_id: str = Field(default='', max_length=32)
+    target_name: str = Field(default='', max_length=100)
     button: Literal['left', 'right', 'middle'] = 'left'
     clicks: int = Field(default=1, ge=1, le=2, strict=True)
     scope: Literal['screen', 'window'] = 'screen'
@@ -42,10 +43,12 @@ class Operation(BaseModel):
             raise ValueError('button and clicks are only supported for click actions.')
         if self.clicks == 2 and self.button != 'left':
             raise ValueError('Double-click is supported only with the left button.')
-        if self.operation in {'click', 'move'} and (self.x is None or self.y is None) and not (self.operation == 'click' and self.target_id):
+        if self.operation in {'click', 'move'} and (self.x is None or self.y is None) and not (self.operation == 'click' and (self.target_id or self.target_name)):
             raise ValueError('Mouse actions need x and y screen fractions between 0 and 1.')
         if self.target_id and (self.operation != 'click' or self.x is not None or self.y is not None):
             raise ValueError('Use either click target_id or coordinates, not both.')
+        if self.target_name and (self.operation != 'click' or self.target_id or self.x is not None or self.y is not None):
+            raise ValueError('Use one click target: exact target_name, target_id, or coordinates.')
         if self.operation in {'press', 'hotkey'} and not self.keys:
             raise ValueError('press requires keys.')
         if self.operation in {'press', 'hotkey'}:
@@ -84,6 +87,7 @@ def operation_schema():
         if kind == 'write': properties['content']['minLength'] = 1
         if kind == 'click':
             properties['target_id'] = {'type': 'string', 'maxLength': 32}
+            properties['target_name'] = {'type': 'string', 'minLength': 1, 'maxLength': 100}
             properties['button'] = {'type': 'string', 'enum': ['left', 'right', 'middle']}
             properties['clicks'] = {'type': 'integer', 'minimum': 1, 'maximum': 2}
             required = []  # Host validates target_id XOR complete coordinates.
@@ -93,8 +97,9 @@ def operation_schema():
         if kind == 'click':
             properties['target_id']['minLength'] = 1
             variant['oneOf'] = [
-                {'required': ['target_id'], 'not': {'anyOf': [{'required': ['x']}, {'required': ['y']}]}},
-                {'required': ['x', 'y'], 'not': {'required': ['target_id']}}]
+                {'required': ['target_id'], 'not': {'anyOf': [{'required': ['x']}, {'required': ['y']}, {'required': ['target_name']}]}},
+                {'required': ['target_name'], 'not': {'anyOf': [{'required': ['x']}, {'required': ['y']}, {'required': ['target_id']}]}},
+                {'required': ['x', 'y'], 'not': {'anyOf': [{'required': ['target_id']}, {'required': ['target_name']}]}}]
             properties['x'] = {'type': 'number', 'minimum': 0, 'maximum': 1}
             properties['y'] = {'type': 'number', 'minimum': 0, 'maximum': 1}
         variants.append(variant)
@@ -134,10 +139,9 @@ When plan_requested is true, include plan:{"outcomes":["each requested final res
 do not spend a separate turn planning. Preserve every part of the original objective.
 
 Choose the shortest reliable method:
-- Prefer exact desktop.targets IDs over guessed coordinates. Match name/role;
-  never invent IDs. Use coordinates for opaque/custom controls.
-- Yellow numbered markers identify desktop.targets; select the matching target_id,
-  not the marker's printed position. Every click ends the batch; inspect again.
+- Prefer click(target_name="exact observed name") for unique desktop.targets names.
+  For duplicate names choose target_id by region. Coordinates are for opaque controls.
+- Yellow markers identify targets, not click positions. Every click ends the batch.
 - observe(scope="window") zooms into the foreground; scope="screen" restores overview.
   Coordinates refer to the CURRENT screenshot; target IDs expire on observation.
 - Prefer keyboard entry for text/numbers/arithmetic over clicking individual character
@@ -159,7 +163,7 @@ Choose the shortest reliable method:
 Operations (use only fields relevant to the operation):
 write(content); press(keys) / hotkey(keys) are SIMULTANEOUS key chords, not sequences;
 click(x,y) / move(x,y): fractions 0..1 of the ENTIRE screenshot;
-click: target_id OR x,y; button=left/right/middle; clicks=1/2 (2 is left only).
+click: target_name OR target_id OR x,y; button=left/right/middle; clicks=1/2 (2 is left only).
 Right/double-click ends the batch; observe its result.
 scroll(amount): signed notches -20..20; wait(seconds): 0.1..5;
 ask(summary): only genuine ambiguity/login/necessary human decisions;
@@ -290,6 +294,13 @@ async def run_self_operating(goal, provider, disconnected, approvals, review_act
                 model_seconds += time.monotonic() - decision_started
             try:
                 batch = parse_operations(raw)
+                for action in batch:
+                    if action.target_name:
+                        matches = [target for target in desktop_context.get('targets', [])
+                                   if target.get('name', '').casefold() == action.target_name.casefold()]
+                        if len(matches) != 1:
+                            raise ValueError('Control name is missing or ambiguous; select an observed target_id by region.')
+                        action.target_id, action.target_name = matches[0]['id'], ''
                 launches.check_batch(batch)
                 decoded = decode_json(raw)
                 if isinstance(decoded, dict):
